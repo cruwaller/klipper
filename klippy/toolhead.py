@@ -182,6 +182,7 @@ STALL_TIME = 0.100
 # Main code to track events (and their timing) on the printer toolhead
 class ToolHead:
     def __init__(self, printer, config):
+        logging.debug("Add toolhead '{}'".format(config.section))
         self.printer = printer
         self.reactor = printer.reactor
         self.all_mcus = mcu.get_printer_mcus(printer)
@@ -307,6 +308,9 @@ class ToolHead:
             logging.exception("Exception in motor_off_handler")
             self.printer.invoke_shutdown("Exception in motor_off_handler")
         return eventtime + self.motor_off_time
+    # Homing offset (GCode command)
+    def set_homing_offset(self, offsets):
+        self.kin.set_homing_offset(offsets)
     # Movement commands
     def get_position(self):
         return list(self.commanded_pos)

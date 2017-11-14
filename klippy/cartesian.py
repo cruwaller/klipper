@@ -26,6 +26,12 @@ class CartKinematics:
         self.steppers[1].set_max_jerk(max_halt_velocity, max_accel)
         self.steppers[2].set_max_jerk(
             min(max_halt_velocity, self.max_z_velocity), max_accel)
+    def set_homing_offset(self, offsets):
+        for s in self.steppers:
+            try:
+                s.set_homing_offset(offsets[s.name])
+            except (KeyError):
+                pass
     def set_position(self, newpos):
         for i in StepList:
             self.steppers[i].mcu_stepper.set_position(newpos[i])

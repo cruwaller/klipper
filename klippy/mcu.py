@@ -5,6 +5,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import sys, os, zlib, logging, math
 import serialhdl, pins, chelper, clocksync
+import traceback
 
 class error(Exception):
     pass
@@ -62,7 +63,7 @@ class MCU_stepper:
     def get_oid(self):
         return self._oid
     def set_position(self, pos):
-        if pos >= 0.:
+        if pos >= 0.0:
             steppos = int(pos * self._inv_step_dist + 0.5)
         else:
             steppos = int(pos * self._inv_step_dist - 0.5)
@@ -352,7 +353,7 @@ class MCU_pwm:
                       , cq=self._cmd_queue)
         self._last_clock = clock
 
-class MCU_adc:
+class MCU_temper_adc:
     def __init__(self, mcu, pin_params):
         self._mcu = mcu
         self._pin = pin_params['pin']
@@ -403,6 +404,86 @@ class MCU_adc:
         if self._callback is not None:
             self._callback(last_read_time, last_value)
 
+
+class MCU_temper_spi:
+
+    def __init__(self, mcu, pin_params):
+        self._mcu           = mcu
+        self._pin           = pin_params['pin']
+        self._min_sample    = self._max_sample  = 0.
+        self._read_interval = 0.
+        self._report_time   = 0.
+        self._report_clock  = 0
+        self._callback      = None
+        self._cmd_queue     = mcu.alloc_command_queue()
+        self._max_adc_value = 0
+        self._oid           = self._mcu.create_oid()
+        self._spi_speed     = 4000000
+        self._spi_mode      = 0
+
+    def setup_spi_settings(self, mode, speed):
+        # default SPI_MODE0 and 4MHz
+        self._spi_speed     = speed
+        self._spi_mode      = mode
+
+    def get_mcu(self):
+        return self._mcu
+
+    def setup_read_command(self, read_cmd, read_bytes, config, fault_mask = 0, fault_cmd = 0):
+        self._read_cmd   = read_cmd
+        self._read_bytes = read_bytes
+        self._config     = config
+        self._fault_mask = fault_mask
+        self._fault_cmd  = fault_cmd
+
+    def setup_minmax(self, read_interval, max_adc, minval, maxval):
+        self._read_interval = read_interval
+        self._max_adc_value = max_adc
+        self._min_sample    = minval
+        self._max_sample    = maxval
+
+    def setup_adc_callback(self, report_time, callback):
+        self._report_time = report_time
+        self._callback    = callback
+
+    def build_config(self):
+
+        self._mcu.add_config_cmd(
+            "config_thermocouple_ss_pin oid=%d pin=%s spi_mode=%u spi_speed=%u" %
+            (self._oid, self._pin, self._spi_mode, self._spi_speed))
+
+        clock        = self._mcu.get_query_slot(self._oid)
+        sample_ticks = self._mcu.seconds_to_clock(self._read_interval)
+        self._report_clock = self._mcu.seconds_to_clock(self._report_time)
+
+        config_cmd = ("config_thermocouple oid=%d cmd=%d clock=%d"
+                      " interval=%d min_value=%d max_value=%d"
+                      " read_bytes=%d fault_mask=%d rest_ticks=%d fault_cmd=%u cfg=" %
+                      (self._oid, self._read_cmd, clock,
+                       sample_ticks, self._min_sample, self._max_sample,
+                       self._read_bytes, self._fault_mask, self._report_clock,
+                       self._fault_cmd))
+
+        if (len(self._config)):
+            for idx in range(0, len(self._config)):
+                config_cmd += ("%02x" % (self._config[idx]))
+        else:
+            config_cmd += "0"
+
+        self._mcu.add_config_cmd(config_cmd, is_init=True)
+
+        self._mcu.register_msg(self._handle_spi_response,
+                               "thermocouple_result",
+                               self._oid)
+
+    def _handle_spi_response(self, params):
+        last_value      = params['value']
+        next_clock      = self._mcu.clock32_to_clock64(params['next_clock'])
+        last_read_clock = next_clock - self._report_clock
+        last_read_time  = self._mcu.clock_to_print_time(last_read_clock)
+        if self._callback is not None:
+            self._callback(last_read_time, last_value, params['fault'])
+
 class MCU:
     error = error
     def __init__(self, printer, config, clocksync):
@@ -413,18 +494,19 @@ class MCU:
             self._name = self._name[4:]
         # Serial port
         self._serialport = config.get('serial', '/dev/ttyS0')
-        baud = 0
-        if not (self._serialport.startswith("/dev/rpmsg_")
-                or self._serialport.startswith("/tmp/klipper_host_")):
-            baud = config.getint('baud', 250000, minval=2400)
+        baud = config.getint('baud', 250000, minval=2400)
+        if (self._serialport.startswith("/dev/rpmsg_")
+            or self._serialport.startswith("/tmp/klipper_host_")):
+            baud = 0
         self._serial = serialhdl.SerialReader(
             printer.reactor, self._serialport, baud)
         # Restarts
-        self._restart_method = 'command'
-        if baud:
-            rmethods = {m: m for m in ['arduino', 'command', 'rpi_usb']}
-            self._restart_method = config.getchoice(
-                'restart_method', rmethods, 'arduino')
+        rmethods = {m: m for m in ['arduino', 'command', 'rpi_usb']}
+        self._restart_method = config.getchoice('restart_method',
+                                                rmethods,
+                                                'arduino')
+        if baud == 0:
+            self._restart_method = 'command'
         self._reset_cmd = self._config_reset_cmd = None
         self._emergency_stop_cmd = None
         self._is_shutdown = False
@@ -604,8 +686,14 @@ class MCU:
         self._send_config()
     # Config creation helpers
     def setup_pin(self, pin_params):
-        pcs = {'stepper': MCU_stepper, 'endstop': MCU_endstop,
-               'digital_out': MCU_digital_out, 'pwm': MCU_pwm, 'adc': MCU_adc}
+        pcs = {
+            'stepper'     : MCU_stepper,
+            'endstop'     : MCU_endstop,
+            'digital_out' : MCU_digital_out,
+            'pwm'         : MCU_pwm,
+            'temp_adc'    : MCU_temper_adc,
+            'temp_spi'    : MCU_temper_spi
+        }
         pin_type = pin_params['type']
         if pin_type not in pcs:
             raise pins.error("pin type %s not supported on mcu" % (pin_type,))
@@ -727,8 +815,10 @@ class MCU:
             return
         logging.info("Timeout with MCU '%s' (eventtime=%f)",
                      self._name, eventtime)
-        self._printer.invoke_shutdown("Lost communication with MCU '%s'" % (
-            self._name,))
+        #self._printer.invoke_shutdown("Lost communication with MCU '%s'" % (
+        #    self._name,))
+        # Connection lost, request reset
+        self._printer.request_exit('firmware_restart')
     def stats(self, eventtime):
         msg = "%s: mcu_awake=%.03f mcu_task_avg=%.06f mcu_task_stddev=%.06f" % (
             self._name, self._mcu_tick_awake, self._mcu_tick_avg,

@@ -6,6 +6,7 @@
 import math, logging
 import homing, pins
 
+# Stepper without homing option (extruders etc)
 class PrinterStepper:
     def __init__(self, printer, config, name):
         self.name = name
@@ -46,6 +47,7 @@ class PrinterStepper:
             self.mcu_enable.set_digital(print_time, enable)
         self.need_motor_enable = not enable
 
+# Stepper with homing endstops ( X, Y, Z axis etc )
 class PrinterHomingStepper(PrinterStepper):
     def __init__(self, printer, config, name):
         PrinterStepper.__init__(self, printer, config, name)
@@ -54,9 +56,13 @@ class PrinterHomingStepper(PrinterStepper):
             printer, 'endstop', config.get('endstop_pin'))
         self.mcu_endstop.add_stepper(self.mcu_stepper)
         self.position_min = config.getfloat('position_min', 0.)
-        self.position_max = config.getfloat(
-            'position_max', 0., above=self.position_min)
+        self.position_max = config.getfloat('position_max', 0.,
+                                            above=self.position_min)
         self.position_endstop = config.getfloat('position_endstop')
+        self.position_endstop_original = self.position_endstop
+        # negative value will be added
+        self.position_endstop = self.position_endstop_original - \
+                                config.getfloat('homing_offset', 0.000)
 
         self.homing_speed = config.getfloat('homing_speed', 5.0, above=0.)
         self.homing_positive_dir = config.getboolean('homing_positive_dir', None)
@@ -109,6 +115,8 @@ class PrinterHomingStepper(PrinterStepper):
                 self.homing_stepper_phases = None
             if self.mcu_endstop.get_mcu().is_fileoutput():
                 self.homing_endstop_accuracy = self.homing_stepper_phases
+    def set_homing_offset(self, offset):
+        self.position_endstop = self.position_endstop_original - offset
     def get_homing_speed(self):
         # Round the configured homing speed so that it is an even
         # number of ticks per step.

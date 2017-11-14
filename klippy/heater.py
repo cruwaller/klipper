@@ -4,7 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math, logging, threading
-import pins
+import pins, reactor
 
 
 ######################################################################
@@ -13,8 +13,23 @@ import pins
 
 KELVIN_TO_CELCIUS = -273.15
 
+SAMPLE_TIME_DEFAULT    = 0.001
+SAMPLE_COUNT_DEFAULT   = 8
+
+class TempBase(object):
+    spi          = False
+    sample_time  = SAMPLE_TIME_DEFAULT
+    sample_count = SAMPLE_COUNT_DEFAULT
+    def __init__(self, is_spi = False,
+                 sample_time  = SAMPLE_TIME_DEFAULT,
+                 sample_count = SAMPLE_COUNT_DEFAULT):
+        self.spi          = is_spi;
+        self.sample_time  = sample_time
+        self.sample_count = sample_count
+
+
 # Thermistor calibrated with three temp measurements
-class Thermistor:
+class Thermistor(TempBase):
     def __init__(self, config, params):
         self.pullup = config.getfloat('pullup_resistor', 4700., above=0.)
         # Calculate Steinhart-Hart coefficents from temp measurements
@@ -49,6 +64,8 @@ class Thermistor:
             ln_r = (inv_t - self.c1) / self.c2
         r = math.exp(ln_r)
         return r / (self.pullup + r)
+    def check_faults(self, fault):
+        pass
 
 # Thermistor calibrated from one temp measurement and its beta
 class ThermistorBeta(Thermistor):
@@ -60,9 +77,11 @@ class ThermistorBeta(Thermistor):
         self.c3 = 0.
         self.c2 = 1. / params['beta']
         self.c1 = inv_t1 - self.c2 * ln_r1
+    def check_faults(self, fault):
+        pass
 
 # Linear style conversion chips calibrated with two temp measurements
-class Linear:
+class Linear(TempBase):
     def __init__(self, config, params):
         adc_voltage = config.getfloat('adc_voltage', 5., above=0.)
         slope = (params['t2'] - params['t1']) / (params['v2'] - params['v1'])
@@ -72,6 +91,282 @@ class Linear:
         return adc * self.gain + self.offset
     def calc_adc(self, temp):
         return (temp - self.offset) / self.gain
+    def check_faults(self, fault):
+        pass
+
+################################################################################
+MAX31865_CONFIG_REG            = 0x00
+MAX31865_RTDMSB_REG            = 0x01
+MAX31865_RTDLSB_REG            = 0x02
+MAX31865_HFAULTMSB_REG         = 0x03
+MAX31865_HFAULTLSB_REG         = 0x04
+MAX31865_LFAULTMSB_REG         = 0x05
+MAX31865_LFAULTLSB_REG         = 0x06
+MAX31865_FAULTSTAT_REG         = 0x07
+
+MAX31865_CONFIG_BIAS           = 0x80
+MAX31865_CONFIG_MODEAUTO       = 0x40
+MAX31865_CONFIG_1SHOT          = 0x20
+MAX31865_CONFIG_3WIRE          = 0x10
+MAX31865_CONFIG_FAULTCLEAR     = 0x02
+MAX31865_CONFIG_FILT50HZ       = 0x01
+
+MAX31865_FAULT_HIGHTHRESH      = 0x80
+MAX31865_FAULT_LOWTHRESH       = 0x40
+MAX31865_FAULT_REFINLOW        = 0x20
+MAX31865_FAULT_REFINHIGH       = 0x10
+MAX31865_FAULT_RTDINLOW        = 0x08
+MAX31865_FAULT_OVUV            = 0x04
+
+class RTD(TempBase):
+    rtd_nominal_r   = 100;
+    reference_r     = 430;
+    num_wires       = 2;
+    use_50Hz_filter = False;
+
+    val_a = 0.00390830
+    val_b = 0.0000005775
+    val_c = -0.00000000000418301
+
+    scale = 1
+
+    def __init__(self, config, params):
+        super(RTD, self).__init__(is_spi = True, sample_count = 1)
+
+        self.rtd_nominal_r   = config.getint('rtd_nominal_r', 100)
+        self.reference_r     = config.getfloat('rtd_reference_r', 430., above=0.)
+        self.num_wires       = config.getint('rtd_num_of_wires', 2)
+        self.use_50Hz_filter = config.getboolean('rtd_use_50Hz_filter', False)
+
+    def check_faults(self, fault):
+        if (fault & 0x80):
+            raise error("Max31865 RTD input is disconnected")
+        if (fault & 0x40):
+            raise error("Max31865 RTD input is shorted")
+        if (fault & 0x20):
+            raise error("Max31865 VREF- is greater than 0.85 * VBIAS, FORCE- open")
+        if (fault & 0x10):
+            raise error("Max31865 VREF- is less than 0.85 * VBIAS, FORCE- open")
+        if (fault & 0x08):
+            raise error("Max31865 VRTD- is less than 0.85 * VBIAS, FORCE- open")
+        if (fault & 0x04):
+            raise error("Max31865 Overvoltage or undervoltage fault")
+        if (fault & 0x03):
+            raise error("Max31865 Unspecified error")
+
+
+    def calc_temp(self, adc):
+        adc = adc >> 1 # Scale result
+        R_rtd = (self.reference_r * adc) / 32768.0; # 2^15
+        temp = ( ( ( -1 * self.rtd_nominal_r ) * self.val_a ) +
+                 math.sqrt( ( self.rtd_nominal_r * self.rtd_nominal_r * self.val_a * self.val_a ) -
+                            ( 4 * self.rtd_nominal_r * self.val_b * ( self.rtd_nominal_r - R_rtd ) )
+                   )
+             ) / (2 * self.rtd_nominal_r * self.val_b);
+        return (temp);
+
+    def calc_adc(self, temp):
+        R_rtd = temp * ( 2 * self.rtd_nominal_r * self.val_b )
+        R_rtd = math.pow( ( R_rtd + ( self.rtd_nominal_r * self.val_a ) ), 2)
+        R_rtd = -1 * ( R_rtd - ( self.rtd_nominal_r * self.rtd_nominal_r * self.val_a * self.val_a ) )
+        R_rtd = R_rtd / ( 4 * self.rtd_nominal_r * self.val_b )
+        R_rtd = ( -1 * R_rtd ) + self.rtd_nominal_r
+        adc = int ( ( ( R_rtd * 32768.0 ) / self.reference_r) + 0.5 ) # convert to ADC value
+        # Scale result
+        adc = adc << self.scale
+        return adc
+
+    def get_read_cmd(self):
+        return MAX31865_RTDMSB_REG
+    def get_read_bytes(self):
+        return 2 # 16bit value
+    def get_configs(self):
+        value = (MAX31865_CONFIG_BIAS |
+                 MAX31865_CONFIG_MODEAUTO |
+                 MAX31865_CONFIG_FAULTCLEAR)
+        if (self.use_50Hz_filter):
+            value |= MAX31865_CONFIG_FILT50HZ
+        if (self.num_wires == 3):
+            value |= MAX31865_CONFIG_3WIRE
+        cmd = 0x80 + MAX31865_CONFIG_REG
+        return [cmd, value]
+    def get_fault_filter(self):
+        return 0x0001;
+
+################################################################################
+MAX31856_CR0_REG           = 0x00
+MAX31856_CR0_AUTOCONVERT   = 0x80
+MAX31856_CR0_1SHOT         = 0x40
+MAX31856_CR0_OCFAULT1      = 0x20
+MAX31856_CR0_OCFAULT0      = 0x10
+MAX31856_CR0_CJ            = 0x08
+MAX31856_CR0_FAULT         = 0x04
+MAX31856_CR0_FAULTCLR      = 0x02
+MAX31856_CR0_FILT50HZ      = 0x01
+MAX31856_CR0_FILT60HZ      = 0x00
+
+MAX31856_CR1_REG           = 0x01
+MAX31856_CR1_AVGSEL1       = 0x00
+MAX31856_CR1_AVGSEL2       = 0x10
+MAX31856_CR1_AVGSEL4       = 0x20
+MAX31856_CR1_AVGSEL8       = 0x30
+MAX31856_CR1_AVGSEL16      = 0x70
+
+MAX31856_MASK_REG                          = 0x02
+MAX31856_MASK_COLD_JUNCTION_HIGH_FAULT     = 0x20
+MAX31856_MASK_COLD_JUNCTION_LOW_FAULT      = 0x10
+MAX31856_MASK_THERMOCOUPLE_HIGH_FAULT      = 0x08
+MAX31856_MASK_THERMOCOUPLE_LOW_FAULT       = 0x04
+MAX31856_MASK_VOLTAGE_UNDER_OVER_FAULT     = 0x02
+MAX31856_MASK_THERMOCOUPLE_OPEN_FAULT      = 0x01
+
+MAX31856_CJHF_REG          = 0x03
+MAX31856_CJLF_REG          = 0x04
+MAX31856_LTHFTH_REG        = 0x05
+MAX31856_LTHFTL_REG        = 0x06
+MAX31856_LTLFTH_REG        = 0x07
+MAX31856_LTLFTL_REG        = 0x08
+MAX31856_CJTO_REG          = 0x09
+MAX31856_CJTH_REG          = 0x0A
+MAX31856_CJTL_REG          = 0x0B
+MAX31856_LTCBH_REG         = 0x0C
+MAX31856_LTCBM_REG         = 0x0D
+MAX31856_LTCBL_REG         = 0x0E
+
+MAX31856_SR_REG            = 0x0F
+MAX31856_FAULT_CJRANGE     = 0x80  # Cold Junction out of range
+MAX31856_FAULT_TCRANGE     = 0x40  # Thermocouple out of range
+MAX31856_FAULT_CJHIGH      = 0x20  # Cold Junction High
+MAX31856_FAULT_CJLOW       = 0x10  # Cold Junction Low
+MAX31856_FAULT_TCHIGH      = 0x08  # Thermocouple Low
+MAX31856_FAULT_TCLOW       = 0x04  # Thermocouple Low
+MAX31856_FAULT_OVUV        = 0x02  # Under Over Voltage
+MAX31856_FAULT_OPEN        = 0x01
+
+class Thermocouple(TempBase):
+    tc_type         = 100;
+    use_50Hz_filter = False;
+    average_count   = 1;
+
+    types = {
+        "B" : 0b0000,
+        "E" : 0b0001,
+        "J" : 0b0010,
+        "K" : 0b0011,
+        "N" : 0b0100,
+        "R" : 0b0101,
+        "S" : 0b0110,
+        "T" : 0b0111,
+    }
+
+    averages = {
+        1  : MAX31856_CR1_AVGSEL1,
+        2  : MAX31856_CR1_AVGSEL2,
+        4  : MAX31856_CR1_AVGSEL4,
+        8  : MAX31856_CR1_AVGSEL8,
+        16 : MAX31856_CR1_AVGSEL16
+    }
+
+    is_k_simple = False # Check faults
+
+    def __init__(self, config, params):
+        super(Thermocouple, self).__init__(is_spi = True, sample_count = 1)
+
+        self.tc_type         = types[config.get('tc_type', "K")]
+        self.use_50Hz_filter = config.getboolean('tc_use_50Hz_filter', False)
+        self.average_count   = averages[config.getint('tc_averaging_count', 1)]
+        self.is_k_simple     = params["simple"]
+
+        if (self.is_k_simple): # MAX6675/MAX31855
+            self.val_a = 0.25
+            self.scale = 18
+        else:
+            self.val_a = 0.0078125
+            self.scale = 5
+
+    def _check_faults_simple(self, val):
+        if self.is_k_simple:
+            if (val & 0x1):
+                raise error("MAX6675/MAX31855 : Open Circuit")
+            if (val & 0x2):
+                raise error("MAX6675/MAX31855 : Short to GND")
+            if (val & 0x4):
+                raise error("MAX6675/MAX31855 : Short to Vcc")
+        else:
+            if (val & 0x1):
+                pass
+
+    def check_faults(self, fault):
+        if self.is_k_simple == False:
+            if (fault & MAX31856_FAULT_CJRANGE):
+                raise error("Max31856: Cold Junction Range Fault")
+            if (fault & MAX31856_FAULT_TCRANGE):
+                raise error("Max31856: Thermocouple Range Fault")
+            if (fault & MAX31856_FAULT_CJHIGH):
+                raise error("Max31856: Cold Junction High Fault")
+            if (fault & MAX31856_FAULT_CJLOW):
+                raise error("Max31856: Cold Junction Low Fault")
+            if (fault & MAX31856_FAULT_TCHIGH):
+                raise error("Max31856: Thermocouple High Fault")
+            if (fault & MAX31856_FAULT_TCLOW):
+                raise error("Max31856: Thermocouple Low Fault")
+            if (fault & MAX31856_FAULT_OVUV):
+                raise error("Max31856: Over/Under Voltage Fault")
+            if (fault & MAX31856_FAULT_OPEN):
+                raise error("Max31856: Thermocouple Open Fault")
+
+    def calc_temp(self, adc):
+        if self.is_k_simple:
+            self._check_faults_simple(adc)
+        adc = adc >> self.scale
+        # Fix sign bit:
+        if self.is_k_simple:
+            if (adc & 0x2000):
+                adc = ((adc & 0x1FFF) + 1) * -1
+        else:
+            if (adc & 0x40000):
+                adc = ((adc & 0x3FFFF) + 1) * -1
+        temp = self.val_a * adc;
+        return (temp);
+
+    def calc_adc(self, temp):
+        adc = int ( ( temp / self.val_a ) + 0.5 ) # convert to ADC value
+        adc = adc << self.scale
+        return adc
+
+    def get_read_cmd(self):
+        if self.is_k_simple == False:
+            return MAX31856_LTCBH_REG
+        return 0x00
+    def get_read_bytes(self):
+        if self.is_k_simple == False:
+            return 3 # 24bit value (MAX31856)
+        return 4 # 32bit (MAX6675 / MAX31855)
+    def get_configs(self):
+        cmds = []
+        if self.is_k_simple == False:
+            value = MAX31856_CR0_AUTOCONVERT
+            if (self.use_50Hz_filter):
+                value |= MAX31856_CR0_FILT50HZ
+            if (self.num_wires == 3):
+                value |= MAX31865_CONFIG_3WIRE
+            cmds.append(0x80 + MAX31856_CR0_REG)
+            cmds.append(value)
+
+            value  = self.tc_type
+            value |= self.average_count
+            cmds.append(0x80 + MAX31856_CR1_REG)
+            cmds.append(value)
+
+            value = (MAX31856_MASK_VOLTAGE_UNDER_OVER_FAULT |
+                     MAX31856_MASK_THERMOCOUPLE_OPEN_FAULT)
+            cmds.append(0x80 + MAX31856_MASK_REG)
+            cmds.append(value)
+        return cmds
+    def get_fault_filter(self):
+        if self.is_k_simple:
+            return 0x4;
+        return 0;
 
 # Available sensors
 Sensors = {
@@ -83,7 +378,18 @@ Sensors = {
         't2': 150., 'r2': 1360., 't3': 300., 'r3': 80.65 },
     "NTC 100K beta 3950": {
         'class': ThermistorBeta, 't1': 25., 'r1': 100000., 'beta': 3950. },
-    "AD595": { 'class': Linear, 't1': 25., 'v1': .25, 't2': 300., 'v2': 3.022 },
+    "AD595": {
+        'class': Linear, 't1': 25., 'v1': .25, 't2': 300., 'v2': 3.022 },
+
+    # Themocouple readers only
+    "MAX6675":  { 'class': Thermocouple, 'simple': True },
+    "MAX31855": { 'class': Thermocouple, 'simlpe': True },
+
+    # Thermocouples readers
+    "MAX31856": { 'class': Thermocouple, 'simple': False },
+
+    # RTD readers
+    "MAX31865": { 'class': RTD },
 }
 
 
@@ -91,13 +397,11 @@ Sensors = {
 # Heater
 ######################################################################
 
-SAMPLE_TIME = 0.001
-SAMPLE_COUNT = 8
-REPORT_TIME = 0.300
+REPORT_TIME    = 0.300
 PWM_CYCLE_TIME = 0.100
-MAX_HEAT_TIME = 5.0
-AMBIENT_TEMP = 25.
-PID_PARAM_BASE = 255.
+MAX_HEAT_TIME  = 5.0
+AMBIENT_TEMP   = 25.0
+PID_PARAM_BASE = 255.0
 
 class error(Exception):
     pass
@@ -105,39 +409,131 @@ class error(Exception):
 class PrinterHeater:
     error = error
     def __init__(self, printer, config):
-        self.name = config.section
+        self._printer = printer
+        self.name     = config.section
+        logging.debug("Add heater '{}'".format(self.name))
         sensor_params = config.getchoice('sensor_type', Sensors)
-        self.sensor = sensor_params['class'](config, sensor_params)
-        self.min_temp = config.getfloat('min_temp', minval=0.)
+        self.sensor   = sensor_params['class'](config, sensor_params)
+        self.min_temp = config.getfloat('min_temp', minval=0.0)
         self.max_temp = config.getfloat('max_temp', above=self.min_temp)
-        self.min_extrude_temp = config.getfloat(
-            'min_extrude_temp', 170., minval=self.min_temp, maxval=self.max_temp)
-        self.max_power = config.getfloat('max_power', 1., above=0., maxval=1.)
-        self.lock = threading.Lock()
-        self.last_temp = 0.
-        self.last_temp_time = 0.
-        self.target_temp = 0.
-        algos = {'watermark': ControlBangBang, 'pid': ControlPID}
-        algo = config.getchoice('control', algos)
+        self.min_extrude_temp = 170.0
+        self.max_power      = config.getfloat('max_power',
+                                              1.0,
+                                              above=0.0,
+                                              maxval=1.0)
+        self.lock           = threading.Lock()
+        self.last_temp      = 0.0
+        self.last_temp_time = 0.0
+        self.target_temp    = 0.0
+        algos      = {'watermark': ControlBangBang,
+                      'pid': ControlPID}
+        algo       = config.getchoice('control', algos)
         heater_pin = config.get('heater_pin')
-        if algo is ControlBangBang and self.max_power == 1.:
+        if algo is ControlBangBang and self.max_power == 1.0:
             self.mcu_pwm = pins.setup_pin(printer, 'digital_out', heater_pin)
         else:
             self.mcu_pwm = pins.setup_pin(printer, 'pwm', heater_pin)
             self.mcu_pwm.setup_cycle_time(PWM_CYCLE_TIME)
         self.mcu_pwm.setup_max_duration(MAX_HEAT_TIME)
-        self.mcu_adc = pins.setup_pin(printer, 'adc', config.get('sensor_pin'))
+
         adc_range = [self.sensor.calc_adc(self.min_temp),
                      self.sensor.calc_adc(self.max_temp)]
-        self.mcu_adc.setup_minmax(SAMPLE_TIME, SAMPLE_COUNT,
-                                  minval=min(adc_range), maxval=max(adc_range))
-        self.mcu_adc.setup_adc_callback(REPORT_TIME, self.adc_callback)
-        is_fileoutput = self.mcu_adc.get_mcu().is_fileoutput()
-        self.can_extrude = self.min_extrude_temp <= 0. or is_fileoutput
-        self.control = algo(self, config)
+
+        if (self.sensor.spi == True):
+            self.mcu_sensor = pins.setup_pin(printer,
+                                             'temp_spi',
+                                             config.get('sensor_pin'))
+            self.mcu_sensor.setup_spi_settings(config.getint('spi_mode', 0,
+                                                             minval=0, maxval=3),
+                                               config.getint('spi_speed', 8000000))
+            self.mcu_sensor.setup_minmax(self.sensor.sample_time,
+                                         32767,
+                                         minval=min(adc_range),
+                                         maxval=max(adc_range))
+            self.mcu_sensor.setup_read_command(
+                self.sensor.get_read_cmd(),
+                self.sensor.get_read_bytes(),
+                self.sensor.get_configs(),
+                self.sensor.get_fault_filter())
+
+        else:
+            self.mcu_sensor = pins.setup_pin(printer,
+                                             'temp_adc',
+                                             config.get('sensor_pin'))
+            self.mcu_sensor.setup_minmax(self.sensor.sample_time,
+                                         self.sensor.sample_count,
+                                         minval=min(adc_range),
+                                         maxval=max(adc_range))
+
+        self.mcu_sensor.setup_adc_callback(REPORT_TIME, self.adc_callback)
+
+        #is_fileoutput = self.mcu_sensor.get_mcu().is_fileoutput()
+        #self.can_extrude = self.min_extrude_temp <= 0.0 or is_fileoutput
+        self.can_extrude = False
+        self.control     = algo(self, config)
         # pwm caching
         self.next_pwm_time = 0.
         self.last_pwm_value = 0
+
+        # heat check timer
+        self.protection_period = \
+            config.getfloat('protect_period', 10.0, above=1.0, maxval=120.0)
+        self.protection_hysteresis_heat = \
+            config.getfloat('protect_hysteresis_heat', 4.0, above=1.0)
+        self.protect_hyst_runaway = \
+            config.getfloat('protect_hysteresis_runaway', 4.0, above=1.0)
+        self.reactor = printer.reactor
+        self.protection_timer = self.reactor.register_timer(self._check_heating)
+
+    def _check_heating(self, eventtime):
+        with self.lock:
+            current_temp = self.last_temp
+            target_temp = self.target_temp
+
+        if (self.protection_last_temp is None):
+            self.is_heating = False;
+            self.is_runaway = False;
+            # Set init value
+            self.protection_last_temp = current_temp
+
+            if (current_temp <= (target_temp - self.protect_hyst_runaway)):
+                self.is_heating = True
+            else:
+                self.is_runaway = True
+        elif self.is_runaway:
+            # Check hysteresis during maintain
+            if (self.protect_hyst_runaway < abs(current_temp - target_temp)):
+                errorstr = "Thermal runaway! current temp {}, last {}". \
+                           format(current_temp, self.protection_last_temp)
+                self.set_temp(0, 0);
+                self._printer.gcode.respond_error(errorstr)
+                self._printer.request_exit('firmware_restart')
+            self.protection_last_temp = current_temp
+        elif (self.is_heating):
+            # Check hysteresis during the preheating
+            if ((target_temp - self.protect_hyst_runaway) \
+                <= current_temp <=
+                (target_temp + self.protect_hyst_runaway)):
+                self.is_runaway = True;
+            elif (current_temp < target_temp):
+                if (abs(current_temp - self.protection_last_temp) < self.protection_hysteresis_heat):
+                    errorstr = "Heating error! current temp {}, last {}". \
+                               format(current_temp, self.protection_last_temp)
+                    self.set_temp(0, 0);
+                    self._printer.gcode.respond_error(errorstr)
+                    self._printer.request_exit('firmware_restart')
+            self.protection_last_temp = current_temp
+        logging.debug("check_heating(eventtime {}) {} / {}".
+                      format(eventtime, current_temp, target_temp))
+        return eventtime + self.protection_period
+
+    def set_min_extrude_temp(self, temp):
+        if not (self.min_temp <= temp <= self.max_temp):
+            raise error("min_extrude_temp {} is not between min_temp {} and max_temp {}!"
+                        .format(temp, self.min_temp, self.max_temp))
+        self.min_extrude_temp = temp;
+        is_fileoutput = self.mcu_sensor.get_mcu().is_fileoutput()
+        self.can_extrude = self.min_extrude_temp <= 0.0 or is_fileoutput
     def set_pwm(self, read_time, value):
         if self.target_temp <= 0.:
             value = 0.
@@ -145,21 +541,25 @@ class PrinterHeater:
             and abs(value - self.last_pwm_value) < 0.05):
             # No significant change in value - can suppress update
             return
-        pwm_time = read_time + REPORT_TIME + SAMPLE_TIME*SAMPLE_COUNT
+        pwm_time = read_time + REPORT_TIME + self.sensor.sample_time*self.sensor.sample_count
         self.next_pwm_time = pwm_time + 0.75 * MAX_HEAT_TIME
         self.last_pwm_value = value
         logging.debug("%s: pwm=%.3f@%.3f (from %.3f@%.3f [%.3f])",
                       self.name, value, pwm_time,
                       self.last_temp, self.last_temp_time, self.target_temp)
         self.mcu_pwm.set_pwm(pwm_time, value)
-    def adc_callback(self, read_time, read_value):
+    def adc_callback(self, read_time, read_value, fault = 0):
+        if (fault):
+            self.sensor.check_faults(fault)
+
         temp = self.sensor.calc_temp(read_value)
         with self.lock:
             self.last_temp = temp
             self.last_temp_time = read_time
             self.can_extrude = (temp >= self.min_extrude_temp)
             self.control.adc_callback(read_time, temp)
-        #logging.debug("temp: %.3f %f = %f", read_time, read_value, temp)
+        #logging.debug("%s : read_time=%.3f read_value=%f temperature=%f",
+        #              self.name, read_time, read_value, temp)
     # External commands
     def set_temp(self, print_time, degrees):
         if degrees and (degrees < self.min_temp or degrees > self.max_temp):
@@ -167,8 +567,20 @@ class PrinterHeater:
                         % (degrees, self.min_temp, self.max_temp))
         with self.lock:
             self.target_temp = degrees
+        if (degrees):
+            # Start checking
+            self.protection_last_temp = None
+            self.reactor.update_timer(self.protection_timer,
+                                      self.reactor.NOW)
+            logging.debug("Temperature protection timer started")
+        else:
+            # stop checking
+            self.reactor.update_timer(self.protection_timer,
+                                      self.reactor.NEVER)
+            logging.debug("Temperature protection timer stopped")
+
     def get_temp(self, eventtime):
-        print_time = self.mcu_adc.get_mcu().estimated_print_time(eventtime) - 5.
+        print_time = self.mcu_sensor.get_mcu().estimated_print_time(eventtime) - 5.
         with self.lock:
             if self.last_temp_time < print_time:
                 return 0., self.target_temp
@@ -177,15 +589,19 @@ class PrinterHeater:
         with self.lock:
             return self.control.check_busy(eventtime)
     def start_auto_tune(self, degrees):
-        if degrees and (degrees < self.min_temp or degrees > self.max_temp):
-            raise error("Requested temperature (%.1f) out of range (%.1f:%.1f)"
-                        % (degrees, self.min_temp, self.max_temp))
+        #if degrees and (degrees < self.min_temp or degrees > self.max_temp):
+        #    raise error("Requested temperature (%.1f) out of range (%.1f:%.1f)"
+        #                % (degrees, self.min_temp, self.max_temp))
         with self.lock:
             self.control = ControlAutoTune(self, self.control)
-            self.target_temp = degrees
+        self.set_temp(0, degrees)
     def finish_auto_tune(self, old_control):
+        if (type(self.control).__name__ is "ControlAutoTune" and \
+            type(old_control).__name__ is ControlPID):
+            kp, ki, kd = self.control.get_terms();
+            old_control.set_new_terms(kp, ki, kd)
         self.control = old_control
-        self.target_temp = 0
+        self.set_temp(0, 0)
 
 
 ######################################################################
@@ -207,7 +623,8 @@ class ControlBangBang:
         else:
             self.heater.set_pwm(read_time, 0.)
     def check_busy(self, eventtime):
-        return self.heater.last_temp < self.heater.target_temp-self.max_delta
+        return (self.heater.last_temp < (self.heater.target_temp-self.max_delta)) or \
+            ((self.heater.target_temp+self.max_delta) < self.heater.last_temp)
 
 
 ######################################################################
@@ -221,8 +638,18 @@ class ControlPID:
         self.Ki = config.getfloat('pid_Ki') / PID_PARAM_BASE
         self.Kd = config.getfloat('pid_Kd') / PID_PARAM_BASE
         self.min_deriv_time = config.getfloat('pid_deriv_time', 2., above=0.)
-        imax = config.getfloat('pid_integral_max', heater.max_power, minval=0.)
-        self.temp_integ_max = imax / self.Ki
+        self.imax = config.getfloat('pid_integral_max', heater.max_power, minval=0.)
+        self.temp_integ_max = self.imax / self.Ki
+        self.prev_temp = AMBIENT_TEMP
+        self.prev_temp_time = 0.
+        self.prev_temp_deriv = 0.
+        self.prev_temp_integ = 0.
+    def set_new_terms(self, Kp, Ki, Kd):
+        self.Kp = Kp
+        self.Ki = Ki
+        self.Kd = Kd
+        # reset adjustment
+        self.temp_integ_max = self.imax / self.Ki
         self.prev_temp = AMBIENT_TEMP
         self.prev_temp_time = 0.
         self.prev_temp_deriv = 0.
@@ -264,6 +691,9 @@ class ControlPID:
 TUNE_PID_DELTA = 5.0
 
 class ControlAutoTune:
+    Kp = None
+    Ki = None
+    Kd = None
     def __init__(self, heater, old_control):
         self.heater = heater
         self.old_control = old_control
@@ -303,11 +733,11 @@ class ControlAutoTune:
         Ku = 4. * (2. * max_power) / (abs(temp_diff) * math.pi)
         Tu = time_diff
 
-        Kp = 0.6 * Ku
+        self.Kp = 0.6 * Ku
         Ti = 0.5 * Tu
         Td = 0.125 * Tu
-        Ki = Kp / Ti
-        Kd = Kp * Td
+        self.Ki = Kp / Ti
+        self.Kd = Kp * Td
         logging.info("Autotune: raw=%f/%f Ku=%f Tu=%f  Kp=%f Ki=%f Kd=%f",
                      temp_diff, max_power, Ku, Tu, Kp * PID_PARAM_BASE,
                      Ki * PID_PARAM_BASE, Kd * PID_PARAM_BASE)
@@ -316,7 +746,8 @@ class ControlAutoTune:
             return True
         self.heater.finish_auto_tune(self.old_control)
         return False
-
+    def get_terms(self):
+        return self.Kp, self.Ki, self.Kd
 
 ######################################################################
 # Tuning information test
@@ -362,6 +793,29 @@ class ControlBumpTest:
         return False
 
 def add_printer_objects(printer, config):
-    if config.has_section('heater_bed'):
-        printer.add_object('heater_bed', PrinterHeater(
-            printer, config.getsection('heater_bed')))
+    printer.__HEATERS_LST = {}
+    for s in config.get_prefix_sections('heater_'):
+        if 'fan' in s.section:
+            continue
+        temp = PrinterHeater(printer, s)
+        printer.add_object(s.section, temp)
+        printer.__HEATERS_LST[s.section] = temp
+
+def get_printer_heaters(printer):
+    try:
+        return printer.__HEATERS_LST
+    except AttributeError:
+        return {}
+
+def get_printer_heater(printer, name):
+    try:
+        return printer.__HEATERS_LST[name]
+    except (KeyError, AttributeError):
+        return None
+    #if name == 'heater_bed' and name in printer.objects:
+    #    return printer.objects[name]
+    #if name == 'extruder':
+    #    name = 'extruder0'
+    #if name.startswith('extruder') and name in printer.objects:
+    #    return printer.objects[name].get_heater()
+    #raise printer.config_error("Unknown heater '%s'" % (name,))

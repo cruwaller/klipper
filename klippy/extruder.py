@@ -8,40 +8,52 @@ import stepper, heater, homing
 
 EXTRUDE_DIFF_IGNORE = 1.02
 
+
 class PrinterExtruder:
-    def __init__(self, printer, config):
+    def __init__(self, printer, config, index):
         self.config = config
-        self.heater = heater.PrinterHeater(printer, config)
+        self.index  = index
+        self.heater = printer.objects.get(config.get('heater'))
+        self.heater.set_min_extrude_temp(config.getfloat('min_extrude_temp',
+                                                         170.0))
         self.stepper = stepper.PrinterStepper(printer, config, 'extruder')
         self.nozzle_diameter = config.getfloat('nozzle_diameter', above=0.)
-        filament_diameter = config.getfloat(
-            'filament_diameter', minval=self.nozzle_diameter)
+        filament_diameter = config.getfloat('filament_diameter',
+                                            minval=self.nozzle_diameter)
         self.filament_area = math.pi * (filament_diameter * .5)**2
-        max_cross_section = config.getfloat(
-            'max_extrude_cross_section', 4. * self.nozzle_diameter**2
-            , above=0.)
+        max_cross_section = config.getfloat('max_extrude_cross_section',
+                                            4. * self.nozzle_diameter**2,
+                                            above=0.)
         self.max_extrude_ratio = max_cross_section / self.filament_area
         toolhead = printer.objects['toolhead']
         max_velocity, max_accel = toolhead.get_max_velocity()
-        self.max_e_velocity = self.config.getfloat(
-            'max_extrude_only_velocity', max_velocity * self.max_extrude_ratio
-            , above=0.)
-        self.max_e_accel = self.config.getfloat(
-            'max_extrude_only_accel', max_accel * self.max_extrude_ratio
-            , above=0.)
+        self.max_e_velocity = self.config.getfloat('max_extrude_only_velocity',
+                                                   max_velocity * self.max_extrude_ratio,
+                                                   above=0.)
+        self.max_e_accel = self.config.getfloat('max_extrude_only_accel',
+                                                max_accel * self.max_extrude_ratio,
+                                                above=0.)
         self.stepper.set_max_jerk(9999999.9, 9999999.9)
-        self.max_e_dist = config.getfloat(
-            'max_extrude_only_distance', 50., minval=0.)
-        self.activate_gcode = config.get('activate_gcode', '')
+        self.max_e_dist = config.getfloat('max_extrude_only_distance',
+                                          50.0,
+                                          minval=0.)
+        self.activate_gcode   = config.get('activate_gcode', '')
         self.deactivate_gcode = config.get('deactivate_gcode', '')
-        self.pressure_advance = config.getfloat(
-            'pressure_advance', 0., minval=0.)
+        self.pressure_advance = config.getfloat('pressure_advance',
+                                                0.0,
+                                                minval=0.)
         self.pressure_advance_lookahead_time = 0.
         if self.pressure_advance:
-            self.pressure_advance_lookahead_time = config.getfloat(
-                'pressure_advance_lookahead_time', 0.010, minval=0.)
+            self.pressure_advance_lookahead_time = \
+                config.getfloat('pressure_advance_lookahead_time',
+                                0.010,
+                                minval=0.)
         self.need_motor_enable = True
         self.extrude_pos = 0.
+        logging.debug("Add extruder '{}' heater={}".
+                      format(config.section, self.heater.name))
+    def get_index(self):
+        return self.index
     def get_heater(self):
         return self.heater
     def set_active(self, print_time, is_active):
@@ -230,31 +242,29 @@ class DummyExtruder:
         return flush_count
 
 def add_printer_objects(printer, config):
-    for i in range(99):
-        section = 'extruder%d' % (i,)
-        if not config.has_section(section):
-            if not i and config.has_section('extruder'):
-                printer.add_object('extruder0', PrinterExtruder(
-                    printer, config.getsection('extruder')))
-                continue
-            break
-        printer.add_object(section, PrinterExtruder(
-            printer, config.getsection(section)))
+    printer.__EXTRUDERS_LST = {}
+    if config.has_section('extruder'):
+        temp = PrinterExtruder(printer,
+                               config.getsection('extruder'),
+                               0)
+        printer.add_object('extruder0', temp)
+        printer.__EXTRUDERS_LST[0] = temp
+    else:
+        extruders = config.get_prefix_sections('extruder')
+        for s in extruders:
+            index = int(s.section[-1:])
+            temp = PrinterExtruder(printer, s, index)
+            printer.add_object(s.section, temp)
+            printer.__EXTRUDERS_LST[index] = temp
 
 def get_printer_extruders(printer):
-    out = []
-    for i in range(99):
-        extruder = printer.objects.get('extruder%d' % (i,))
-        if extruder is None:
-            break
-        out.append(extruder)
-    return out
+    try:
+        return printer.__EXTRUDERS_LST
+    except AttributeError:
+        return {}
 
-def get_printer_heater(printer, name):
-    if name == 'heater_bed' and name in printer.objects:
-        return printer.objects[name]
-    if name == 'extruder':
-        name = 'extruder0'
-    if name.startswith('extruder') and name in printer.objects:
-        return printer.objects[name].get_heater()
-    raise printer.config_error("Unknown heater '%s'" % (name,))
+def get_printer_extruder(printer, index):
+    try:
+        return printer.__EXTRUDERS_LST[index]
+    except (KeyError, AttributeError):
+        return None

@@ -29,6 +29,12 @@ class CoreXYKinematics:
         self.steppers[1].set_max_jerk(max_xy_halt_velocity, max_accel)
         self.steppers[2].set_max_jerk(
             min(max_halt_velocity, self.max_z_velocity), self.max_z_accel)
+    def set_homing_offset(self, offsets):
+        for s in self.steppers:
+            try:
+                s.set_homing_offset(offsets[s.name])
+            except (KeyError):
+                pass
     def set_position(self, newpos):
         pos = (newpos[0] + newpos[1], newpos[0] - newpos[1], newpos[2])
         for i in StepList:

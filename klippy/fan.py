@@ -3,13 +3,16 @@
 # Copyright (C) 2016,2017  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import extruder, pins
+import extruder, pins, heater
+import logging
 
 FAN_MIN_TIME = 0.1
 PWM_CYCLE_TIME = 0.010
 
 class PrinterFan:
     def __init__(self, printer, config):
+        if 'heater' not in config.section:
+            logging.debug("Add fan '{}'".format(config.section))
         self.last_fan_value = 0.
         self.last_fan_time = 0.
         self.max_power = config.getfloat('max_power', 1., above=0., maxval=1.)
@@ -18,6 +21,7 @@ class PrinterFan:
         self.mcu_fan.setup_max_duration(0.)
         self.mcu_fan.setup_cycle_time(PWM_CYCLE_TIME)
         self.mcu_fan.setup_hard_pwm(config.getint('hard_pwm', 0))
+
     def set_speed(self, print_time, value):
         value = max(0., min(self.max_power, value))
         if value == self.last_fan_value:
@@ -36,14 +40,18 @@ class PrinterHeaterFan:
     def __init__(self, printer, config):
         self.fan = PrinterFan(printer, config)
         self.mcu = printer.objects['mcu']
-        heater = config.get("heater", "extruder0")
-        self.heater = extruder.get_printer_heater(printer, heater)
-        self.heater_temp = config.getfloat("heater_temp", 50.0)
+        heater_name = config.get("heater")
+        self.heater = heater.get_printer_heater(printer, heater_name)
+        self.heater_temp = config.getfloat("heater_temp")
         max_power = self.fan.max_power
-        self.fan_speed = config.getfloat(
-            "fan_speed", max_power, minval=0., maxval=max_power)
+        self.fan_speed = config.getfloat("fan_speed",
+                                         max_power,
+                                         minval=0.,
+                                         maxval=max_power)
         self.fan.mcu_fan.setup_shutdown_value(max_power)
         printer.reactor.register_timer(self.callback, printer.reactor.NOW)
+        logging.debug("Add heater_fan '{}' heater={}".
+                      format(config.section, heater_name))
     def callback(self, eventtime):
         current_temp, target_temp = self.heater.get_temp(eventtime)
         if not current_temp and not target_temp and not self.fan.last_fan_time:
@@ -57,7 +65,14 @@ class PrinterHeaterFan:
         return eventtime + 1.
 
 def add_printer_objects(printer, config):
-    if config.has_section('fan'):
-        printer.add_object('fan', PrinterFan(printer, config.getsection('fan')))
-    for s in config.get_prefix_sections('heater_fan '):
-        printer.add_object(s.section, PrinterHeaterFan(printer, s))
+    for s in config.get_prefix_sections('fan'):
+        name = s.section
+        if (name is 'fan'):
+            name = 'fan0'
+        printer.add_object(name, PrinterFan(printer, s))
+
+    for s in config.get_prefix_sections('heater_fan'):
+        name = s.section
+        if (name is 'heater_fan'):
+            name = 'heater_fan0'
+        printer.add_object(name, PrinterHeaterFan(printer, s))

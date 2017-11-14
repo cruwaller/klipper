@@ -94,6 +94,15 @@ class DeltaKinematics:
         dist = math.sqrt(inv_nmag_sq * (self.arm_length2 - r_sq))
 
         return matrix_sub(circumcenter, matrix_mul(normal, dist))
+    def set_homing_offset(self, offsets):
+        mapping = {'a':'x', 'b':'y', 'b':'z'}
+        for s in self.steppers:
+            try:
+                s.set_homing_offset(offsets[mapping[s.name]])
+            except (KeyError):
+                pass
+        # find new max Z value if offsets are changeds
+        self.max_z = min([s.position_endstop for s in self.steppers])
     def set_position(self, newpos):
         pos = self._cartesian_to_actuator(newpos)
         for i in StepList:

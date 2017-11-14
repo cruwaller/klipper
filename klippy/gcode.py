@@ -4,7 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import os, re, logging, collections
-import homing, extruder, chipmisc
+import homing, extruder, chipmisc, heater
 
 # Parse out incoming GCode and find and translate head movements
 class GCodeParser:
@@ -27,13 +27,14 @@ class GCodeParser:
         self.gcode_handlers = {}
         self.build_handlers()
         self.need_ack = False
-        self.toolhead = self.fan = self.extruder = None
-        self.heaters = []
+        self.toolhead = None
+        self.extruder = None
+        self.extruders = {}
         self.speed = 25.0
         self.absolutecoord = self.absoluteextrude = True
         self.base_position = [0.0, 0.0, 0.0, 0.0]
         self.last_position = [0.0, 0.0, 0.0, 0.0]
-        self.homing_add = [0.0, 0.0, 0.0, 0.0]
+        self.homing_add    = [0.0, 0.0, 0.0, 0.0]
         self.axis2pos = {'X': 0, 'Y': 1, 'Z': 2, 'E': 3}
     def build_handlers(self):
         handlers = self.all_handlers
@@ -52,13 +53,10 @@ class GCodeParser:
         self.build_handlers()
         # Lookup printer components
         self.toolhead = self.printer.objects.get('toolhead')
-        extruders = extruder.get_printer_extruders(self.printer)
-        if extruders:
-            self.extruder = extruders[0]
+        self.extruders = extruder.get_printer_extruders(self.printer)
+        if 0 < len(self.extruders):
+            self.extruder = self.extruders[0] # extruder0
             self.toolhead.set_extruder(self.extruder)
-        self.heaters = [ e.get_heater() for e in extruders ]
-        self.heaters.append(self.printer.objects.get('heater_bed'))
-        self.fan = self.printer.objects.get('fan')
         if self.is_fileinput and self.fd_handle is None:
             self.fd_handle = self.reactor.register_fd(self.fd, self.process_data)
     def do_shutdown(self):
@@ -74,11 +72,11 @@ class GCodeParser:
             return
         self.toolhead.motor_off()
         print_time = self.toolhead.get_last_move_time()
-        for heater in self.heaters:
-            if heater is not None:
-                heater.set_temp(print_time, 0.)
-        if self.fan is not None:
-            self.fan.set_speed(print_time, 0.)
+        for k,h in heater.get_printer_heaters(self.printer).items():
+            h.set_temp(print_time, 0.0)
+        # todo fixme : is it ok to switch off all fans???
+        for fan in self.printer.get_objects_with_prefix('fan'):
+            fan.set_speed(print_time, 0.0)
     def dump_debug(self):
         out = []
         out.append("Dumping gcode input %d blocks" % (
@@ -171,10 +169,22 @@ class GCodeParser:
             self.respond_info("\n".join(lines[:-1]))
         self.respond('!! %s' % (lines[-1].strip(),))
     # Parameter parsing helpers
-    def get_int(self, name, params, default=None):
+    def get_int(self, name, params, default=None, minval=None, maxval=None):
         if name in params:
             try:
-                return int(params[name])
+                '''
+                value = int(params[name])
+                if (minval is not None):
+                    if (value < minval):
+                        raise error("Error on '%s': param %s out of range, %d < min=%d" %
+                                    (params['#original'], name, value, minval))
+                if (maxval is not None):
+                    if (maxval < value):
+                        raise error("Error on '%s': param %s out of range, max=%d < %d" %
+                                    (params['#original'], name, maxval, value))
+                return value
+                '''
+                return int(params[name]);
             except ValueError:
                 raise error("Error on '%s': unable to parse %s" % (
                     params['#original'], params[name]))
@@ -213,13 +223,16 @@ class GCodeParser:
     def get_temp(self, eventtime):
         # Tn:XXX /YYY B:XXX /YYY
         out = []
-        for i, heater in enumerate(self.heaters):
+        # todo add PWM power?
+        for key,e in self.extruders.items():
+            heater = e.get_heater()
             if heater is not None:
                 cur, target = heater.get_temp(eventtime)
-                name = "B"
-                if i < len(self.heaters) - 1:
-                    name = "T%d" % (i,)
-                out.append("%s:%.1f /%.1f" % (name, cur, target))
+                out.append("T%d:%.1f /%.1f" % (e.get_index(), cur, target))
+        heater = self.printer.objects.get('heater_bed')
+        if (heater is not None):
+            cur, target = heater.get_temp(eventtime)
+            out.append("B:%.1f /%.1f" % (cur, target))
         if not out:
             return "T:0"
         return " ".join(out)
@@ -235,11 +248,12 @@ class GCodeParser:
         temp = self.get_float('S', params, 0.)
         heater = None
         if is_bed:
-            heater = self.heaters[-1]
+            heater = self.printer.objects.get('heater_bed')
         elif 'T' in params:
-            heater_index = self.get_int('T', params)
-            if heater_index >= 0 and heater_index < len(self.heaters) - 1:
-                heater = self.heaters[heater_index]
+            index = self.get_int('T', params)
+            e = extruder.get_printer_extruder(self.printer, index)
+            if e is not None:
+                heater = e.get_heater()
         elif self.extruder is not None:
             heater = self.extruder.get_heater()
         if heater is None:
@@ -254,13 +268,15 @@ class GCodeParser:
             return
         if wait:
             self.bg_temp(heater)
-    def set_fan_speed(self, speed):
-        if self.fan is None:
+    def set_fan_speed(self, speed, index):
+        fan = self.printer.objects.get('fan%d'%(index))
+        if fan is None:
             if speed and not self.is_fileinput:
                 self.respond_info("Fan not configured")
             return
         print_time = self.toolhead.get_last_move_time()
-        self.fan.set_speed(print_time, speed)
+        fan.set_speed(print_time, speed)
+
     # Individual command handlers
     def cmd_default(self, params):
         if not self.is_printer_ready:
@@ -275,14 +291,14 @@ class GCodeParser:
             self.cmd_Tn(params)
             return
         self.respond_info('Unknown command:"%s"' % (cmd,))
+
     def cmd_Tn(self, params):
         # Select Tool
         index = self.get_int('T', params)
-        extruders = extruder.get_printer_extruders(self.printer)
-        if self.extruder is None or index < 0 or index >= len(extruders):
+        e = extruder.get_printer_extruder(self.printer, index)
+        if e is None:
             self.respond_error("Extruder %d not configured" % (index,))
             return
-        e = extruders[index]
         if self.extruder is e:
             return
         deactivate_gcode = self.extruder.get_activate_gcode(False)
@@ -296,12 +312,20 @@ class GCodeParser:
         self.last_position = self.toolhead.get_position()
         activate_gcode = self.extruder.get_activate_gcode(True)
         self.process_commands(activate_gcode.split('\n'), need_ack=False)
+
     all_handlers = [
         'G1', 'G4', 'G20', 'G28', 'G90', 'G91', 'G92',
-        'M82', 'M83', 'M18', 'M105', 'M104', 'M109', 'M112', 'M114', 'M115',
-        'M140', 'M190', 'M106', 'M107', 'M206', 'M400',
+        'M0', 'M1', 'M18', 'M82', 'M83',
+        'M104', 'M105', 'M106', 'M107', 'M109',
+        'M112', 'M114', 'M115', 'M118',
+        'M140', 'M190',
+        'M206',
+        'M400',
+        'M851',
         'IGNORE', 'QUERY_ENDSTOPS', 'PID_TUNE', 'SET_SERVO',
         'RESTART', 'FIRMWARE_RESTART', 'ECHO', 'STATUS', 'HELP']
+
+    # Basic movement
     cmd_G1_aliases = ['G0']
     def cmd_G1(self, params):
         # Move
@@ -329,16 +353,36 @@ class GCodeParser:
         except homing.EndstopError as e:
             self.respond_error(str(e))
             self.last_position = self.toolhead.get_position()
+
+    # todo Arch support
+    def cmd_G2(self, params):
+        # G2 Xnnn Ynnn Innn Jnnn Ennn Fnnn (Clockwise Arc)
+        pass
+    def cmd_G3(self, params):
+        # G3 Xnnn Ynnn Innn Jnnn Ennn Fnnn (Counter-Clockwise Arc)
+        pass
+
     def cmd_G4(self, params):
         # Dwell
         if 'S' in params:
             delay = self.get_float('S', params)
         else:
-            delay = self.get_float('P', params, 0.) / 1000.
+            delay = self.get_float('P', params, 0.0) / 1000.0
         self.toolhead.dwell(delay)
+
+    # todo firmware retraction support
+    def cmd_G10(self, params):
+        # G10: Retract
+        pass
+    def cmd_G11(self, params):
+        # G11: Unretract
+        pass
+
     def cmd_G20(self, params):
         # Set units to inches
         self.respond_error('Machine does not support G20 (inches) command')
+
+    # Homing
     def cmd_G28(self, params):
         # Move to origin
         axes = []
@@ -359,13 +403,16 @@ class GCodeParser:
         newpos = self.toolhead.get_position()
         for axis in homing_state.get_axes():
             self.last_position[axis] = newpos[axis]
+            # todo check : is this ok for delta?? ( !!delta is homing to max!! )
             self.base_position[axis] = -self.homing_add[axis]
+
     def cmd_G90(self, params):
         # Use absolute coordinates
         self.absolutecoord = True
     def cmd_G91(self, params):
         # Use relative coordinates
         self.absolutecoord = False
+
     def cmd_G92(self, params):
         # Set position
         offsets = { p: self.get_float(a, params)
@@ -374,23 +421,42 @@ class GCodeParser:
             self.base_position[p] = self.last_position[p] - offset
         if not offsets:
             self.base_position = list(self.last_position)
+
+    def cmd_M0(self, params):
+        self.respond("Printer reset invoked")
+        self.motor_heater_off()
+        self._printer.request_exit('firmware_restart')
+    def cmd_M1(self, params):
+        # Wait for current moves to finish
+        self.toolhead.wait_moves()
+        self.motor_heater_off()
+        self._printer.request_exit('restart')
+
     def cmd_M82(self, params):
         # Use absolute distances for extrusion
         self.absoluteextrude = True
     def cmd_M83(self, params):
         # Use relative distances for extrusion
         self.absoluteextrude = False
+
     cmd_M18_aliases = ["M84"]
     def cmd_M18(self, params):
         # Turn off motors
         self.toolhead.motor_off()
+    def cmd_M104(self, params):
+        # Set Extruder Temperature
+        self.set_temp(params)
     cmd_M105_when_not_ready = True
     def cmd_M105(self, params):
         # Get Extruder Temperature
         self.ack(self.get_temp(self.reactor.monotonic()))
-    def cmd_M104(self, params):
-        # Set Extruder Temperature
-        self.set_temp(params)
+    def cmd_M106(self, params):
+        # Set fan speed
+        self.set_fan_speed(self.get_float('S', params, 255.0) / 255.0,
+                           self.get_int('P', params, 0))
+    def cmd_M107(self, params):
+        # Turn fan off
+        self.set_fan_speed(0.0, self.get_int('P', params, 0))
     def cmd_M109(self, params):
         # Set Extruder Temperature and Wait
         self.set_temp(params, wait=True)
@@ -414,18 +480,14 @@ class GCodeParser:
         software_version = self.printer.get_start_args().get('software_version')
         kw = {"FIRMWARE_NAME": "Klipper", "FIRMWARE_VERSION": software_version}
         self.ack(" ".join(["%s:%s" % (k, v) for k, v in kw.items()]))
+    def cmd_M118(self, params):
+        self.respond_info(params['#original'].replace(params['#command'], ""))
     def cmd_M140(self, params):
         # Set Bed Temperature
         self.set_temp(params, is_bed=True)
     def cmd_M190(self, params):
         # Set Bed Temperature and Wait
         self.set_temp(params, is_bed=True, wait=True)
-    def cmd_M106(self, params):
-        # Set fan speed
-        self.set_fan_speed(self.get_float('S', params, 255.) / 255.)
-    def cmd_M107(self, params):
-        # Turn fan off
-        self.set_fan_speed(0.)
     def cmd_M206(self, params):
         # Set home offset
         offsets = { p: self.get_float(a, params)
@@ -436,6 +498,14 @@ class GCodeParser:
     def cmd_M400(self, params):
         # Wait for current moves to finish
         self.toolhead.wait_moves()
+    def cmd_M851(self, params):
+        # Set X, Y, Z offsets
+        offsets = { a.lower(): self.get_float(a, params)
+                    for a, p in self.axis2pos.items() if a in params }
+        if self.toolhead is None:
+            self.cmd_default(params)
+            return
+        self.toolhead.set_homing_offset(offsets)
     cmd_IGNORE_when_not_ready = True
     cmd_IGNORE_aliases = ["G21", "M110", "M21"]
     def cmd_IGNORE(self, params):
@@ -457,15 +527,22 @@ class GCodeParser:
     cmd_PID_TUNE_help = "Run PID Tuning"
     cmd_PID_TUNE_aliases = ["M303"]
     def cmd_PID_TUNE(self, params):
-        # Run PID tuning
+        # Run PID tuning (M303 E<-1 or 0...> S<temp> C<count>)
+        heater = None;
         heater_index = self.get_int('E', params, 0)
-        if (heater_index < -1 or heater_index >= len(self.heaters) - 1
-            or self.heaters[heater_index] is None):
-            self.respond_error("Heater not configured")
-        heater = self.heaters[heater_index]
-        temp = self.get_float('S', params)
-        heater.start_auto_tune(temp)
-        self.bg_temp(heater)
+        if (heater_index == -1):
+            heater = self.printer.objects.get('heater_bed')
+        else:
+            e = extruder.get_printer_extruder(self.printer, heater_index)
+            if e is not None:
+                heater = e.get_heater()
+        if heater is None:
+            self.respond_error("Heater is not configured")
+        else:
+            temp = self.get_float('S', params)
+            #count = self.get_int('C', params, 12, 8)
+            heater.start_auto_tune(temp)
+            self.bg_temp(heater)
     cmd_SET_SERVO_help = "Set servo angle"
     def cmd_SET_SERVO(self, params):
         params = self.get_extended_params(params)
@@ -493,6 +570,7 @@ class GCodeParser:
         self.printer.request_exit('restart')
     cmd_FIRMWARE_RESTART_when_not_ready = True
     cmd_FIRMWARE_RESTART_help = "Restart firmware, host, and reload config"
+    cmd_FIRMWARE_RESTART_aliases = ["M999"]
     def cmd_FIRMWARE_RESTART(self, params):
         self.prep_restart()
         self.printer.request_exit('firmware_restart')

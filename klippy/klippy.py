@@ -8,6 +8,8 @@ import sys, optparse, ConfigParser, logging, time, threading
 import util, reactor, queuelogger, msgproto, gcode
 import pins, mcu, chipmisc, toolhead, extruder, heater, fan
 
+status_delay = 1.0
+
 message_ready = "Printer is ready"
 
 message_startup = """
@@ -157,9 +159,13 @@ class Printer:
         for m in self.mcus:
             out.append(m.stats(eventtime))
         logging.info("Stats %.1f: %s", eventtime, ' '.join(out))
-        return eventtime + 1.
+        return eventtime + status_delay
     def add_object(self, name, obj):
         self.objects[name] = obj
+    def get_object(self, name):
+        return self.objects.get(name)
+    def get_objects_with_prefix(self, prefix):
+        return [ val for key,val in self.objects.items() if prefix in key ]
     def _load_config(self):
         self.fileconfig = ConfigParser.RawConfigParser()
         config_file = self.start_args['config_file']
@@ -171,7 +177,8 @@ class Printer:
             ConfigLogger(self.fileconfig, self.bglogger)
         # Create printer components
         config = ConfigWrapper(self, 'printer')
-        for m in [pins, mcu, chipmisc, toolhead, extruder, heater, fan]:
+        # keep order!
+        for m in [pins, mcu, chipmisc, heater, fan, toolhead, extruder]:
             m.add_printer_objects(self, config)
         self.mcus = mcu.get_printer_mcus(self)
         # Validate that there are no undefined parameters in the config file
@@ -275,6 +282,7 @@ def arg_dictionary(option, opt_str, value, parser):
     parser.values.dictionary[key] = fname
 
 def main():
+    global status_delay
     usage = "%prog [options] <config file>"
     opts = optparse.OptionParser(usage)
     opts.add_option("-i", "--debuginput", dest="debuginput",
@@ -290,13 +298,15 @@ def main():
     opts.add_option("-d", "--dictionary", dest="dictionary", type="string",
                     action="callback", callback=arg_dictionary,
                     help="file to read for mcu protocol dictionary")
+    opts.add_option("-s", "--status", dest="status_delay", type="int",
+                    help="Status report interval")
     options, args = opts.parse_args()
     if len(args) != 1:
         opts.error("Incorrect number of arguments")
     start_args = {'config_file': args[0], 'start_reason': 'startup'}
 
     input_fd = bglogger = None
-
+    status_delay = options.status_delay
     debuglevel = logging.INFO
     if options.verbose:
         debuglevel = logging.DEBUG

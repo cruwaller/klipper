@@ -3,11 +3,16 @@
 // Copyright (C) 2016  Kevin O'Connor <kevin@koconnor.net>
 //
 // This file may be distributed under the terms of the GNU GPLv3 license.
+#include "autoconf.h"
 
 #include "basecmd.h" // oid_alloc
 #include "board/gpio.h" // struct gpio_pwm
 #include "command.h" // DECL_COMMAND
 #include "sched.h" // sched_add_timer
+
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+#include <stdio.h>
+#endif
 
 struct pwm_out_s {
     struct timer timer;
@@ -26,6 +31,10 @@ static uint_fast8_t
 pwm_event(struct timer *timer)
 {
     struct pwm_out_s *p = container_of(timer, struct pwm_out_s, timer);
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    printf("PWM event: pin %d -> value %u (default %u)\n",
+           p->pin.fd, p->value, p->default_value);
+#endif
     gpio_pwm_write(p->pin, p->value);
     if (p->value == p->default_value || !p->max_duration)
         return SF_DONE;
@@ -66,6 +75,9 @@ pwm_shutdown(void)
     uint8_t i;
     struct pwm_out_s *p;
     foreach_oid(i, p, command_config_pwm_out) {
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+        printf("PWM shutdown: oid %u\n", i);
+#endif
         gpio_pwm_write(p->pin, p->default_value);
     }
 }

@@ -4,6 +4,7 @@
 //
 // This file may be distributed under the terms of the GNU GPLv3 license.
 
+#include "autoconf.h"
 #include </usr/include/sched.h> // sched_setscheduler
 #include <stdio.h> // fprintf
 #include <string.h> // memset
@@ -13,8 +14,11 @@
 #include "internal.h" // console_setup
 #include "sched.h" // sched_main
 
-DECL_CONSTANT(MCU, "linux");
+DECL_CONSTANT(MCU, CONFIG_MCU);
 
+#if (CONFIG_SIMULATOR == 1)
+int SIMULATOR_MODE = CONFIG_SIMULATOR;
+#endif
 
 /****************************************************************
  * Real-time setup
@@ -82,9 +86,15 @@ main(int argc, char **argv)
         if (ret)
             return ret;
     }
+#if (CONFIG_SIMULATOR == 1)
+    printf("Init TTY: /tmp/klipper_host_mcu\n");
+#endif
     int ret = console_setup("/tmp/klipper_host_mcu");
     if (ret)
         return -1;
+#if (CONFIG_SIMULATOR == 1)
+    printf("TTY ready\n");
+#endif
     if (watchdog) {
         int ret = watchdog_setup();
         if (ret)

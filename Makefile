@@ -90,6 +90,7 @@ $(OUT)klipper.elf: $(patsubst %.c, $(OUT)src/%.o,$(src-y)) $(OUT)compile_time_re
 ################ Kconfig rules
 
 define do-kconfig
+$(Q)rm -rf $(OUT)
 $(Q)mkdir -p $(OUT)/scripts/kconfig/lxdialog
 $(Q)mkdir -p $(OUT)/include/config
 $(Q)$(MAKE) -C $(OUT) -f $(CURDIR)/scripts/kconfig/Makefile srctree=$(CURDIR) src=scripts/kconfig obj=scripts/kconfig Q=$(Q) Kconfig=$(CURDIR)/src/Kconfig $1
