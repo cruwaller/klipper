@@ -306,7 +306,8 @@ def main():
     start_args = {'config_file': args[0], 'start_reason': 'startup'}
 
     input_fd = bglogger = None
-    status_delay = options.status_delay
+    if options.status_delay is not None:
+        status_delay = options.status_delay
     debuglevel = logging.INFO
     if options.verbose:
         debuglevel = logging.DEBUG

@@ -11,8 +11,14 @@ class PrinterStepper:
     def __init__(self, printer, config, name):
         self.name = name
 
-        self.step_dist = config.getfloat('step_distance', above=0.)
-        self.inv_step_dist = 1. / self.step_dist
+        self.step_dist = config.getfloat('step_distance', None, above=0.)
+        if self.step_dist is not None:
+            self.inv_step_dist = 1. / self.step_dist
+        else:
+            self.inv_step_dist = config.getfloat('steps_per_mm', above=0.)
+            self.step_dist = 1.0 / float(self.inv_step_dist)
+        logging.info("PrintStepper '{}': steps per mm {} , step in mm {}".
+                     format(self.name, self.inv_step_dist, self.step_dist))
         self.min_stop_interval = 0.
         self.mcu_stepper = pins.setup_pin(
             printer, 'stepper', config.get('step_pin'))
@@ -65,17 +71,25 @@ class PrinterHomingStepper(PrinterStepper):
                                 config.getfloat('homing_offset', 0.000)
 
         self.homing_speed = config.getfloat('homing_speed', 5.0, above=0.)
-        self.homing_positive_dir = config.getboolean('homing_positive_dir', None)
-        if self.homing_positive_dir is None:
-            axis_len = self.position_max - self.position_min
-            if self.position_endstop <= self.position_min + axis_len / 4.:
-                self.homing_positive_dir = False
-            elif self.position_endstop >= self.position_max - axis_len / 4.:
-                self.homing_positive_dir = True
-            else:
-                raise config.error(
-                    "Unable to infer homing_positive_dir in section '%s'" % (
-                        config.section,))
+        homing_dirs = { 'min' : False, 'max' : True, 'NA' : None}
+        homing_dir  = config.getchoice('homing_direction',
+                                       homing_dirs, 'NA')
+        if homing_dir is not None:
+            self.homing_positive_dir = homing_dir
+        else:
+            self.homing_positive_dir = config.getboolean('homing_positive_dir',
+                                                         None)
+            if self.homing_positive_dir is None:
+                axis_len = self.position_max - self.position_min
+                if self.position_endstop <= self.position_min + axis_len / 4.:
+                    self.homing_positive_dir = False
+                elif self.position_endstop >= self.position_max - axis_len / 4.:
+                    self.homing_positive_dir = True
+                else:
+                    raise config.error(
+                        "Unable to infer homing_positive_dir in section '%s'" % (
+                            config.section,))
+
         self.homing_retract_dist = config.getfloat(
             'homing_retract_dist', 5., above=0.)
         self.homing_stepper_phases = config.getint(
@@ -115,6 +129,14 @@ class PrinterHomingStepper(PrinterStepper):
                 self.homing_stepper_phases = None
             if self.mcu_endstop.get_mcu().is_fileoutput():
                 self.homing_endstop_accuracy = self.homing_stepper_phases
+
+        self.homing_pos_x = config.getfloat('homing_pos_x', None,
+                                            minval=self.position_min,
+                                            maxval=self.position_max)
+        self.homing_pos_y = config.getfloat('homing_pos_y', None,
+                                            minval=self.position_min,
+                                            maxval=self.position_max)
+
     def set_homing_offset(self, offset):
         self.position_endstop = self.position_endstop_original - offset
     def get_homing_speed(self):

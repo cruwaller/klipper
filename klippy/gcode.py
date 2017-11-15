@@ -313,22 +313,14 @@ class GCodeParser:
         activate_gcode = self.extruder.get_activate_gcode(True)
         self.process_commands(activate_gcode.split('\n'), need_ack=False)
 
-    all_handlers = [
-        'G1', 'G4', 'G20', 'G28', 'G90', 'G91', 'G92',
-        'M0', 'M1', 'M18', 'M82', 'M83',
-        'M104', 'M105', 'M106', 'M107', 'M109',
-        'M112', 'M114', 'M115', 'M118',
-        'M140', 'M190',
-        'M206',
-        'M400',
-        'M851',
-        'IGNORE', 'QUERY_ENDSTOPS', 'PID_TUNE', 'SET_SERVO',
-        'RESTART', 'FIRMWARE_RESTART', 'ECHO', 'STATUS', 'HELP']
+    def _parse_movement(self, params, is_arch=False):
+        # parse move command
 
-    # Basic movement
-    cmd_G1_aliases = ['G0']
-    def cmd_G1(self, params):
-        # Move
+        # Save coodinate system
+        absolutecoord = self.absolutecoord
+        if is_arch:
+            self.absolutecoord = False; # change to relative
+
         try:
             for a, p in self.axis2pos.items():
                 if a in params:
@@ -345,22 +337,230 @@ class GCodeParser:
                 if speed <= 0.:
                     raise ValueError()
                 self.speed = speed
+            if is_arch:
+                self.arch_I = 0.0
+                self.arch_J = 0.0
+                self.arch_R = None
+                self.arch_circles = 0
+                if 'R' in params:
+                    self.arch_R = float(params['R'])
+                if 'I' in params:
+                    self.arch_I = float(params['I'])
+                if 'J' in params:
+                    self.arch_J = float(params['J'])
+                if 'P' in params:
+                    self.arch_circles = int(params['P'])
+                    if self.arch_circles <= 0:
+                        raise ValueError()
+
         except ValueError as e:
             self.last_position = self.toolhead.get_position()
             raise error("Unable to parse move '%s'" % (params['#original'],))
+
+        self.absolutecoord = absolutecoord
+
+    def _apply_move(self, pos, speed):
         try:
-            self.toolhead.move(self.last_position, self.speed)
+            self.toolhead.move(pos, speed)
+            return True
         except homing.EndstopError as e:
             self.respond_error(str(e))
             self.last_position = self.toolhead.get_position()
+            return False
+
+
+    def _plan_arc(self, position, arc_offset, clockwise):
+        N_ARC_CORRECTION = 25
+
+        p_axis = self.axis2pos['X']
+        q_axis = self.axis2pos['Y']
+        l_axis = self.axis2pos['Z']
+        e_axis = self.axis2pos['E']
+
+        # Radius vector from center to current location
+        r_P = -offset[0]
+        r_Q = -offset[1]
+
+        radius          = float(math.hypot(r_P, r_Q))
+        center_P        = float(self.base_position[p_axis] - r_P)
+        center_Q        = float(self.base_position[q_axis] - r_Q)
+        rt_X            = float(position[p_axis] - center_P)
+        rt_Y            = float(position[q_axis] - center_Q)
+        linear_travel   = float(position[l_axis] - self.base_position[l_axis])
+        extruder_travel = float(position[e_axis] - self.base_position[e_axis])
+
+        # CCW angle of rotation between position and target from the circle center. Only one atan2() trig computation required.
+        angular_travel = math.atan2(r_P * rt_Y - r_Q * rt_X, r_P * rt_X + r_Q * rt_Y)
+        if (angular_travel < 0):
+            angular_travel += math.radians(360)
+        if (clockwise):
+            angular_travel -= math.radians(360)
+
+        # Make a circle if the angular rotation is 0 and the target is current position
+        if (angular_travel == 0 and
+            self.base_position[p_axis] == logical[p_axis] and
+            self.base_position[q_axis] == logical[q_axis]):
+            angular_travel = math.radians(360);
+
+        mm_of_travel = math.hypot(angular_travel * radius, math.fabs(linear_travel))
+        if (mm_of_travel < 0.001):
+            return;
+
+        segments = int(math.floor(mm_of_travel / (MM_PER_ARC_SEGMENT)))
+        if (segments <= 0):
+            segments = 1
+
+        '''
+        * Vector rotation by transformation matrix: r is the original vector, r_T is the rotated vector,
+        * and phi is the angle of rotation. Based on the solution approach by Jens Geisler.
+        *     r_T = [cos(phi) -sin(phi);
+        *            sin(phi)  cos(phi)] * r ;
+        *
+        * For arc generation, the center of the circle is the axis of rotation and the radius vector is
+        * defined from the circle center to the initial position. Each line segment is formed by successive
+        * vector rotations. This requires only two cos() and sin() computations to form the rotation
+        * matrix for the duration of the entire arc. Error may accumulate from numerical round-off, since
+        * all double numbers are single precision on the Arduino. (True double precision will not have
+        * round off issues for CNC applications.) Single precision error can accumulate to be greater than
+        * tool precision in some cases. Therefore, arc path correction is implemented.
+        *
+        * Small angle approximation may be used to reduce computation overhead further. This approximation
+        * holds for everything, but very small circles and large MM_PER_ARC_SEGMENT values. In other words,
+        * theta_per_segment would need to be greater than 0.1 rad and N_ARC_CORRECTION would need to be large
+        * to cause an appreciable drift error. N_ARC_CORRECTION~=25 is more than small enough to correct for
+        * numerical drift error. N_ARC_CORRECTION may be on the order a hundred(s) before error becomes an
+        * issue for CNC machines with the single precision Arduino calculations.
+        *
+        * This approximation also allows plan_arc to immediately insert a line segment into the planner
+        * without the initial overhead of computing cos() or sin(). By the time the arc needs to be applied
+        * a correction, the planner should have caught up to the lag caused by the initial plan_arc overhead.
+        * This is important when there are successive arc motions.
+        '''
+        # Vector rotation matrix values
+        arc_target = len(self.axis2pos) * [0]
+        theta_per_segment    = float(angular_travel / segments)
+        linear_per_segment   = float(linear_travel / segments)
+        extruder_per_segment = float(extruder_travel / segments)
+        sin_T                = theta_per_segment
+        cos_T                = float(1 - 0.5 * SQ(theta_per_segment)) # Small angle approximation
+
+        # Initialize the linear axis
+        arc_target[l_axis] = self.base_position[l_axis];
+
+        # Initialize the extruder axis
+        arc_target[e_axis] = self.base_position[e_axis];
+
+        fr_mm_s = self.speed
+
+        if N_ARC_CORRECTION > 1:
+            count = N_ARC_CORRECTION
+
+        # Iterate (segments-1) times
+        for i in range(1, segments):
+
+            count = count - 1
+            if (count and N_ARC_CORRECTION > 1):
+                # Apply vector rotation matrix to previous r_P / 1
+                r_new_Y = r_P * sin_T + r_Q * cos_T;
+                r_P = r_P * cos_T - r_Q * sin_T;
+                r_Q = r_new_Y;
+            else:
+                if N_ARC_CORRECTION > 1:
+                    count = N_ARC_CORRECTION
+
+                # Arc correction to radius vector. Computed only every N_ARC_CORRECTION increments.
+                # Compute exact location by applying transformation matrix from initial radius vector(=-offset).
+                # To reduce stuttering, the sin and cos could be computed at different times.
+                # For now, compute both at the same time.
+                cos_Ti = cos(i * theta_per_segment)
+                sin_Ti = sin(i * theta_per_segment)
+                r_P    = -offset[0] * cos_Ti + offset[1] * sin_Ti
+                r_Q    = -offset[0] * sin_Ti - offset[1] * cos_Ti
+
+            # Update arc_target location
+            arc_target[p_axis] = center_P + r_P
+            arc_target[q_axis] = center_Q + r_Q
+            arc_target[l_axis] = arc_target[l_axis] + linear_per_segment
+            arc_target[e_axis] = arc_target[e_axis] + extruder_per_segment
+
+            #clamp_to_software_endstops(arc_target);
+            self._apply_move(arc_target, self.speed)
+
+        # Ensure last segment arrives at target location.
+        self._apply_move(position, self.speed)
+
+        # As far as the parser is concerned, the position is now == target. In reality the
+        # motion control system might still be processing the action and the real tool position
+        # in any intermediate location.
+        self.last_position = position
+
+    def _calculate_arch(self, params, clockwise):
+        self._parse_movement(params, True)
+        arc_offset = [ self.arch_I, self.arch_J ]
+        if self.arch_R is not None:
+            r  = self.arch_R
+            p1 = self.base_position[self.axis2pos['X']]
+            q1 = self.base_position[self.axis2pos['Y']]
+            p2 = self.last_position[self.axis2pos['X']]
+            q2 = self.last_position[self.axis2pos['Y']]
+            if (r and (p2 != p1 or q2 != q1)):
+                # clockwise -1/1, counterclockwise 1/-1
+                if clockwise ^ (r < 0):
+                    e = -1
+                else:
+                    e = 1
+                dx = p2 - p1                           # X differences
+                dy = q2 - q1                           # Y differences
+                d  = math.hypot(dx, dy)                # Linear distance between the points
+                h  = math.sqrt(math.pow(r,2) -
+                               math.pow((d * 0.5),2))  # Distance to the arc pivot-point
+                mx = (p1 + p2) * 0.5                   # Point between the two points
+                my = (q1 + q2) * 0.5                   # Point between the two points
+                sx = -dy / d                           # Slope of the perpendicular bisector
+                sy = dx / d                            # Slope of the perpendicular bisector
+                cx = mx + e * h * sx                   # Pivot-point of the arc
+                cy = my + e * h * sy                   # Pivot-point of the arc
+                arc_offset[0] = cx - p1
+                arc_offset[1] = cy - q1
+        if arc_offset[0] == 0 or arc_offset[1] == 0:
+            raise error("Unable to parse move '%s'" % (params['#original'],))
+
+        # Number of circles to do
+        if self.arch_circles is not None:
+            for idx in range[0, self.arch_circles]:
+                self._plan_arc(self.base_position, arc_offset, clockwise)
+        # Arch itself
+        self._plan_arc(self.last_position, arc_offset, clockwise)
+
+
+    all_handlers = [
+        'G1', 'G2', 'G3', 'G4', 'G20', 'G28', 'G29',
+        'G90', 'G91', 'G92',
+        'M0', 'M1', 'M18', 'M82', 'M83',
+        'M104', 'M105', 'M106', 'M107', 'M109',
+        'M112', 'M114', 'M115', 'M118',
+        'M140', 'M190',
+        'M206',
+        'M302',
+        'M400',
+        'M851',
+        'IGNORE', 'QUERY_ENDSTOPS', 'PID_TUNE', 'SET_SERVO',
+        'RESTART', 'FIRMWARE_RESTART', 'ECHO', 'STATUS', 'HELP']
+
+    # Basic movement
+    cmd_G1_aliases = ['G0']
+    def cmd_G1(self, params):
+        # Move
+        self._parse_movement(params)
+        self._apply_move(self.last_position, self.speed)
 
     # todo Arch support
     def cmd_G2(self, params):
         # G2 Xnnn Ynnn Innn Jnnn Ennn Fnnn (Clockwise Arc)
-        pass
+        self._calculate_arch(params, 1)
     def cmd_G3(self, params):
         # G3 Xnnn Ynnn Innn Jnnn Ennn Fnnn (Counter-Clockwise Arc)
-        pass
+        self._calculate_arch(params, 0)
 
     def cmd_G4(self, params):
         # Dwell
@@ -405,6 +605,10 @@ class GCodeParser:
             self.last_position[axis] = newpos[axis]
             # todo check : is this ok for delta?? ( !!delta is homing to max!! )
             self.base_position[axis] = -self.homing_add[axis]
+    def cmd_G29(self, params):
+        self.respond_info("Bed levelling is not supported yet!")
+        #self.cmd_default(params)
+        pass
 
     def cmd_G90(self, params):
         # Use absolute coordinates
@@ -495,6 +699,29 @@ class GCodeParser:
         for p, offset in offsets.items():
             self.base_position[p] += self.homing_add[p] - offset
             self.homing_add[p] = offset
+
+    def cmd_M302(self, params):
+        # Allow cold extrusion
+        #       M302         ; report current cold extrusion state
+        #       M302 P0      ; enable cold extrusion checking
+        #       M302 P1      ; disables cold extrusion checking
+        #       M302 S0      ; always allow extrusion (disables checking)
+        #       M302 S170    ; only allow extrusion above 170
+        #       M302 S170 P1 ; set min extrude temp to 170 but leave disabled
+        disable = None
+        temperature = None
+        if 'P' in params:
+            disable = self.get_int('P', params, 0) == 1
+        if 'S' in params:
+            temperature = self.get_int('S', params, -1)
+        for k,h in heater.get_printer_heaters(self.printer).items():
+            if not h.is_bed:
+                h.set_min_extrude_temp(temperature, disable)
+                status, temp = h.get_min_extrude_status()
+                self.respond_info(
+                    "Heater '{}' cold extrude: {}, min temp {}C".
+                    format(h.name, status, temp))
+
     def cmd_M400(self, params):
         # Wait for current moves to finish
         self.toolhead.wait_moves()

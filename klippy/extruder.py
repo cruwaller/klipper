@@ -16,7 +16,9 @@ class PrinterExtruder:
         self.heater = printer.objects.get(config.get('heater'))
         self.heater.set_min_extrude_temp(config.getfloat('min_extrude_temp',
                                                          170.0))
-        self.stepper = stepper.PrinterStepper(printer, config, 'extruder')
+        self.stepper = stepper.PrinterStepper(printer,
+                                              config,
+                                              config.section)
         self.nozzle_diameter = config.getfloat('nozzle_diameter', above=0.)
         filament_diameter = config.getfloat('filament_diameter',
                                             minval=self.nozzle_diameter)

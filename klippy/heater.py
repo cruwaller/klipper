@@ -412,12 +412,16 @@ class PrinterHeater:
     def __init__(self, printer, config):
         self._printer = printer
         self.name     = config.section
+        self.is_bed = False
+        if "bed" in self.name:
+            self.is_bed = True
         logging.debug("Add heater '{}'".format(self.name))
         sensor_params = config.getchoice('sensor_type', Sensors)
         self.sensor   = sensor_params['class'](config, sensor_params)
         self.min_temp = config.getfloat('min_temp', minval=0.0)
         self.max_temp = config.getfloat('max_temp', above=self.min_temp)
         self.min_extrude_temp = 170.0
+        self.min_extrude_temp_disabled = False
         self.max_power      = config.getfloat('max_power',
                                               1.0,
                                               above=0.0,
@@ -468,8 +472,6 @@ class PrinterHeater:
 
         self.mcu_sensor.setup_adc_callback(REPORT_TIME, self.adc_callback)
 
-        #is_fileoutput = self.mcu_sensor.get_mcu().is_fileoutput()
-        #self.can_extrude = self.min_extrude_temp <= 0.0 or is_fileoutput
         self.can_extrude = False
         self.control     = algo(self, config)
         # pwm caching
@@ -527,14 +529,24 @@ class PrinterHeater:
         logging.debug("check_heating(eventtime {}) {} / {}".
                       format(eventtime, current_temp, target_temp))
         return eventtime + self.protection_period
-
-    def set_min_extrude_temp(self, temp):
-        if not (self.min_temp <= temp <= self.max_temp):
+    def get_min_extrude_status(self):
+        stat = "prevented"
+        if self.min_extrude_temp_disabled:
+            stat = "allowed"
+        return stat, self.min_extrude_temp
+    def set_min_extrude_temp(self, temp, disable=None):
+        if disable is not None:
+            self.min_extrude_temp_disabled = disable
+        if temp is None:
+            return
+        if (self.max_temp < temp):
             raise error("min_extrude_temp {} is not between min_temp {} and max_temp {}!"
                         .format(temp, self.min_temp, self.max_temp))
         self.min_extrude_temp = temp;
         is_fileoutput = self.mcu_sensor.get_mcu().is_fileoutput()
-        self.can_extrude = self.min_extrude_temp <= 0.0 or is_fileoutput
+        self.can_extrude = (self.min_extrude_temp <= self.min_temp) or \
+                           self.min_extrude_temp_disabled or \
+                           is_fileoutput
     def set_pwm(self, read_time, value):
         if self.target_temp <= 0.:
             value = 0.
@@ -557,7 +569,8 @@ class PrinterHeater:
         with self.lock:
             self.last_temp = temp
             self.last_temp_time = read_time
-            self.can_extrude = (temp >= self.min_extrude_temp)
+            self.can_extrude = self.min_extrude_temp_disabled or \
+                               (temp >= self.min_extrude_temp)
             self.control.adc_callback(read_time, temp)
         #logging.debug("%s : read_time=%.3f read_value=%f temperature=%f",
         #              self.name, read_time, read_value, temp)
