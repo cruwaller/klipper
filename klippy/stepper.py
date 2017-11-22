@@ -6,11 +6,15 @@
 import math, logging
 import homing, pins
 
-# Stepper without homing option (extruders etc)
+# Code storing the definitions for a stepper motor
 class PrinterStepper:
-    def __init__(self, printer, config, name):
-        self.name = name
+    def __init__(self, printer, config):
+        self.name = config.section
+        if self.name.startswith('stepper_'):
+            self.name = self.name[8:]
 
+        self.need_motor_enable = True
+        # Stepper definition
         self.step_dist = config.getfloat('step_distance', None, above=0.)
         if self.step_dist is not None:
             self.inv_step_dist = 1. / self.step_dist
@@ -19,20 +23,21 @@ class PrinterStepper:
             self.step_dist = 1.0 / float(self.inv_step_dist)
         logging.info("PrintStepper '{}': steps per mm {} , step in mm {}".
                      format(self.name, self.inv_step_dist, self.step_dist))
-        self.min_stop_interval = 0.
         self.mcu_stepper = pins.setup_pin(
             printer, 'stepper', config.get('step_pin'))
         dir_pin_params = pins.get_printer_pins(printer).parse_pin_desc(
             config.get('dir_pin'), can_invert=True)
         self.mcu_stepper.setup_dir_pin(dir_pin_params)
+        self.step_dist = config.getfloat('step_distance', above=0.)
         self.mcu_stepper.setup_step_distance(self.step_dist)
-
+        self.step_const = self.mcu_stepper.step_const
+        self.step_delta = self.mcu_stepper.step_delta
+        # Enable pin
         enable_pin = config.get('enable_pin', None)
         self.mcu_enable = None
         if enable_pin is not None:
             self.mcu_enable = pins.setup_pin(printer, 'digital_out', enable_pin)
             self.mcu_enable.setup_max_duration(0.)
-        self.need_motor_enable = True
     def _dist_to_time(self, dist, start_velocity, accel):
         # Calculate the time it takes to travel a distance with constant accel
         time_offset = start_velocity / accel
@@ -45,6 +50,8 @@ class PrinterStepper:
             2. * self.step_dist, max_halt_velocity, max_accel)
         min_stop_interval = second_last_step_time - last_step_time
         self.mcu_stepper.setup_min_stop_interval(min_stop_interval)
+    def set_position(self, pos):
+        self.mcu_stepper.set_position(pos)
     def motor_enable(self, print_time, enable=0):
         if enable and self.need_motor_enable:
             self.mcu_stepper.reset_step_clock(print_time)
@@ -53,24 +60,27 @@ class PrinterStepper:
             self.mcu_enable.set_digital(print_time, enable)
         self.need_motor_enable = not enable
 
-# Stepper with homing endstops ( X, Y, Z axis etc )
+# Support for stepper controlled linear axis with an endstop
 class PrinterHomingStepper(PrinterStepper):
-    def __init__(self, printer, config, name):
-        PrinterStepper.__init__(self, printer, config, name)
-
+    def __init__(self, printer, config):
+        PrinterStepper.__init__(self, printer, config)
+        # Endstop and its position
         self.mcu_endstop = pins.setup_pin(
             printer, 'endstop', config.get('endstop_pin'))
         self.mcu_endstop.add_stepper(self.mcu_stepper)
-        self.position_min = config.getfloat('position_min', 0.)
-        self.position_max = config.getfloat('position_max', 0.,
-                                            above=self.position_min)
         self.position_endstop = config.getfloat('position_endstop')
         self.position_endstop_original = self.position_endstop
         # negative value will be added
         self.position_endstop = self.position_endstop_original - \
                                 config.getfloat('homing_offset', 0.000)
-
+        # Axis range
+        self.position_min = config.getfloat('position_min', 0.)
+        self.position_max = config.getfloat('position_max', 0.,
+                                            above=self.position_min)
+        # Homing mechanics
         self.homing_speed = config.getfloat('homing_speed', 5.0, above=0.)
+        self.homing_retract_dist = config.getfloat(
+            'homing_retract_dist', 5., above=0.)
         homing_dirs = { 'min' : False, 'max' : True, 'NA' : None}
         homing_dir  = config.getchoice('homing_direction',
                                        homing_dirs, 'NA')
@@ -89,9 +99,7 @@ class PrinterHomingStepper(PrinterStepper):
                     raise config.error(
                         "Unable to infer homing_positive_dir in section '%s'" % (
                             config.section,))
-
-        self.homing_retract_dist = config.getfloat(
-            'homing_retract_dist', 5., above=0.)
+        # Endstop stepper phase position tracking
         self.homing_stepper_phases = config.getint(
             'homing_stepper_phases', None, minval=0)
         endstop_accuracy = config.getfloat(
@@ -119,10 +127,10 @@ class PrinterHomingStepper(PrinterStepper):
                 self.homing_endstop_accuracy = self.homing_stepper_phases//2 - 1
             elif self.homing_endstop_phase is not None:
                 self.homing_endstop_accuracy = int(math.ceil(
-                    endstop_accuracy * self.inv_step_dist / 2.))
+                    endstop_accuracy * .5 / self.step_dist))
             else:
                 self.homing_endstop_accuracy = int(math.ceil(
-                    endstop_accuracy * self.inv_step_dist))
+                    endstop_accuracy / self.step_dist))
             if self.homing_endstop_accuracy >= self.homing_stepper_phases // 2:
                 logging.info("Endstop for %s is not accurate enough for stepper"
                              " phase adjustment", name)
@@ -139,6 +147,8 @@ class PrinterHomingStepper(PrinterStepper):
 
     def set_homing_offset(self, offset):
         self.position_endstop = self.position_endstop_original - offset
+    def get_endstops(self):
+        return [(self.mcu_endstop, self.mcu_stepper, self.name)]
     def get_homing_speed(self):
         # Round the configured homing speed so that it is an even
         # number of ticks per step.
@@ -163,3 +173,49 @@ class PrinterHomingStepper(PrinterStepper):
                 "Endstop %s incorrect phase (got %d vs %d)" % (
                     self.name, pos, self.homing_endstop_phase))
         return delta * self.step_dist
+
+# Wrapper for dual stepper motor support
+class PrinterMultiStepper(PrinterHomingStepper):
+    def __init__(self, printer, config):
+        PrinterHomingStepper.__init__(self, printer, config)
+        self.endstops = PrinterHomingStepper.get_endstops(self)
+        self.extras = []
+        self.all_step_const = [self.step_const]
+        for i in range(1, 99):
+            if not config.has_section(config.section + str(i)):
+                break
+            extraconfig = config.getsection(config.section + str(i))
+            extra = PrinterStepper(printer, extraconfig)
+            self.extras.append(extra)
+            self.all_step_const.append(extra.step_const)
+            extraendstop = extraconfig.get('endstop_pin', None)
+            if extraendstop is not None:
+                mcu_endstop = pins.setup_pin(printer, 'endstop', extraendstop)
+                mcu_endstop.add_stepper(extra.mcu_stepper)
+                self.endstops.append(
+                    (mcu_endstop, extra.mcu_stepper, extra.name))
+            else:
+                self.mcu_endstop.add_stepper(extra.mcu_stepper)
+        self.step_const = self.step_multi_const
+    def step_multi_const(self, print_time, start_pos, dist, start_v, accel):
+        for step_const in self.all_step_const:
+            step_const(print_time, start_pos, dist, start_v, accel)
+    def set_max_jerk(self, max_halt_velocity, max_accel):
+        PrinterHomingStepper.set_max_jerk(self, max_halt_velocity, max_accel)
+        for extra in self.extras:
+            extra.set_max_jerk(max_halt_velocity, max_accel)
+    def set_position(self, pos):
+        PrinterHomingStepper.set_position(self, pos)
+        for extra in self.extras:
+            extra.set_position(pos)
+    def motor_enable(self, print_time, enable=0):
+        PrinterHomingStepper.motor_enable(self, print_time, enable)
+        for extra in self.extras:
+            extra.motor_enable(print_time, enable)
+    def get_endstops(self):
+        return self.endstops
+
+def LookupMultiHomingStepper(printer, config):
+    if not config.has_section(config.section + '1'):
+        return PrinterHomingStepper(printer, config)
+    return PrinterMultiStepper(printer, config)

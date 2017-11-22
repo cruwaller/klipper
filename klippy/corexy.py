@@ -10,9 +10,13 @@ StepList = (0, 1, 2)
 
 class CoreXYKinematics:
     def __init__(self, toolhead, printer, config):
-        self.steppers = [stepper.PrinterHomingStepper(
-            printer, config.getsection('stepper_' + n), n)
-                         for n in ['x', 'y', 'z']]
+        self.steppers = [
+            stepper.PrinterHomingStepper(
+                printer, config.getsection('stepper_x')),
+            stepper.PrinterHomingStepper(
+                printer, config.getsection('stepper_y')),
+            stepper.LookupMultiHomingStepper(
+                printer, config.getsection('stepper_z'))]
         self.steppers[0].mcu_endstop.add_stepper(self.steppers[1].mcu_stepper)
         self.steppers[1].mcu_endstop.add_stepper(self.steppers[0].mcu_stepper)
         max_velocity, max_accel = toolhead.get_max_velocity()
@@ -38,7 +42,7 @@ class CoreXYKinematics:
     def set_position(self, newpos):
         pos = (newpos[0] + newpos[1], newpos[0] - newpos[1], newpos[2])
         for i in StepList:
-            self.steppers[i].mcu_stepper.set_position(pos[i])
+            self.steppers[i].set_position(pos[i])
     def home(self, homing_state):
         # Each axis is homed independently and in order
         for axis in homing_state.get_axes():
@@ -132,7 +136,7 @@ class CoreXYKinematics:
             axis_d = axes_d[i]
             if not axis_d:
                 continue
-            mcu_stepper = self.steppers[i].mcu_stepper
+            step_const = self.steppers[i].step_const
             move_time = print_time
             start_pos = move_start_pos[i]
             axis_r = abs(axis_d) / move.move_d
@@ -142,19 +146,17 @@ class CoreXYKinematics:
             # Acceleration steps
             if move.accel_r:
                 accel_d = move.accel_r * axis_d
-                mcu_stepper.step_const(
-                    move_time, start_pos, accel_d, move.start_v * axis_r, accel)
+                step_const(move_time, start_pos, accel_d,
+                           move.start_v * axis_r, accel)
                 start_pos += accel_d
                 move_time += move.accel_t
             # Cruising steps
             if move.cruise_r:
                 cruise_d = move.cruise_r * axis_d
-                mcu_stepper.step_const(
-                    move_time, start_pos, cruise_d, cruise_v, 0.)
+                step_const(move_time, start_pos, cruise_d, cruise_v, 0.)
                 start_pos += cruise_d
                 move_time += move.cruise_t
             # Deceleration steps
             if move.decel_r:
                 decel_d = move.decel_r * axis_d
-                mcu_stepper.step_const(
-                    move_time, start_pos, decel_d, cruise_v, -accel)
+                step_const(move_time, start_pos, decel_d, cruise_v, -accel)

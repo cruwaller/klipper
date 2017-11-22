@@ -14,7 +14,7 @@ SLOW_RATIO = 3.
 class DeltaKinematics:
     def __init__(self, toolhead, printer, config):
         self.steppers = [stepper.PrinterHomingStepper(
-            printer, config.getsection('stepper_' + n), n)
+            printer, config.getsection('stepper_' + n))
                          for n in ['a', 'b', 'c']]
         self.need_motor_enable = self.need_home = True
         radius = config.getfloat('delta_radius', above=0.)
@@ -106,7 +106,7 @@ class DeltaKinematics:
     def set_position(self, newpos):
         pos = self._cartesian_to_actuator(newpos)
         for i in StepList:
-            self.steppers[i].mcu_stepper.set_position(pos[i])
+            self.steppers[i].set_position(pos[i])
         self.limit_xy2 = -1.
     def home(self, homing_state):
         # All axes are homed simultaneously
@@ -210,26 +210,23 @@ class DeltaKinematics:
             vt_startz = origz
 
             # Generate steps
-            mcu_stepper = self.steppers[i].mcu_stepper
+            step_delta = self.steppers[i].step_delta
             move_time = print_time
             if accel_d:
-                mcu_stepper.step_delta(
-                    move_time, accel_d, move.start_v, accel,
-                    vt_startz, vt_startxy_d, vt_arm_d, movez_r)
+                step_delta(move_time, accel_d, move.start_v, accel,
+                           vt_startz, vt_startxy_d, vt_arm_d, movez_r)
                 vt_startz += accel_d * movez_r
                 vt_startxy_d -= accel_d * movexy_r
                 move_time += move.accel_t
             if cruise_d:
-                mcu_stepper.step_delta(
-                    move_time, cruise_d, cruise_v, 0.,
-                    vt_startz, vt_startxy_d, vt_arm_d, movez_r)
+                step_delta(move_time, cruise_d, cruise_v, 0.,
+                           vt_startz, vt_startxy_d, vt_arm_d, movez_r)
                 vt_startz += cruise_d * movez_r
                 vt_startxy_d -= cruise_d * movexy_r
                 move_time += move.cruise_t
             if decel_d:
-                mcu_stepper.step_delta(
-                    move_time, decel_d, cruise_v, -accel,
-                    vt_startz, vt_startxy_d, vt_arm_d, movez_r)
+                step_delta(move_time, decel_d, cruise_v, -accel,
+                           vt_startz, vt_startxy_d, vt_arm_d, movez_r)
 
 
 ######################################################################
