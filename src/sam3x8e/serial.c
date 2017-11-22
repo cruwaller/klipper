@@ -11,7 +11,7 @@
 #include "board/irq.h" // irq_save
 #include "board/misc.h" // console_sendf
 #include "command.h" // DECL_CONSTANT
-#include "sam3x8e.h" // UART
+#include <sam3x8e.h> // UART
 #include "sched.h" // DECL_INIT
 
 #define SERIAL_BUFFER_SIZE 96

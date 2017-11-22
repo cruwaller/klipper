@@ -334,7 +334,11 @@ uint16_t
 gpio_adc_read(struct gpio_adc g)
 {
     last_analog_read = ADC_DUMMY;
+#if (CONFIG_SIMULATOR == 1)
+    return (uint16_t)(870);
+#else
     return ADC;
+#endif
 }
 
 // Cancel a sample that may have been started with gpio_adc_sample()
@@ -463,7 +467,18 @@ spi_transfer_len(char *data, uint8_t len)
 uint8_t
 spi_transfer(uint8_t const data, uint8_t const last)
 {
+#if (CONFIG_SIMULATOR == 1)
+    return data;
+#else
     SPDR = data;
+    /*
+     * The following NOP introduces a small delay that can prevent the wait
+     * loop form iterating when running at the maximum speed. This gives
+     * about 10% more speed, even if it seems counter-intuitive. At lower
+     * speeds it is unnoticed.
+     */
+    asm volatile("nop");
     while (!(SPSR & _BV(SPIF))); // Wait ready
     return SPDR;
+#endif
 }

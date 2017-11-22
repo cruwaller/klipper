@@ -1,0 +1,29 @@
+# Kconfig settings for SAM3x8e processors
+
+if MACH_LPC176X
+
+config LPC_SELECT
+    bool
+    default y
+    select HAVE_GPIO
+    select HAVE_GPIO_ADC
+    select HAVE_GPIO_SPI
+
+config BOARD_DIRECTORY
+    string
+    default "lpc176x"
+
+config CLOCK_FREQ
+    int
+    default 30000000 # 120000000/4
+
+config SERIAL
+    bool
+    default y
+
+config SERIAL_BAUD
+    depends on SERIAL
+    int "Baud rate for serial port"
+    default 250000
+
+endif

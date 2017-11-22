@@ -2,12 +2,21 @@
 
 mainmenu "Klipper Firmware Configuration"
 
+config SIMULATOR
+    bool "Compile for target software simulator"
+    default n
+    help
+        Compile the target simulator code. Simulated
+        results are sent back to host.
+
 choice
     prompt "Micro-controller Architecture"
     config MACH_AVR
         bool "Atmega AVR"
     config MACH_SAM3X8E
         bool "SAM3x8e (Arduino Due)"
+    config MACH_LPC176X
+        bool "LPC1768 or LPC1769 (ReARM, SBase, Smoothie etc)"
     config MACH_PRU
         bool "Beaglebone PRU"
     config MACH_LINUX
@@ -20,6 +29,7 @@ source "src/avr/Kconfig"
 source "src/sam3x8e/Kconfig"
 source "src/pru/Kconfig"
 source "src/linux/Kconfig"
+source "src/lpc176x/Kconfig"
 source "src/simulator/Kconfig"
 
 # The HAVE_GPIO_x options allow boards to disable support for some

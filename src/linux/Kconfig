@@ -18,15 +18,8 @@ config CLOCK_FREQ
     int
     default 20000000
 
-config SIMULATOR
-    bool "Compile for target software simulator"
-    default n
-    help
-        Compile the target simulator code for Linux
-        instead of the real target.
-
 choice
-    prompt "Processor model"
+    prompt "Simulated processor model"
     depends on SIMULATOR
     config SIM_MACH_atmega2560
         bool "atmega2560"

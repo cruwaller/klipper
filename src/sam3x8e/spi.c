@@ -2,8 +2,8 @@
 #include "autoconf.h"
 #include "gpio.h"
 #include "generic/spi.h"
-
-#include "sam3x8e.h"
+#include "sched.h"
+#include <sam3x8e.h>
 
 #define REGPTR     SPI0
 #define PERIPH_ID  ID_SPI0

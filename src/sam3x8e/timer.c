@@ -8,7 +8,7 @@
 #include "board/misc.h" // timer_read_time
 #include "board/timer_irq.h" // timer_dispatch_many
 #include "command.h" // DECL_SHUTDOWN
-#include "sam3x8e.h" // TC0
+#include <sam3x8e.h> // TC0
 #include "sched.h" // DECL_INIT
 
 // Set the next irq time

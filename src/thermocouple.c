@@ -8,31 +8,18 @@
 #include "command.h"      // DECL_COMMAND
 #include "sched.h"        // DECL_TASK
 
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-#include <stdio.h>
-extern int SIMULATOR_MODE;
-#define SPI_READ_CMD (SIMULATOR_MODE ? 0x40 : 0x00)
+#if (CONFIG_SIMULATOR == 1)
+#define SPI_READ_CMD (0x40)
 #else
 #define SPI_READ_CMD (0x00)
 #endif
 
-
-
-/*
-  - command in <<
-  -- SETUP: initialize the reader
-  -- READ:  create timer to get next value
-
-  -- TIMER: Read value and check for errors
-  ---- Wakeup the TASK
-
-  -- TASK: Wait for wakeup
-  ---- Sends meas data to host
-
-
-  TODO Fix fault handling!!
- */
-
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+#include <stdio.h>
+extern int SIMULATOR_MODE;
+#undef SPI_READ_CMD
+#define SPI_READ_CMD (SIMULATOR_MODE ? 0x40 : 0x00)
+#endif
 
 struct thermocouple_spi {
     struct timer timer;
