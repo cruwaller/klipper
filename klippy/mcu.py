@@ -5,7 +5,6 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import sys, os, zlib, logging, math
 import serialhdl, pins, chelper, clocksync
-import traceback
 
 class error(Exception):
     pass
@@ -65,7 +64,7 @@ class MCU_stepper:
     def get_step_dist(self):
         return self._step_dist
     def set_position(self, pos):
-        if pos >= 0.0:
+        if pos >= 0.:
             steppos = int(pos * self._inv_step_dist + 0.5)
         else:
             steppos = int(pos * self._inv_step_dist - 0.5)

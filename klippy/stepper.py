@@ -87,8 +87,7 @@ class PrinterHomingStepper(PrinterStepper):
         if homing_dir is not None:
             self.homing_positive_dir = homing_dir
         else:
-            self.homing_positive_dir = config.getboolean('homing_positive_dir',
-                                                         None)
+            self.homing_positive_dir = config.getboolean('homing_positive_dir', None)
             if self.homing_positive_dir is None:
                 axis_len = self.position_max - self.position_min
                 if self.position_endstop <= self.position_min + axis_len / 4.:

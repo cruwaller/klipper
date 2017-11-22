@@ -64,8 +64,8 @@ class CoreXYKinematics:
             homepos = [None, None, None, None]
             # Set Z homing position if defined
             if (axis == 2):
-                homepos[0] = self.steppers[0] # X axis
-                homepos[1] = self.steppers[1] # Y axis
+                homepos[0] = self.steppers[0].homing_pos_x # X axis
+                homepos[1] = self.steppers[1].homing_pos_y # Y axis
             homepos[axis] = s.position_endstop
             coord = [None, None, None, None]
             coord[axis] = pos
