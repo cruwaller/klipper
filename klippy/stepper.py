@@ -12,6 +12,9 @@ class PrinterStepper:
         self.name = config.section
         if self.name.startswith('stepper_'):
             self.name = self.name[8:]
+        self.is_Z = False
+        if ('Z' in self.name.upper()):
+            self.is_Z = True
 
         self.need_motor_enable = True
         # Stepper definition
@@ -69,9 +72,8 @@ class PrinterHomingStepper(PrinterStepper):
         self.mcu_endstop.add_stepper(self.mcu_stepper)
         self.position_endstop = config.getfloat('position_endstop')
         self.position_endstop_original = self.position_endstop
-        # negative value will be added
-        self.position_endstop = self.position_endstop_original - \
-                                config.getfloat('homing_offset', 0.000)
+        # Homing offset will be substracted from homed position
+        self.homing_offset = config.getfloat('homing_offset', 0.000)
         # Axis range
         self.position_min = config.getfloat('position_min', 0.)
         self.position_max = config.getfloat('position_max', 0.,
@@ -136,15 +138,20 @@ class PrinterHomingStepper(PrinterStepper):
             if self.mcu_endstop.get_mcu().is_fileoutput():
                 self.homing_endstop_accuracy = self.homing_stepper_phases
 
-        self.homing_pos_x = config.getfloat('homing_pos_x', None,
-                                            minval=self.position_min,
-                                            maxval=self.position_max)
-        self.homing_pos_y = config.getfloat('homing_pos_y', None,
-                                            minval=self.position_min,
-                                            maxval=self.position_max)
-
+        # Valid for CoreXY and Cartesian Z axis
+        if (self.is_Z):
+            self.homing_pos_x = config.getfloat('homing_pos_x', None,
+                                                minval=self.position_min,
+                                                maxval=self.position_max)
+            self.homing_pos_y = config.getfloat('homing_pos_y', None,
+                                                minval=self.position_min,
+                                                maxval=self.position_max)
+        else:
+            # None for X and Y axis
+            self.homing_pos_x = None
+            self.homing_pos_y = None
     def set_homing_offset(self, offset):
-        self.position_endstop = self.position_endstop_original - offset
+        self.homing_offset = offset
     def get_endstops(self):
         return [(self.mcu_endstop, self.mcu_stepper, self.name)]
     def get_homing_speed(self):
@@ -170,7 +177,7 @@ class PrinterHomingStepper(PrinterStepper):
             raise homing.EndstopError(
                 "Endstop %s incorrect phase (got %d vs %d)" % (
                     self.name, pos, self.homing_endstop_phase))
-        return delta * self.step_dist
+        return (delta * self.step_dist) - self.homing_offset
 
 # Wrapper for dual stepper motor support
 class PrinterMultiStepper(PrinterHomingStepper):

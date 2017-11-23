@@ -63,7 +63,7 @@ class CoreXYKinematics:
             homing_speed = s.get_homing_speed()
             homepos = [None, None, None, None]
             # Set Z homing position if defined
-            if (axis == 2):
+            if (s.is_Z is True):
                 homepos[0] = self.steppers[0].homing_pos_x # X axis
                 homepos[1] = self.steppers[1].homing_pos_y # Y axis
             homepos[axis] = s.position_endstop
@@ -77,7 +77,8 @@ class CoreXYKinematics:
             coord[axis] = r2pos
             homing_state.home(
                 list(coord), homepos, [s], homing_speed/2.0, second_home=True)
-            if axis == 2:
+            #if axis == 2:
+            if (s.is_Z is True):
                 # Support endstop phase detection on Z axis
                 coord[axis] = s.position_endstop + s.get_homed_offset()
                 homing_state.set_homed_position(coord)

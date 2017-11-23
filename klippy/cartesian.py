@@ -55,7 +55,7 @@ class CartKinematics:
             homing_speed = s.get_homing_speed()
             homepos = [None, None, None, None]
             # Set Z homing position if defined
-            if (axis == 2):
+            if (s.is_Z is True):
                 homepos[0] = self.steppers[0].homing_pos_x # X axis
                 homepos[1] = self.steppers[1].homing_pos_y # Y axis
             homepos[axis] = s.position_endstop
