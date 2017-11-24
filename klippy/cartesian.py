@@ -10,6 +10,7 @@ StepList = (0, 1, 2)
 
 class CartKinematics:
     def __init__(self, toolhead, printer, config):
+        self.toolhead = toolhead
         self.steppers = [stepper.LookupMultiHomingStepper(
             printer, config.getsection('stepper_' + n))
                          for n in ['x', 'y', 'z']]
@@ -18,6 +19,8 @@ class CartKinematics:
             'max_z_velocity', max_velocity, above=0., maxval=max_velocity)
         self.max_z_accel = config.getfloat(
             'max_z_accel', max_accel, above=0., maxval=max_accel)
+        self.require_home_after_motor_off = config.getboolean(
+            'require_home_after_motor_off', True)
         self.need_motor_enable = True
         self.limits = [(1.0, -1.0)] * 3
         # Setup stepper max halt velocity
@@ -55,9 +58,9 @@ class CartKinematics:
             homing_speed = s.get_homing_speed()
             homepos = [None, None, None, None]
             # Set Z homing position if defined
-            if (s.is_Z is True):
-                homepos[0] = self.steppers[0].homing_pos_x # X axis
-                homepos[1] = self.steppers[1].homing_pos_y # Y axis
+            self.toolhead.move([s.homing_pos_x or 0.0, # X axis
+                                s.homing_pos_y or 0.0, # Y axis
+                                0.0, 0.0], homing_speed)
             homepos[axis] = s.position_endstop
             coord = [None, None, None, None]
             coord[axis] = pos
@@ -75,7 +78,8 @@ class CartKinematics:
     def query_endstops(self, print_time, query_flags):
         return homing.query_endstops(print_time, query_flags, self.steppers)
     def motor_off(self, print_time):
-        self.limits = [(1.0, -1.0)] * 3
+        if self.require_home_after_motor_off is True:
+            self.limits = [(1.0, -1.0)] * 3
         for stepper in self.steppers:
             stepper.motor_enable(print_time, 0)
         self.need_motor_enable = True
@@ -89,9 +93,7 @@ class CartKinematics:
     def _check_endstops(self, move):
         end_pos = move.end_pos
         for i in StepList:
-            if (move.axes_d[i]
-                and (end_pos[i] < self.limits[i][0]
-                     or end_pos[i] > self.limits[i][1])):
+            if (move.axes_d[i] and (end_pos[i] < self.limits[i][0] or end_pos[i] > self.limits[i][1])):
                 if self.limits[i][0] > self.limits[i][1]:
                     raise homing.EndstopMoveError(
                         end_pos, "Must home axis first")

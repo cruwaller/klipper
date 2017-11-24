@@ -63,9 +63,9 @@ class CoreXYKinematics:
             homing_speed = s.get_homing_speed()
             homepos = [None, None, None, None]
             # Set Z homing position if defined
-            if (s.is_Z is True):
-                homepos[0] = self.steppers[0].homing_pos_x # X axis
-                homepos[1] = self.steppers[1].homing_pos_y # Y axis
+            self.toolhead.move([s.homing_pos_x or 0.0, # X axis
+                                s.homing_pos_y or 0.0, # Y axis
+                                0.0, 0.0], homing_speed)
             homepos[axis] = s.position_endstop
             coord = [None, None, None, None]
             coord[axis] = pos
