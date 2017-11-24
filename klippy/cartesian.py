@@ -75,7 +75,7 @@ class CartKinematics:
             # Set final homed position
             coord[axis] = s.position_endstop + s.get_homed_offset()
             homing_state.set_homed_position(coord)
-            if exis == 2 and s.retract_after_home is True:
+            if axis == 2 and s.retract_after_home is True:
                 # Retract
                 coord[axis] = rpos
                 homing_state.retract(list(coord), homing_speed)

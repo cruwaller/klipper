@@ -575,13 +575,13 @@ class PrinterHeater:
         #logging.debug("%s : read_time=%.3f read_value=%f temperature=%f",
         #              self.name, read_time, read_value, temp)
     # External commands
-    def set_temp(self, print_time, degrees):
+    def set_temp(self, print_time, degrees, auto_tune=False):
         if degrees and (degrees < self.min_temp or degrees > self.max_temp):
             raise error("Requested temperature (%.1f) out of range (%.1f:%.1f)"
                         % (degrees, self.min_temp, self.max_temp))
         with self.lock:
             self.target_temp = degrees
-        if (degrees):
+        if (degrees and auto_tune is False):
             # Start checking
             self.protection_last_temp = None
             self.reactor.update_timer(self.protection_timer,
@@ -608,7 +608,7 @@ class PrinterHeater:
         #                % (degrees, self.min_temp, self.max_temp))
         with self.lock:
             self.control = ControlAutoTune(self, self.control)
-        self.set_temp(0, degrees)
+        self.set_temp(0, degrees, auto_tune=True)
     def finish_auto_tune(self, old_control):
         if (type(self.control).__name__ is "ControlAutoTune" and \
             type(old_control).__name__ is ControlPID):
