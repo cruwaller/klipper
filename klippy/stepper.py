@@ -73,7 +73,7 @@ class PrinterHomingStepper(PrinterStepper):
         self.position_endstop = config.getfloat('position_endstop')
         self.position_endstop_original = self.position_endstop
         # Homing offset will be substracted from homed position
-        self.homing_offset = config.getfloat('homing_offset', 0.000)
+        self.homing_offset = config.getfloat('homing_offset', 0.)
         # Axis range
         self.position_min = config.getfloat('position_min', 0.)
         self.position_max = config.getfloat('position_max', 0.,
@@ -150,6 +150,8 @@ class PrinterHomingStepper(PrinterStepper):
             # None for X and Y axis
             self.homing_pos_x = None
             self.homing_pos_y = None
+        self.retract_after_home = config.getboolean('homing_retract_after',
+                                                    False)
     def set_homing_offset(self, offset):
         self.homing_offset = offset
     def get_endstops(self):

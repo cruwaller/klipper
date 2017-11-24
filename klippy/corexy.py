@@ -63,9 +63,10 @@ class CoreXYKinematics:
             homing_speed = s.get_homing_speed()
             homepos = [None, None, None, None]
             # Set Z homing position if defined
-            self.toolhead.move([s.homing_pos_x or 0.0, # X axis
-                                s.homing_pos_y or 0.0, # Y axis
-                                0.0, 0.0], homing_speed)
+            homing_state.retract([s.homing_pos_x, # X axis position
+                                  s.homing_pos_y, # Y axis position
+                                  None, None],
+                                 self.steppers[0].get_homing_speed())
             homepos[axis] = s.position_endstop
             coord = [None, None, None, None]
             coord[axis] = pos
@@ -77,11 +78,14 @@ class CoreXYKinematics:
             coord[axis] = r2pos
             homing_state.home(
                 list(coord), homepos, [s], homing_speed/2.0, second_home=True)
-            #if axis == 2:
-            if (s.is_Z is True):
+            if axis == 2:
                 # Support endstop phase detection on Z axis
                 coord[axis] = s.position_endstop + s.get_homed_offset()
                 homing_state.set_homed_position(coord)
+                if s.retract_after_home is True:
+                    # Retract
+                    coord[axis] = rpos
+                    homing_state.retract(list(coord), homing_speed)
     def query_endstops(self, print_time, query_flags):
         return homing.query_endstops(print_time, query_flags, self.steppers)
     def motor_off(self, print_time):

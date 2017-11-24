@@ -10,7 +10,6 @@ StepList = (0, 1, 2)
 
 class CartKinematics:
     def __init__(self, toolhead, printer, config):
-        self.toolhead = toolhead
         self.steppers = [stepper.LookupMultiHomingStepper(
             printer, config.getsection('stepper_' + n))
                          for n in ['x', 'y', 'z']]
@@ -58,9 +57,10 @@ class CartKinematics:
             homing_speed = s.get_homing_speed()
             homepos = [None, None, None, None]
             # Set Z homing position if defined
-            self.toolhead.move([s.homing_pos_x or 0.0, # X axis
-                                s.homing_pos_y or 0.0, # Y axis
-                                0.0, 0.0], homing_speed)
+            homing_state.retract([s.homing_pos_x, # X axis position
+                                  s.homing_pos_y, # Y axis position
+                                  None, None],
+                                 self.steppers[0].get_homing_speed())
             homepos[axis] = s.position_endstop
             coord = [None, None, None, None]
             coord[axis] = pos
@@ -75,6 +75,10 @@ class CartKinematics:
             # Set final homed position
             coord[axis] = s.position_endstop + s.get_homed_offset()
             homing_state.set_homed_position(coord)
+            if exis == 2 and s.retract_after_home is True:
+                # Retract
+                coord[axis] = rpos
+                homing_state.retract(list(coord), homing_speed)
     def query_endstops(self, print_time, query_flags):
         return homing.query_endstops(print_time, query_flags, self.steppers)
     def motor_off(self, print_time):
