@@ -601,6 +601,7 @@ class GCodeParser:
         'M0', 'M1', 'M18', 'M37', 'M82', 'M83',
         'M104', 'M105', 'M106', 'M107', 'M109',
         'M112', 'M114', 'M115', 'M118',
+        'M120', 'M121',
         'M140', 'M190',
         'M206', 'M220', 'M221', 'M290',
         'M302',
@@ -763,6 +764,12 @@ class GCodeParser:
         self.ack(" ".join(["%s:%s" % (k, v) for k, v in kw.items()]))
     def cmd_M118(self, params):
         self.respond_info(params['#original'].replace(params['#command'], ""))
+    def cmd_M120(self, params):
+        # M120: Push - Store settings
+        pass
+    def cmd_M121(self, params):
+        # M121: Pop - Pop settings
+        pass
     def cmd_M140(self, params):
         # Set Bed Temperature
         self.set_temp(params, is_bed=True)
