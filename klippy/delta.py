@@ -12,6 +12,7 @@ StepList = (0, 1, 2)
 SLOW_RATIO = 3.
 
 class DeltaKinematics:
+    name = "delta"
     def __init__(self, toolhead, printer, config):
         self.steppers = [stepper.PrinterHomingStepper(
             printer, config.getsection('stepper_' + n))

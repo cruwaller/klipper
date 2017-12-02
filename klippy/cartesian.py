@@ -9,6 +9,7 @@ import stepper, homing
 StepList = (0, 1, 2)
 
 class CartKinematics:
+    name = "cartesian"
     def __init__(self, toolhead, printer, config):
         self.steppers = [stepper.LookupMultiHomingStepper(
             printer, config.getsection('stepper_' + n))
@@ -102,6 +103,12 @@ class CartKinematics:
                     raise homing.EndstopMoveError(
                         end_pos, "Must home axis first")
                 raise homing.EndstopMoveError(end_pos)
+    def is_homed(self):
+        ret = [1, 1, 1]
+        for i in StepList:
+            if self.limits[i][0] > self.limits[i][1]:
+                ret[i] = 0
+        return ret
     def check_move(self, move):
         limits = self.limits
         xpos, ypos = move.end_pos[:2]

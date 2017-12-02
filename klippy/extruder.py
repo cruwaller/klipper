@@ -11,6 +11,7 @@ EXTRUDE_DIFF_IGNORE = 1.02
 
 class PrinterExtruder:
     def __init__(self, printer, config, index):
+        self.name   = config.section
         self.config = config
         self.index  = index
         self.heater = printer.objects.get(config.get('heater'))
@@ -50,8 +51,12 @@ class PrinterExtruder:
                                 minval=0.)
         self.need_motor_enable = True
         self.extrude_pos = 0.
-        logging.debug("Add extruder '{}' heater={}".
-                      format(config.section, self.heater.name))
+        self.factor_extrude = config.getfloat('extrusion_factor',
+                                              1.0,
+                                              minval=0.5,
+                                              maxval=1.5)
+        logging.debug("Add extruder[{}] '{}' heater={}".
+                      format(self.index, self.name, self.heater.name))
     def get_index(self):
         return self.index
     def get_heater(self):
@@ -227,6 +232,7 @@ class PrinterExtruder:
 
 # Dummy extruder class used when a printer has no extruder at all
 class DummyExtruder:
+    index = -1
     def set_active(self, print_time, is_active):
         return 0.
     def motor_off(self, move_time):

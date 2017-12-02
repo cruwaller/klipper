@@ -409,13 +409,14 @@ class error(Exception):
 
 class PrinterHeater:
     error = error
-    def __init__(self, printer, config):
+    def __init__(self, printer, config, index):
+        self.index    = index
         self._printer = printer
         self.name     = config.section
         self.is_bed = False
         if "bed" in self.name:
             self.is_bed = True
-        logging.debug("Add heater '{}'".format(self.name))
+        logging.debug("Add heater [{}] '{}'".format(self.index, self.name))
         sensor_params = config.getchoice('sensor_type', Sensors)
         self.sensor   = sensor_params['class'](config, sensor_params)
         self.min_temp = config.getfloat('min_temp', minval=0.0)
@@ -510,7 +511,8 @@ class PrinterHeater:
                            format(current_temp, self.protection_last_temp)
                 self.set_temp(0, 0);
                 self._printer.gcode.respond_error(errorstr)
-                self._printer.request_exit('firmware_restart')
+                #self._printer.request_exit('firmware_restart')
+                self._printer.request_exit('shutdown')
             self.protection_last_temp = current_temp
         elif (self.is_heating):
             # Check hysteresis during the preheating
@@ -524,7 +526,8 @@ class PrinterHeater:
                                format(current_temp, self.protection_last_temp)
                     self.set_temp(0, 0);
                     self._printer.gcode.respond_error(errorstr)
-                    self._printer.request_exit('firmware_restart')
+                    #self._printer.request_exit('firmware_restart')
+                    self._printer.request_exit('shutdown')
             self.protection_last_temp = current_temp
         logging.debug("check_heating(eventtime {}) {} / {}".
                       format(eventtime, current_temp, target_temp))
@@ -807,11 +810,19 @@ class ControlBumpTest:
         return False
 
 def add_printer_objects(printer, config):
+    index = 0
     printer.__HEATERS_LST = {}
     for s in config.get_prefix_sections('heater_'):
         if 'fan' in s.section:
             continue
-        temp = PrinterHeater(printer, s)
+        #if 'bed' in s.section:
+        #    index_tmp = -1
+        #else:
+        #    index_tmp = index
+        #    index += 1
+        index_tmp = index
+        index += 1
+        temp = PrinterHeater(printer, s, index_tmp)
         printer.add_object(s.section, temp)
         printer.__HEATERS_LST[s.section] = temp
 

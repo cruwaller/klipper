@@ -6,19 +6,52 @@
 import os, re, logging, collections
 import homing, extruder, chipmisc, heater
 
+'''
+TODO:
+  * tool offset: G/Mxxx P2 X17.8 Y-19.3 Z0.0
+  * FW retraction: G10, G11, M207, M208
+  * Volymetric Extrution
+  * M290: Babystepping
+  * M600: Filament change pause
+
+           =====================
+           **** REPRAP stuff ***
+
+M112                     : EMERGENCY STOP (ok)
+M999                     : RESTART_FIRMWARE (ok)
+M122                     : Diagnose (skip Pxx where xx > 0)
+M24                      : Start/resume SD print
+M25                      : Pause SD print
+M36 <filename.gco>       : return fileinfo
+M997                     : Perform in-application firmware update - IGNORE
+M21                      : Initialize SD card - IGNORE
+M141 H<heater> S<temp>   : Set Chamber Temperature - IGNORE
+M563                     : Define or remove a tool
+M290                     : Babystepping
+M0 H1 (H arg is missing) : Stop or Unconditional stop (H < 0 = keep heaters on) , execute macro stop.g if exists
+M80                      : ATX Power On
+M81                      : ATX Power Off
+M144                     : Bed Standby (needs stanby temperature...), M140 -> back to active temp
+M1 (partial?)
+
+'''
+
+tx_sequenceno = 0
+
 # Parse out incoming GCode and find and translate head movements
 class GCodeParser:
     RETRY_TIME = 0.100
-    def __init__(self, printer, fd):
+    def __init__(self, printer, fd_link):
         self.printer = printer
-        self.fd = fd
+        self.fd_r = fd_link.fd_r
+        self.fd_w = fd_link.fd_w
         # Input handling
         self.reactor = printer.reactor
         self.is_processing_data = False
         self.is_fileinput = not not printer.get_start_args().get("debuginput")
         self.fd_handle = None
         if not self.is_fileinput:
-            self.fd_handle = self.reactor.register_fd(self.fd, self.process_data)
+            self.fd_handle = self.reactor.register_fd(self.fd_r, self.process_data)
         self.partial_input = ""
         self.bytes_read = 0
         self.input_log = collections.deque([], 50)
@@ -36,6 +69,10 @@ class GCodeParser:
         self.last_position = [0.0, 0.0, 0.0, 0.0]
         self.homing_add    = [0.0, 0.0, 0.0, 0.0]
         self.axis2pos = {'X': 0, 'Y': 1, 'Z': 2, 'E': 3}
+        self.factor_speed   = 1.0
+        #self.tx_sequenceno = 0
+        self.simulate_print = False
+        self.babysteps = 0.0 # Effect to Z only
     def build_handlers(self):
         handlers = self.all_handlers
         if not self.is_printer_ready:
@@ -58,7 +95,9 @@ class GCodeParser:
             self.extruder = self.extruders[0] # extruder0
             self.toolhead.set_extruder(self.extruder)
         if self.is_fileinput and self.fd_handle is None:
-            self.fd_handle = self.reactor.register_fd(self.fd, self.process_data)
+            self.fd_handle = self.reactor.register_fd(self.fd_r, self.process_data)
+        global tx_sequenceno
+        tx_sequenceno += 1
     def do_shutdown(self):
         if not self.is_printer_ready:
             return
@@ -67,6 +106,8 @@ class GCodeParser:
         self.dump_debug()
         if self.is_fileinput:
             self.printer.request_exit()
+        global tx_sequenceno
+        tx_sequenceno += 1
     def motor_heater_off(self):
         if self.toolhead is None:
             return
@@ -120,8 +161,12 @@ class GCodeParser:
                 self.respond_error(msg)
             self.ack()
         self.need_ack = prev_need_ack
+    def split_string(text, splitlist):
+        for sep in splitlist:
+            text = text.replace(sep, splitlist[0])
+        return filter(None, text.split(splitlist[0])) if splitlist else [text]
     def process_data(self, eventtime):
-        data = os.read(self.fd, 4096)
+        data = os.read(self.fd_r, 4096)
         self.input_log.append((eventtime, data))
         self.bytes_read += len(data)
         lines = data.split('\n')
@@ -136,7 +181,7 @@ class GCodeParser:
                 self.cmd_M112({})
             while self.is_processing_data:
                 eventtime = self.reactor.pause(eventtime + 0.100)
-            self.fd_handle = self.reactor.register_fd(self.fd, self.process_data)
+            self.fd_handle = self.reactor.register_fd(self.fd_r, self.process_data)
         self.is_processing_data = True
         self.process_commands(lines)
         if not data and self.is_fileinput:
@@ -146,18 +191,22 @@ class GCodeParser:
             self.printer.request_exit()
         self.is_processing_data = False
     # Response handling
+    def __write_resp(self, msg):
+        global tx_sequenceno
+        tx_sequenceno += 1
+        os.write(self.fd_w, msg)
     def ack(self, msg=None):
         if not self.need_ack or self.is_fileinput:
             return
         if msg:
-            os.write(self.fd, "ok %s\n" % (msg,))
+            self.__write_resp("ok %s\n" % (msg,))
         else:
-            os.write(self.fd, "ok\n")
+            self.__write_resp("ok\n")
         self.need_ack = False
     def respond(self, msg):
         if self.is_fileinput:
             return
-        os.write(self.fd, msg+"\n")
+        self.__write_resp(msg+"\n")
     def respond_info(self, msg):
         logging.debug(msg)
         lines = [l.strip() for l in msg.strip().split('\n')]
@@ -245,17 +294,24 @@ class GCodeParser:
             self.respond(self.get_temp(eventtime))
             eventtime = self.reactor.pause(eventtime + 1.)
     def set_temp(self, params, is_bed=False, wait=False):
-        temp = self.get_float('S', params, 0.)
+        temp = self.get_float('S', params, 0.0) if (self.simulate_print is False) else 0.0
         heater = None
         if is_bed:
             heater = self.printer.objects.get('heater_bed')
-        elif 'T' in params:
-            index = self.get_int('T', params)
-            e = extruder.get_printer_extruder(self.printer, index)
-            if e is not None:
-                heater = e.get_heater()
-        elif self.extruder is not None:
-            heater = self.extruder.get_heater()
+        else:
+            index = None
+            if 'T' in params:
+                index = self.get_int('T', params)
+            elif 'P' in params:
+                index = self.get_int('P', params)
+
+            if index is not None:
+                e = extruder.get_printer_extruder(self.printer, index)
+                if e is not None:
+                    heater = e.get_heater()
+            elif self.extruder is not None:
+                heater = self.extruder.get_heater()
+
         if heater is None:
             if temp > 0.:
                 self.respond_error("Heater not configured")
@@ -295,6 +351,9 @@ class GCodeParser:
     def cmd_Tn(self, params):
         # Select Tool
         index = self.get_int('T', params)
+        if index < 0:
+            # Reprap WebGui uses T-1 in some cases, skip it
+            return
         e = extruder.get_printer_extruder(self.printer, index)
         if e is None:
             self.respond_error("Extruder %d not configured" % (index,))
@@ -325,6 +384,8 @@ class GCodeParser:
             for a, p in self.axis2pos.items():
                 if a in params:
                     v = float(params[a])
+                    if (a is 'E'):
+                        v = ( (v * self.extruder.factor_extrude) if (self.simulate_print is False) else 0.0 )
                     if (not self.absolutecoord
                         or (p>2 and not self.absoluteextrude)):
                         # value relative to position of last move
@@ -332,11 +393,12 @@ class GCodeParser:
                     else:
                         # value relative to base coordinate position
                         self.last_position[p] = v + self.base_position[p]
+
             if 'F' in params:
                 speed = float(params['F']) / 60.
                 if speed <= 0.:
                     raise ValueError()
-                self.speed = speed
+                self.speed = speed * self.factor_speed
             if is_arch:
                 self.arch_I = 0.0
                 self.arch_J = 0.0
@@ -534,15 +596,16 @@ class GCodeParser:
 
 
     all_handlers = [
-        'G1', 'G2', 'G3', 'G4', 'G20', 'G28', 'G29',
+        'G1', 'G2', 'G3', 'G4', 'G10', 'G11', 'G20', 'G28', 'G29',
         'G90', 'G91', 'G92',
-        'M0', 'M1', 'M18', 'M82', 'M83',
+        'M0', 'M1', 'M18', 'M37', 'M82', 'M83',
         'M104', 'M105', 'M106', 'M107', 'M109',
         'M112', 'M114', 'M115', 'M118',
         'M140', 'M190',
-        'M206',
+        'M206', 'M220', 'M221', 'M290',
         'M302',
         'M400',
+        'M550',
         'M851',
         'IGNORE', 'QUERY_ENDSTOPS', 'PID_TUNE', 'SET_SERVO',
         'RESTART', 'FIRMWARE_RESTART', 'ECHO', 'STATUS', 'HELP']
@@ -573,10 +636,14 @@ class GCodeParser:
     # todo firmware retraction support
     def cmd_G10(self, params):
         # G10: Retract
-        pass
+        short = 0
+        if 'S' in params:
+            short = self.get_int('S', params, 0)
     def cmd_G11(self, params):
         # G11: Unretract
-        pass
+        short = 0
+        if 'S' in params:
+            short = self.get_int('S', params, 0)
 
     def cmd_G20(self, params):
         # Set units to inches
@@ -627,14 +694,24 @@ class GCodeParser:
             self.base_position = list(self.last_position)
 
     def cmd_M0(self, params):
-        self.respond("Printer reset invoked")
-        self.motor_heater_off()
-        self._printer.request_exit('firmware_restart')
+        heaters_on = self.get_int('H', params, 0)
+        if (heaters_on is 0):
+            self.motor_heater_off()
+            # self.respond("Printer reset invoked")
+            # self.printer.request_exit('firmware_restart')
     def cmd_M1(self, params):
         # Wait for current moves to finish
         self.toolhead.wait_moves()
         self.motor_heater_off()
-        self._printer.request_exit('restart')
+        # self.respond("Printer restart invoked")
+        # self.printer.request_exit('restart')
+
+    def cmd_M37(self, params):
+        simulation_enabled = self.get_int('P', params, 0)
+        if simulation_enabled is 1:
+            self.simulate_print = True
+        else:
+            self.simulate_print = False
 
     def cmd_M82(self, params):
         # Use absolute distances for extrusion
@@ -700,6 +777,43 @@ class GCodeParser:
             self.base_position[p] += self.homing_add[p] - offset
             self.homing_add[p] = offset
 
+    def cmd_M220(self, params):
+        # M220: Set speed factor override percentage
+        self.factor_speed = self.get_float('S', params, 100.0) / 100.0
+    def cmd_M221(self, params):
+        # M221: Set extrude factor override percentage
+        index = None
+        # extruder number
+        if 'D' in params:
+            index = self.get_int('D', params)
+        elif 'T' in params:
+            index = self.get_int('T', params)
+        if index is None:
+            extr = self.extruder
+        else:
+            extr = extruder.get_printer_extruder(self.printer, index)
+        extr.factor_extrude = self.get_float('S', params, 100.0) / 100.0
+
+    def cmd_M290(self, params):
+        # Babystepping
+        if 'S' in params:
+            babysteps_to_apply = self.get_float('S', params)
+            if (self.absolutecoord):
+                self.base_position[self.axis2pos['Z']] += babysteps_to_apply
+            else:
+                self.last_position[self.axis2pos['Z']] += babysteps_to_apply
+            self.babysteps += babysteps_to_apply
+
+        elif 'R' in params: # Reset
+            if (self.absolutecoord):
+                self.base_position[self.axis2pos['Z']] -= self.babysteps
+            else:
+                self.last_position[self.axis2pos['Z']] -= self.babysteps
+            self.babysteps = 0.0
+
+        else:
+            self.respond_info("Baby stepping offset is %.3fmm" % (self.babysteps,))
+
     def cmd_M302(self, params):
         # Allow cold extrusion
         #       M302         ; report current cold extrusion state
@@ -722,9 +836,22 @@ class GCodeParser:
                     "Heater '{}' cold extrude: {}, min temp {}C".
                     format(h.name, status, temp))
 
+    def cmd_M301(self, params):
+        # TODO: M301: Set PID parameters
+        pass
+    def cmd_M304(self, params):
+        # TODO: M304: Set PID parameters - Bed
+        pass
+
     def cmd_M400(self, params):
         # Wait for current moves to finish
         self.toolhead.wait_moves()
+
+    def cmd_M550(self, params):
+        if 'P' in params:
+            self.printer.name = params['P']
+        logging.info("My name is now {}".format(self.printer.name))
+
     def cmd_M851(self, params):
         # Set X, Y, Z offsets
         offsets = { a.lower(): self.get_float(a, params)
@@ -734,7 +861,14 @@ class GCodeParser:
             return
         self.toolhead.set_homing_offset(offsets)
     cmd_IGNORE_when_not_ready = True
-    cmd_IGNORE_aliases = ["G21", "M110", "M21"]
+    cmd_IGNORE_aliases = [
+        "G21",
+        "M21",
+        "M110", "M141",
+        'M291', 'M292',
+        'M752', 'M753', 'M754', 'M755', 'M756',
+        'M997'
+    ]
     def cmd_IGNORE(self, params):
         # Commands that are just silently accepted
         pass

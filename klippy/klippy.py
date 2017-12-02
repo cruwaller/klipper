@@ -4,7 +4,7 @@
 # Copyright (C) 2016,2017  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import sys, optparse, ConfigParser, logging, time, threading
+import sys, os, optparse, ConfigParser, logging, time, threading
 import util, reactor, queuelogger, msgproto, gcode
 import pins, mcu, chipmisc, toolhead, extruder, heater, fan
 
@@ -46,6 +46,20 @@ Once the underlying issue is corrected, use the
 config, and restart the host software.
 Printer is shutdown
 """
+
+class InputLink:
+    def __init__(self, tty=None, dbgin=None):
+        if dbgin is not None:
+            self.fd_w = self.fd_r = open(dbgin, 'rb').fileno()
+        elif tty is not None:
+            self.fd_w = self.fd_r = util.create_pty(tty)
+        else:
+            # Create a pipes
+            self.fd_rx_r, self.fd_rx_w = os.pipe() # Klippy RX
+            self.fd_tx_r, self.fd_tx_w = os.pipe() # Klippy TX
+
+            self.fd_r = self.fd_rx_r
+            self.fd_w = self.fd_tx_w
 
 class ConfigWrapper:
     error = ConfigParser.Error
@@ -127,6 +141,7 @@ class ConfigLogger():
 class Printer:
     config_error = ConfigParser.Error
     def __init__(self, input_fd, bglogger, start_args):
+        self.name = "Klipper printer"
         self.bglogger = bglogger
         self.start_args = start_args
         if bglogger is not None:
@@ -177,6 +192,9 @@ class Printer:
             ConfigLogger(self.fileconfig, self.bglogger)
         # Create printer components
         config = ConfigWrapper(self, 'printer')
+        # Read my name
+        self.name = config.getsection('printer').get('name',
+                                                     default="Klipper printer")
         # keep order!
         for m in [pins, mcu, chipmisc, heater, fan, toolhead, extruder]:
             m.add_printer_objects(self, config)
@@ -267,10 +285,256 @@ class Printer:
         self.run_result = result
         self.reactor.end()
 
+    def web_getconfig(self):
+        # logging.info("****** KLIPPER: web_getconfig() *******")
+        toolhead = self.objects.get('toolhead')
+
+        _extrs   = extruder.get_printer_extruders(self)
+        num_extruders = len(_extrs)
+
+        toolhead.kin.steppers[0].position_min
+        toolhead.kin.steppers[0].position_max
+        toolhead.max_accel
+        return {
+            "axisMins"            : [
+                toolhead.kin.steppers[0].position_min,
+                toolhead.kin.steppers[1].position_min,
+                toolhead.kin.steppers[2].position_min,
+            ],
+            "axisMaxes"           : [
+                toolhead.kin.steppers[0].position_max,
+                toolhead.kin.steppers[1].position_max,
+                toolhead.kin.steppers[2].position_max,
+            ],
+            "accelerations"       : [toolhead.max_accel] * (3 + num_extruders),
+            "currents"            : [1.00] * (3 + num_extruders),
+            "firmwareElectronics" : util.get_cpu_info(),
+            "firmwareName"        : "KLIPPER",
+            "firmwareVersion"     : self.get_start_args().get('software_version'),
+            "firmwareDate"        : "2017-12-01",
+            "idleCurrentFactor"   : 0.0,
+            "idleTimeout"         : toolhead.motor_off_time,
+            "minFeedrates"        : [0.00] * (3 + num_extruders),
+            "maxFeedrates"        : [toolhead.max_velocity] * (3 + num_extruders)
+            }
+    def web_getcurrentstate(self):
+        if self.is_shutdown:
+            return "H"
+        elif self.gcode.is_printer_ready == False:
+            return 'C'
+        return None
+    def web_getstatus(self, _type=1):
+        # logging.info("****** KLIPPER: web_getstatus(_type={}) *******".format(_type))
+        # raise AttributeError # fill default status resp
+
+        states = {
+            False : 0,
+            True  : 2
+        }
+
+        toolhead = self.objects.get('toolhead')
+        curr_pos = toolhead.get_position()
+        fans     = [ fan.last_fan_value * 100.0 for fan in self.get_objects_with_prefix("fan") ]
+        heatbed  = self.objects.get('heater_bed')
+        _heaters = heater.get_printer_heaters(self)
+        _extrs   = extruder.get_printer_extruders(self)
+        num_extruders = len(_extrs)
+
+        coords_extr = [0] * num_extruders
+        coords_extr[toolhead.extruder.index] = curr_pos[3]
+
+        # _type == 1 is always included
+        status_block = {
+            "seq"   : gcode.tx_sequenceno,
+            "coords": {
+                "axesHomed" : toolhead.kin.is_homed(),
+                "extr"      : coords_extr,
+                "xyz"       : curr_pos[:3],
+            },
+            "currentTool": toolhead.extruder.index,        # -1 means none
+            "params": {
+                "atxPower"    : 0,
+                "fanPercent"  : fans,
+                "speedFactor" : self.gcode.factor_speed * 100.0,
+                "extrFactors" : [ e.factor_extrude * 100.0 for i,e in _extrs.items() ],
+                "babystep"    : float("%.3f" % self.gcode.babysteps),
+            },
+            # This must be included....
+            "sensors": {
+                "probeValue"     : -1, # 0
+                "probeSecondary" : [0,0],  # Hidden for unmodulated probes, otherwise its array size depends on the probe type (usually 1 or 2)
+                "fanRPM"         : 0,
+            },
+            "time" : 435.2  # time since last reset
+        }
+
+        #status_block["status"] = '';
+
+        status_block["temps"] = {}
+
+        if (heatbed):
+            status_block["temps"].update( {
+                "bed": {
+                    "current" : float("%.2f" % heatbed.last_temp),
+                    "active"  : float("%.2f" % heatbed.target_temp),
+                    # state = HS_off = 0, HS_standby = 1, HS_active = 2, HS_fault = 3, HS_tuning = 4
+                    "state"   : states[True if heatbed.last_pwm_value > 0.0 else False],
+                    "heater"  : heatbed.index+1,
+                },
+            } )
+
+        htr_current = [0.0] * num_extruders
+        htr_active  = [0.0] * num_extruders
+        htr_state   = [  3] * num_extruders
+        htr_heater  = [ -1] * num_extruders
+        htr_standby = [0.0] * num_extruders
+        for idx in _heaters:
+            htr = _heaters[idx]
+            #if htr.is_bed:
+            #    continue
+            index = htr.index
+            htr_current[index] = float("%.2f" % htr.last_temp)
+            htr_active[index]  = float("%.2f" % htr.target_temp)
+            htr_state[index]   = states[True if htr.last_pwm_value > 0.0 else False]
+            htr_heater[index]  = htr.index+1
+        status_block["temps"].update( {
+            "heads": {
+                "current" : htr_current,
+                "active"  : htr_active,
+                "standby" : htr_standby,
+                "state"   : htr_state, # 0: off, 1: standby, 2: active, 3: fault (same for bed)
+                "heater"  : htr_heater,
+            },
+        } )
+
+        if (_type == 2):
+            try:
+                max_temp  = self.gcode.extruder.heater.max_temp
+                cold_temp = self.gcode.extruder.heater.min_extrude_temp
+                if self.gcode.extruder.heater.min_extrude_temp_disabled:
+                    cold_temp = 0.0
+            except AttributeError:
+                max_temp  = 0.0
+                cold_temp = 0.0
+            status_block.update( {
+                "coldExtrudeTemp" : cold_temp,
+                "coldRetractTemp" : cold_temp,
+                "tempLimit"       : max_temp,
+                "endstops_IGN"        : 7,                # NEW: As of 1.09n-ch, this field provides a bitmap of all stopped drive endstops
+                "firmwareName"    : "Klipper",
+                "geometry"        : toolhead.kin.name,      # cartesian, coreXY, delta
+                "axes"            : 3,                # Subject to deprecation - may be dropped in RRF 1.20
+                "volumes"         : 1,                # Num of SD cards
+                "mountedVolumes"  : 1,                # Bitmap of all mounted volumes
+                "name"            : self.name,
+                #"probe": {
+                #    "threshold" : 500,
+                #    "height"    : 2.6,
+                #    "type"      : 1
+                #},
+                #"mcutemp": { # Not available on RADDS
+                #    "min": 26.4,
+                #    "cur": 30.5,
+                #    "max": 43.4
+                #},
+                #"vin": { # Only DuetNG (Duet Ethernet + WiFi)
+                #    "min": 10.4,
+                #    "cur": 12.3,
+                #    "max": 12.5
+                #},
+            } )
+
+            tools = []
+            for extr_key in _extrs:
+                extr = _extrs[extr_key]
+                values = {
+                    "number"  : extr.index,
+                    "name"    : extr.name,
+                    "heaters" : [ (extr.heater.index + 1) ],
+                    "drives"  : [],
+                    #"axisMap" : [
+                    #    [1,0,0,0,0,0], # X
+                    #    [0,1,0,0,0,0]  # Y
+                    #],
+                    #"filament" : "N/A",
+                }
+                tools.append(values)
+            status_block["tools"] = tools
+
+        elif (_type == 3):
+            status_block.update( {
+                "currentLayer"       : 0,
+                "currentLayerTime"   : 0.0,
+                "extrRaw"            : [0.0] * num_extruders,  # How much filament would have been printed without extrusion factors applied
+                "fractionPrinted"    : 0.0,         # one decimal place
+
+                "firstLayerDuration" : 0.0,
+                "firstLayerHeight"   : 0.0,
+                "printDuration"      : 0.0,
+                "warmUpDuration"     : 0.0,
+
+                "timesLeft": {
+                    "file"     : 0.0,
+                    "filament" : 0.0,
+                    "layer"    : 0.0
+                }
+            } )
+        return status_block
+
 
 ######################################################################
 # Startup
 ######################################################################
+
+def start_helper(cfg_file,
+                 loglevel=logging.INFO,
+                 logfile=None,
+                 debuginput=None,
+                 debugoutput=None,
+                 inputtty=None,
+                 stat_interval=None,
+                 startreason="unknown",
+                 **kwargs):
+    global status_delay
+    start_args = {'config_file': cfg_file,
+                  'start_reason': startreason}
+
+    input_fd = bglogger = None
+    status_delay = stat_interval
+
+    if inputtty.__class__.__name__ is not "InputLink":
+        if debuginput:
+            start_args['debuginput'] = debuginput
+            #input_fd = open(debuginput, 'rb').fileno()
+            input_fd = InputLink(dbgin=debuginput)
+        else:
+            #input_fd = util.create_pty(inputtty)
+            input_fd = InputLink(tty=inputtty)
+    else:
+        input_fd = inputtty
+
+    if debugoutput:
+        start_args['debugoutput'] = debugoutput
+        start_args.update(kwargs)
+
+    if logfile:
+        bglogger = queuelogger.setup_bg_logging(logfile,
+                                                loglevel)
+    else:
+        logging.basicConfig(level=loglevel)
+
+    logging.info("Starting Klippy...")
+    start_args['software_version'] = util.get_git_version()
+    if bglogger is not None:
+        lines = ["Args: %s" % (sys.argv,),
+                 "Git version: %s" % (repr(start_args['software_version']),),
+                 "CPU: %s" % (util.get_cpu_info(),),
+                 "Python: %s" % (repr(sys.version),)]
+        lines = "\n".join(lines)
+        logging.info(lines)
+        bglogger.set_rollover_info('versions', lines)
+
+    return Printer(input_fd, bglogger, start_args)
 
 def arg_dictionary(option, opt_str, value, parser):
     key, fname = "dictionary", value
@@ -303,50 +567,38 @@ def main():
     options, args = opts.parse_args()
     if len(args) != 1:
         opts.error("Incorrect number of arguments")
-    start_args = {'config_file': args[0], 'start_reason': 'startup'}
 
-    input_fd = bglogger = None
-    if options.status_delay is not None:
-        status_delay = options.status_delay
     debuglevel = logging.INFO
     if options.verbose:
         debuglevel = logging.DEBUG
-    if options.debuginput:
-        start_args['debuginput'] = options.debuginput
-        debuginput = open(options.debuginput, 'rb')
-        input_fd = debuginput.fileno()
-    else:
-        input_fd = util.create_pty(options.inputtty)
-    if options.debugoutput:
-        start_args['debugoutput'] = options.debugoutput
-        start_args.update(options.dictionary)
-    if options.logfile:
-        bglogger = queuelogger.setup_bg_logging(options.logfile, debuglevel)
-    else:
-        logging.basicConfig(level=debuglevel)
-    logging.info("Starting Klippy...")
-    start_args['software_version'] = util.get_git_version()
-    if bglogger is not None:
-        lines = ["Args: %s" % (sys.argv,),
-                 "Git version: %s" % (repr(start_args['software_version']),),
-                 "CPU: %s" % (util.get_cpu_info(),),
-                 "Python: %s" % (repr(sys.version),)]
-        lines = "\n".join(lines)
-        logging.info(lines)
-        bglogger.set_rollover_info('versions', lines)
+
+    if options.dictionary is None:
+        options.dictionary = {}
+
+    start_reason = "startup"
 
     # Start Printer() class
     while 1:
-        printer = Printer(input_fd, bglogger, start_args)
+        printer = start_helper(cfg_file=args[0],
+                               loglevel=debuglevel,
+                               logfile=options.logfile,
+                               stat_interval=options.status_delay,
+                               debuginput=options.debuginput,
+                               inputtty=options.inputtty,
+                               debugoutput=options.debugoutput,
+                               startreason=start_reason,
+                               **options.dictionary
+        );
         res = printer.run()
         if res == 'exit':
             break
         time.sleep(1.)
         logging.info("Restarting printer")
-        start_args['start_reason'] = res
+        start_reason = res
 
     if bglogger is not None:
         bglogger.stop()
 
 if __name__ == '__main__':
+    util.fix_sigint()
     main()

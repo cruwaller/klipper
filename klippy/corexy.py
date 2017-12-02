@@ -9,6 +9,7 @@ import stepper, homing
 StepList = (0, 1, 2)
 
 class CoreXYKinematics:
+    name = "coreXY"
     def __init__(self, toolhead, printer, config):
         self.steppers = [
             stepper.PrinterHomingStepper(

@@ -9,7 +9,7 @@ import subprocess, traceback, shlex
 # Return the SIGINT interrupt handler back to the OS default
 def fix_sigint():
     signal.signal(signal.SIGINT, signal.SIG_DFL)
-fix_sigint()
+#fix_sigint()
 
 # Set a file-descriptor as non-blocking
 def set_nonblock(fd):
@@ -54,7 +54,7 @@ def get_cpu_info():
 
 def get_git_version():
     # Obtain version info from "git" program
-    gitdir = os.path.join(sys.path[0], '..')
+    gitdir = os.path.join(os.path.dirname(__file__), '..')
     if not os.path.exists(gitdir):
         logging.debug("No '.git' file/directory found")
         return "?"
