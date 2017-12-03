@@ -17,18 +17,9 @@ TODO:
            =====================
            **** REPRAP stuff ***
 
-M112                     : EMERGENCY STOP (ok)
-M999                     : RESTART_FIRMWARE (ok)
 M122                     : Diagnose (skip Pxx where xx > 0)
-M24                      : Start/resume SD print
-M25                      : Pause SD print
-M36 <filename.gco>       : return fileinfo
-M997                     : Perform in-application firmware update - IGNORE
-M21                      : Initialize SD card - IGNORE
 M141 H<heater> S<temp>   : Set Chamber Temperature - IGNORE
 M563                     : Define or remove a tool
-M290                     : Babystepping
-M0 H1 (H arg is missing) : Stop or Unconditional stop (H < 0 = keep heaters on) , execute macro stop.g if exists
 M80                      : ATX Power On
 M81                      : ATX Power Off
 M144                     : Bed Standby (needs stanby temperature...), M140 -> back to active temp
@@ -152,6 +143,7 @@ class GCodeParser:
             handler = self.gcode_handlers.get(cmd, self.cmd_default)
             try:
                 handler(params)
+                self.ack()
             except error as e:
                 self.respond_error(str(e))
             except:
@@ -159,7 +151,7 @@ class GCodeParser:
                 logging.exception(msg)
                 self.printer.invoke_shutdown(msg)
                 self.respond_error(msg)
-            self.ack()
+            # self.ack()
         self.need_ack = prev_need_ack
     def split_string(text, splitlist):
         for sep in splitlist:
@@ -322,7 +314,7 @@ class GCodeParser:
         except heater.error as e:
             self.respond_error(str(e))
             return
-        if wait:
+        if wait and self.simulate_print is False:
             self.bg_temp(heater)
     def set_fan_speed(self, speed, index):
         fan = self.printer.objects.get('fan%d'%(index))
@@ -601,7 +593,6 @@ class GCodeParser:
         'M0', 'M1', 'M18', 'M37', 'M82', 'M83',
         'M104', 'M105', 'M106', 'M107', 'M109',
         'M112', 'M114', 'M115', 'M118',
-        'M120', 'M121',
         'M140', 'M190',
         'M206', 'M220', 'M221', 'M290',
         'M302',
@@ -764,12 +755,6 @@ class GCodeParser:
         self.ack(" ".join(["%s:%s" % (k, v) for k, v in kw.items()]))
     def cmd_M118(self, params):
         self.respond_info(params['#original'].replace(params['#command'], ""))
-    def cmd_M120(self, params):
-        # M120: Push - Store settings
-        pass
-    def cmd_M121(self, params):
-        # M121: Pop - Pop settings
-        pass
     def cmd_M140(self, params):
         # Set Bed Temperature
         self.set_temp(params, is_bed=True)
@@ -871,7 +856,7 @@ class GCodeParser:
     cmd_IGNORE_aliases = [
         "G21",
         "M21",
-        "M110", "M141",
+        "M110", 'M120', 'M121', 'M122', "M141",
         'M291', 'M292',
         'M752', 'M753', 'M754', 'M755', 'M756',
         'M997'

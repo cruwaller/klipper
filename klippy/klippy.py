@@ -159,6 +159,7 @@ class Printer:
         self.run_result = None
         self.fileconfig = None
         self.mcus = []
+        self.starttime = time.time()
     def get_start_args(self):
         return self.start_args
     def _stats(self, eventtime, force_output=False):
@@ -324,9 +325,6 @@ class Printer:
             return 'C'
         return None
     def web_getstatus(self, _type=1):
-        # logging.info("****** KLIPPER: web_getstatus(_type={}) *******".format(_type))
-        # raise AttributeError # fill default status resp
-
         states = {
             False : 0,
             True  : 2
@@ -365,11 +363,10 @@ class Printer:
                 "probeSecondary" : [0,0],  # Hidden for unmodulated probes, otherwise its array size depends on the probe type (usually 1 or 2)
                 "fanRPM"         : 0,
             },
-            "time" : 435.2  # time since last reset
+            "time" : (time.time() - self.starttime)  # time since last reset
         }
 
         #status_block["status"] = '';
-
         status_block["temps"] = {}
 
         if (heatbed):
