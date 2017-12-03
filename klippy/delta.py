@@ -36,6 +36,8 @@ class DeltaKinematics:
         max_halt_velocity = toolhead.get_max_axis_halt()
         for s in self.steppers:
             s.set_max_jerk(max_halt_velocity, self.max_accel)
+        self.require_home_after_motor_off = config.getboolean(
+            'require_home_after_motor_off', True)
         # Determine tower locations in cartesian space
         angles = [config.getsection('stepper_a').getfloat('angle', 210.),
                   config.getsection('stepper_b').getfloat('angle', 330.),
@@ -139,7 +141,9 @@ class DeltaKinematics:
         self.limit_xy2 = -1.
         for stepper in self.steppers:
             stepper.motor_enable(print_time, 0)
-        self.need_motor_enable = self.need_home = True
+        if self.require_home_after_motor_off is True:
+            self.need_home = True
+        self.need_motor_enable = True
     def _check_motor_enable(self, print_time):
         for i in StepList:
             self.steppers[i].motor_enable(print_time, 1)

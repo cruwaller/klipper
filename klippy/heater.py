@@ -480,16 +480,20 @@ class PrinterHeater:
         self.last_pwm_value = 0
 
         # heat check timer
-        self.protection_period = \
-            config.getfloat('protect_period', 10.0, above=1.0, maxval=120.0)
+        self.protection_period_heat = \
+            config.getfloat('protect_period_heat', 10.0, above=0.0, maxval=120.0)
         self.protection_hysteresis_heat = \
-            config.getfloat('protect_hysteresis_heat', 4.0, above=1.0)
+            config.getfloat('protect_hysteresis_heat', 4.0, above=0.50)
+        self.protection_period = \
+            config.getfloat('protect_period', 10.0, above=0.0, maxval=120.0)
         self.protect_hyst_runaway = \
-            config.getfloat('protect_hysteresis_runaway', 4.0, above=1.0)
+            config.getfloat('protect_hysteresis_runaway', 4.0, above=0.0)
         self.reactor = printer.reactor
         self.protection_timer = self.reactor.register_timer(self._check_heating)
 
     def _check_heating(self, eventtime):
+        next_time = 10.0 # next 10sec from now
+
         with self.lock:
             current_temp = self.last_temp
             target_temp = self.target_temp
@@ -502,8 +506,10 @@ class PrinterHeater:
 
             if (current_temp <= (target_temp - self.protect_hyst_runaway)):
                 self.is_heating = True
+                next_time = self.protection_period_heat
             else:
                 self.is_runaway = True
+                next_time = self.protection_period
         elif self.is_runaway:
             # Check hysteresis during maintain
             if (self.protect_hyst_runaway < abs(current_temp - target_temp)):
@@ -514,6 +520,7 @@ class PrinterHeater:
                 #self._printer.request_exit('firmware_restart')
                 self._printer.request_exit('shutdown')
             self.protection_last_temp = current_temp
+            next_time = self.protection_period
         elif (self.is_heating):
             # Check hysteresis during the preheating
             if ((target_temp - self.protect_hyst_runaway) \
@@ -529,9 +536,11 @@ class PrinterHeater:
                     #self._printer.request_exit('firmware_restart')
                     self._printer.request_exit('shutdown')
             self.protection_last_temp = current_temp
-        logging.debug("check_heating(eventtime {}) {} / {}".
-                      format(eventtime, current_temp, target_temp))
-        return eventtime + self.protection_period
+            next_time = self.protection_period_heat
+        logging.debug("check_heating(eventtime {}, next {}) {} / {}".
+                      format(eventtime, (eventtime + next_time),
+                             current_temp, target_temp))
+        return eventtime + next_time
     def get_min_extrude_status(self):
         stat = "prevented"
         if self.min_extrude_temp_disabled:

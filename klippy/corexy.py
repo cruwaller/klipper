@@ -25,6 +25,8 @@ class CoreXYKinematics:
             'max_z_velocity', max_velocity, above=0., maxval=max_velocity)
         self.max_z_accel = config.getfloat(
             'max_z_accel', max_accel, above=0., maxval=max_accel)
+        self.require_home_after_motor_off = config.getboolean(
+            'require_home_after_motor_off', True)
         self.need_motor_enable = True
         self.limits = [(1.0, -1.0)] * 3
         # Setup stepper max halt velocity
@@ -90,7 +92,8 @@ class CoreXYKinematics:
     def query_endstops(self, print_time, query_flags):
         return homing.query_endstops(print_time, query_flags, self.steppers)
     def motor_off(self, print_time):
-        self.limits = [(1.0, -1.0)] * 3
+        if self.require_home_after_motor_off is True:
+            self.limits = [(1.0, -1.0)] * 3
         for stepper in self.steppers:
             stepper.motor_enable(print_time, 0)
         self.need_motor_enable = True
