@@ -762,11 +762,11 @@ class ControlAutoTune:
         self.Kp = 0.6 * Ku
         Ti = 0.5 * Tu
         Td = 0.125 * Tu
-        self.Ki = Kp / Ti
-        self.Kd = Kp * Td
+        self.Ki = self.Kp / Ti
+        self.Kd = self.Kp * Td
         logging.info("Autotune: raw=%f/%f Ku=%f Tu=%f  Kp=%f Ki=%f Kd=%f",
-                     temp_diff, max_power, Ku, Tu, Kp * PID_PARAM_BASE,
-                     Ki * PID_PARAM_BASE, Kd * PID_PARAM_BASE)
+                     temp_diff, max_power, Ku, Tu, self.Kp * PID_PARAM_BASE,
+                     self.Ki * PID_PARAM_BASE, self.Kd * PID_PARAM_BASE)
     def check_busy(self, eventtime):
         if self.heating or len(self.peaks) < 12:
             return True
