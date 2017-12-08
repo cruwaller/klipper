@@ -17,7 +17,6 @@ TODO:
            =====================
            **** REPRAP stuff ***
 
-M122                     : Diagnose (skip Pxx where xx > 0)
 M141 H<heater> S<temp>   : Set Chamber Temperature - IGNORE
 M563                     : Define or remove a tool
 M80                      : ATX Power On
@@ -848,10 +847,16 @@ class GCodeParser:
         # Set X, Y, Z offsets
         offsets = { a.lower(): self.get_float(a, params)
                     for a, p in self.axis2pos.items() if a in params }
-        if self.toolhead is None:
-            self.cmd_default(params)
-            return
-        self.toolhead.set_homing_offset(offsets)
+        if len(offsets) > 0:
+            if self.toolhead is None:
+                self.cmd_default(params)
+                return
+            self.toolhead.set_homing_offset(offsets)
+        else:
+            self.respond_info("Current offsets: X=%.2f Y=%.2f Z=%.2f" % \
+                              (self.toolhead.kin.steppers[0].homing_offset,
+                               self.toolhead.kin.steppers[1].homing_offset,
+                               self.toolhead.kin.steppers[2].homing_offset))
     cmd_IGNORE_when_not_ready = True
     cmd_IGNORE_aliases = [
         "G21",
