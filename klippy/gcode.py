@@ -1,10 +1,10 @@
 # Parse gcode commands
 #
-# Copyright (C) 2016  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2016,2017  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import os, re, logging, collections
-import homing, extruder, chipmisc, heater
+import homing, extruder, heater
 
 '''
 TODO:
@@ -28,8 +28,12 @@ M1 (partial?)
 
 tx_sequenceno = 0
 
-# Parse out incoming GCode and find and translate head movements
+class error(Exception):
+    pass
+
+# Parse and handle G-Code commands
 class GCodeParser:
+    error = error
     RETRY_TIME = 0.100
     def __init__(self, printer, fd_link):
         self.printer = printer
@@ -47,8 +51,17 @@ class GCodeParser:
         self.input_log = collections.deque([], 50)
         # Command handling
         self.is_printer_ready = False
-        self.gcode_handlers = {}
-        self.build_handlers()
+        self.base_gcode_handlers = self.gcode_handlers = {}
+        self.ready_gcode_handlers = {}
+        self.gcode_help = {}
+        for cmd in self.all_handlers:
+            func = getattr(self, 'cmd_' + cmd)
+            wnr = getattr(self, 'cmd_' + cmd + '_when_not_ready', False)
+            desc = getattr(self, 'cmd_' + cmd + '_help', None)
+            self.register_command(cmd, func, wnr, desc)
+            for a in getattr(self, 'cmd_' + cmd + '_aliases', []):
+                self.register_command(a, func, wnr)
+        # G-Code state
         self.need_ack = False
         self.toolhead = None
         self.extruder = None
@@ -63,21 +76,20 @@ class GCodeParser:
         #self.tx_sequenceno = 0
         self.simulate_print = False
         self.babysteps = 0.0 # Effect to Z only
-    def build_handlers(self):
-        handlers = self.all_handlers
-        if not self.is_printer_ready:
-            handlers = [h for h in handlers
-                        if getattr(self, 'cmd_'+h+'_when_not_ready', False)]
-        gcode_handlers = { h: getattr(self, 'cmd_'+h) for h in handlers }
-        for h, f in list(gcode_handlers.items()):
-            aliases = getattr(self, 'cmd_'+h+'_aliases', [])
-            gcode_handlers.update({ a: f for a in aliases })
-        self.gcode_handlers = gcode_handlers
+    def register_command(self, cmd, func, when_not_ready=False, desc=None):
+        if not (len(cmd) >= 2 and not cmd[0].isupper() and cmd[1].isdigit()):
+            origfunc = func
+            func = lambda params: origfunc(self.get_extended_params(params))
+        self.ready_gcode_handlers[cmd] = func
+        if when_not_ready:
+            self.base_gcode_handlers[cmd] = func
+        if desc is not None:
+            self.gcode_help[cmd] = desc
     def stats(self, eventtime):
         return "gcodein=%d" % (self.bytes_read,)
     def connect(self):
         self.is_printer_ready = True
-        self.build_handlers()
+        self.gcode_handlers = self.ready_gcode_handlers
         # Lookup printer components
         self.toolhead = self.printer.objects.get('toolhead')
         self.extruders = extruder.get_printer_extruders(self.printer)
@@ -88,11 +100,14 @@ class GCodeParser:
             self.fd_handle = self.reactor.register_fd(self.fd_r, self.process_data)
         global tx_sequenceno
         tx_sequenceno += 1
+    def reset_last_position(self):
+        if self.toolhead is not None:
+            self.last_position = self.toolhead.get_position()
     def do_shutdown(self):
         if not self.is_printer_ready:
             return
         self.is_printer_ready = False
-        self.build_handlers()
+        self.gcode_handlers = self.base_gcode_handlers
         self.dump_debug()
         if self.is_fileinput:
             self.printer.request_exit()
@@ -145,6 +160,7 @@ class GCodeParser:
                 self.ack()
             except error as e:
                 self.respond_error(str(e))
+                self.reset_last_position()
             except:
                 msg = 'Internal error on command:"%s"' % (cmd,)
                 logging.exception(msg)
@@ -209,38 +225,21 @@ class GCodeParser:
             self.respond_info("\n".join(lines[:-1]))
         self.respond('!! %s' % (lines[-1].strip(),))
     # Parameter parsing helpers
-    def get_int(self, name, params, default=None, minval=None, maxval=None):
+    class sentinel: pass
+    def get_str(self, name, params, default=sentinel, parser=str):
         if name in params:
             try:
-                '''
-                value = int(params[name])
-                if (minval is not None):
-                    if (value < minval):
-                        raise error("Error on '%s': param %s out of range, %d < min=%d" %
-                                    (params['#original'], name, value, minval))
-                if (maxval is not None):
-                    if (maxval < value):
-                        raise error("Error on '%s': param %s out of range, max=%d < %d" %
-                                    (params['#original'], name, maxval, value))
-                return value
-                '''
-                return int(params[name]);
-            except ValueError:
+                return parser(params[name])
+            except:
                 raise error("Error on '%s': unable to parse %s" % (
                     params['#original'], params[name]))
-        if default is not None:
+        if default is not self.sentinel:
             return default
         raise error("Error on '%s': missing %s" % (params['#original'], name))
-    def get_float(self, name, params, default=None):
-        if name in params:
-            try:
-                return float(params[name])
-            except ValueError:
-                raise error("Error on '%s': unable to parse %s" % (
-                    params['#original'], params[name]))
-        if default is not None:
-            return default
-        raise error("Error on '%s': missing %s" % (params['#original'], name))
+    def get_int(self, name, params, default=sentinel):
+        return self.get_str(name, params, default, parser=int)
+    def get_float(self, name, params, default=sentinel):
+        return self.get_str(name, params, default, parser=float)
     extended_r = re.compile(
         r'^\s*(?:N[0-9]+\s*)?'
         r'(?P<cmd>[a-zA-Z_][a-zA-Z_]+)(?:\s+|$)'
@@ -311,8 +310,7 @@ class GCodeParser:
         try:
             heater.set_temp(print_time, temp)
         except heater.error as e:
-            self.respond_error(str(e))
-            return
+            raise error(str(e))
         if wait and self.simulate_print is False:
             self.bg_temp(heater)
     def set_fan_speed(self, speed, index):
@@ -356,10 +354,9 @@ class GCodeParser:
         try:
             self.toolhead.set_extruder(e)
         except homing.EndstopError as e:
-            self.respond_error(str(e))
-            return
+            raise error(str(e))
         self.extruder = e
-        self.last_position = self.toolhead.get_position()
+        self.reset_last_position()
         activate_gcode = self.extruder.get_activate_gcode(True)
         self.process_commands(activate_gcode.split('\n'), need_ack=False)
 
@@ -388,7 +385,7 @@ class GCodeParser:
             if 'F' in params:
                 speed = float(params['F']) / 60.
                 if speed <= 0.:
-                    raise ValueError()
+                    raise error("Invalid speed in '%s'" % (params['#original'],))
                 self.speed = speed * self.factor_speed
             if is_arch:
                 self.arch_I = 0.0
@@ -405,9 +402,7 @@ class GCodeParser:
                     self.arch_circles = int(params['P'])
                     if self.arch_circles <= 0:
                         raise ValueError()
-
         except ValueError as e:
-            self.last_position = self.toolhead.get_position()
             raise error("Unable to parse move '%s'" % (params['#original'],))
 
         self.absolutecoord = absolutecoord
@@ -415,12 +410,8 @@ class GCodeParser:
     def _apply_move(self, pos, speed):
         try:
             self.toolhead.move(pos, speed)
-            return True
         except homing.EndstopError as e:
-            self.respond_error(str(e))
-            self.last_position = self.toolhead.get_position()
-            return False
-
+            raise error(str(e))
 
     def _plan_arc(self, position, arc_offset, clockwise):
         N_ARC_CORRECTION = 25
@@ -598,7 +589,7 @@ class GCodeParser:
         'M400',
         'M550',
         'M851',
-        'IGNORE', 'QUERY_ENDSTOPS', 'PID_TUNE', 'SET_SERVO',
+        'IGNORE', 'QUERY_ENDSTOPS', 'PID_TUNE',
         'RESTART', 'FIRMWARE_RESTART', 'ECHO', 'STATUS', 'HELP']
 
     # Basic movement
@@ -649,15 +640,13 @@ class GCodeParser:
                 axes.append(self.axis2pos[axis])
         if not axes:
             axes = [0, 1, 2]
-        homing_state = homing.Homing(self.toolhead, axes)
+        homing_state = homing.Homing(self.toolhead)
         if self.is_fileinput:
             homing_state.set_no_verify_retract()
         try:
-            self.toolhead.home(homing_state)
+            homing_state.home_axes(axes)
         except homing.EndstopError as e:
-            self.toolhead.motor_off()
-            self.respond_error(str(e))
-            return
+            raise error(str(e))
         newpos = self.toolhead.get_position()
         for axis in homing_state.get_axes():
             self.last_position[axis] = newpos[axis]
@@ -732,6 +721,7 @@ class GCodeParser:
     def cmd_M109(self, params):
         # Set Extruder Temperature and Wait
         self.set_temp(params, wait=True)
+    cmd_M112_when_not_ready = True
     def cmd_M112(self, params):
         # Emergency Stop
         self.printer.invoke_shutdown("Shutdown due to M112 command")
@@ -741,7 +731,7 @@ class GCodeParser:
         if self.toolhead is None:
             self.cmd_default(params)
             return
-        raw_pos = self.toolhead.query_endstops("get_mcu_position")
+        raw_pos = homing.query_position(self.toolhead)
         self.respond("X:%.3f Y:%.3f Z:%.3f E:%.3f Count %s" % (
             self.last_position[0], self.last_position[1],
             self.last_position[2], self.last_position[3],
@@ -873,13 +863,7 @@ class GCodeParser:
     cmd_QUERY_ENDSTOPS_aliases = ["M119"]
     def cmd_QUERY_ENDSTOPS(self, params):
         # Get Endstop Status
-        if self.is_fileinput:
-            return
-        try:
-            res = self.toolhead.query_endstops()
-        except homing.EndstopError as e:
-            self.respond_error(str(e))
-            return
+        res = homing.query_endstops(self.toolhead)
         self.respond(" ".join(["%s:%s" % (name, ["open", "TRIGGERED"][not not t])
                                for name, t in res]))
     cmd_PID_TUNE_help = "Run PID Tuning"
@@ -901,20 +885,6 @@ class GCodeParser:
             #count = self.get_int('C', params, 12, 8)
             heater.start_auto_tune(temp)
             self.bg_temp(heater)
-    cmd_SET_SERVO_help = "Set servo angle"
-    def cmd_SET_SERVO(self, params):
-        params = self.get_extended_params(params)
-        name = params.get('SERVO')
-        if name is None:
-            raise error("Error on '%s': missing SERVO" % (params['#original'],))
-        s = chipmisc.get_printer_servo(self.printer, name)
-        if s is None:
-            raise error("Servo not configured")
-        print_time = self.toolhead.get_last_move_time()
-        if 'WIDTH' in params:
-            s.set_pulse_width(print_time, self.get_float('WIDTH', params))
-            return
-        s.set_angle(print_time, self.get_float('ANGLE', params))
     def prep_restart(self):
         if self.is_printer_ready:
             self.respond_info("Preparing to restart...")
@@ -950,10 +920,6 @@ class GCodeParser:
             cmdhelp.append("Printer is not ready - not all commands available.")
         cmdhelp.append("Available extended commands:")
         for cmd in sorted(self.gcode_handlers):
-            desc = getattr(self, 'cmd_'+cmd+'_help', None)
-            if desc is not None:
-                cmdhelp.append("%-10s: %s" % (cmd, desc))
+            if cmd in self.gcode_help:
+                cmdhelp.append("%-10s: %s" % (cmd, self.gcode_help[cmd]))
         self.respond_info("\n".join(cmdhelp))
-
-class error(Exception):
-    pass

@@ -61,6 +61,8 @@ class DeltaKinematics:
             % (math.sqrt(self.max_xy2), math.sqrt(self.slow_xy2),
                math.sqrt(self.very_slow_xy2)))
         self.set_position([0., 0., 0.])
+    def get_steppers(self):
+        return list(self.steppers)
     def _cartesian_to_actuator(self, coord):
         return [math.sqrt(self.arm_length2
                           - (self.towers[i][0] - coord[0])**2
@@ -114,6 +116,7 @@ class DeltaKinematics:
     def home(self, homing_state):
         # All axes are homed simultaneously
         homing_state.set_axes([0, 1, 2])
+        endstops = [es for s in self.steppers for es in s.get_endstops()]
         s = self.steppers[0] # Assume homing speed same for all steppers
         self.need_home = False
         # Initial homing
@@ -121,22 +124,20 @@ class DeltaKinematics:
         homepos = [0., 0., self.max_z, None]
         coord = list(homepos)
         coord[2] = -1.5 * math.sqrt(self.arm_length2-self.max_xy2)
-        homing_state.home(list(coord), homepos, self.steppers, homing_speed)
+        homing_state.home(coord, homepos, endstops, homing_speed)
         # Retract
         coord[2] = homepos[2] - s.homing_retract_dist
-        homing_state.retract(list(coord), homing_speed)
+        homing_state.retract(coord, homing_speed)
         # Home again
         coord[2] -= s.homing_retract_dist
-        homing_state.home(list(coord), homepos, self.steppers
-                          , homing_speed/2.0, second_home=True)
+        homing_state.home(coord, homepos, endstops,
+                          homing_speed/2.0, second_home=True)
         # Set final homed position
         spos = self._cartesian_to_actuator(homepos)
         spos = [spos[i] + self.steppers[i].position_endstop - self.max_z
                 + self.steppers[i].get_homed_offset()
                 for i in StepList]
         homing_state.set_homed_position(self._actuator_to_cartesian(spos))
-    def query_endstops(self, print_time, query_flags):
-        return homing.query_endstops(print_time, query_flags, self.steppers)
     def motor_off(self, print_time):
         self.limit_xy2 = -1.
         for stepper in self.steppers:
@@ -148,6 +149,11 @@ class DeltaKinematics:
         for i in StepList:
             self.steppers[i].motor_enable(print_time, 1)
         self.need_motor_enable = False
+    def is_homed(self):
+        ret = [1, 1, 1]
+        if self.need_home is True:
+            ret[i] = [0, 0, 0]
+        return ret
     def check_move(self, move):
         end_pos = move.end_pos
         xy2 = end_pos[0]**2 + end_pos[1]**2

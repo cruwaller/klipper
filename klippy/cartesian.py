@@ -35,6 +35,8 @@ class CartKinematics:
                 s.set_homing_offset(offsets[s.name])
             except (KeyError):
                 pass
+    def get_steppers(self):
+        return list(self.steppers)
     def set_position(self, newpos):
         for i in StepList:
             self.steppers[i].set_position(newpos[i])
@@ -65,14 +67,14 @@ class CartKinematics:
             homepos[axis] = s.position_endstop
             coord = [None, None, None, None]
             coord[axis] = pos
-            homing_state.home(list(coord), homepos, [s], homing_speed)
+            homing_state.home(coord, homepos, s.get_endstops(), homing_speed)
             # Retract
             coord[axis] = rpos
-            homing_state.retract(list(coord), homing_speed)
+            homing_state.retract(coord, homing_speed)
             # Home again
             coord[axis] = r2pos
-            homing_state.home(
-                list(coord), homepos, [s], homing_speed/2.0, second_home=True)
+            homing_state.home(coord, homepos, s.get_endstops(),
+                              homing_speed/2.0, second_home=True)
             # Set final homed position
             coord[axis] = s.position_endstop + s.get_homed_offset()
             homing_state.set_homed_position(coord)
@@ -80,8 +82,6 @@ class CartKinematics:
                 # Retract
                 coord[axis] = rpos
                 homing_state.retract(list(coord), homing_speed)
-    def query_endstops(self, print_time, query_flags):
-        return homing.query_endstops(print_time, query_flags, self.steppers)
     def motor_off(self, print_time):
         if self.require_home_after_motor_off is True:
             self.limits = [(1.0, -1.0)] * 3

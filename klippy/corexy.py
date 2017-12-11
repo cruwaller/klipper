@@ -42,6 +42,8 @@ class CoreXYKinematics:
                 s.set_homing_offset(offsets[s.name])
             except (KeyError):
                 pass
+    def get_steppers(self):
+        return list(self.steppers)
     def set_position(self, newpos):
         pos = (newpos[0] + newpos[1], newpos[0] - newpos[1], newpos[2])
         for i in StepList:
@@ -73,14 +75,14 @@ class CoreXYKinematics:
             homepos[axis] = s.position_endstop
             coord = [None, None, None, None]
             coord[axis] = pos
-            homing_state.home(list(coord), homepos, [s], homing_speed)
+            homing_state.home(coord, homepos, s.get_endstops(), homing_speed)
             # Retract
             coord[axis] = rpos
-            homing_state.retract(list(coord), homing_speed)
+            homing_state.retract(coord, homing_speed)
             # Home again
             coord[axis] = r2pos
-            homing_state.home(
-                list(coord), homepos, [s], homing_speed/2.0, second_home=True)
+            homing_state.home(coord, homepos, s.get_endstops(),
+                              homing_speed/2.0, second_home=True)
             if axis == 2:
                 # Support endstop phase detection on Z axis
                 coord[axis] = s.position_endstop + s.get_homed_offset()
@@ -89,8 +91,6 @@ class CoreXYKinematics:
                     # Retract
                     coord[axis] = rpos
                     homing_state.retract(list(coord), homing_speed)
-    def query_endstops(self, print_time, query_flags):
-        return homing.query_endstops(print_time, query_flags, self.steppers)
     def motor_off(self, print_time):
         if self.require_home_after_motor_off is True:
             self.limits = [(1.0, -1.0)] * 3
@@ -117,6 +117,12 @@ class CoreXYKinematics:
                     raise homing.EndstopMoveError(
                         end_pos, "Must home axis first")
                 raise homing.EndstopMoveError(end_pos)
+    def is_homed(self):
+        ret = [1, 1, 1]
+        for i in StepList:
+            if self.limits[i][0] > self.limits[i][1]:
+                ret[i] = 0
+        return ret
     def check_move(self, move):
         limits = self.limits
         xpos, ypos = move.end_pos[:2]

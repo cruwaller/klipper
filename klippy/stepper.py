@@ -55,10 +55,8 @@ class PrinterStepper:
     def set_position(self, pos):
         self.mcu_stepper.set_position(pos)
     def motor_enable(self, print_time, enable=0):
-        if enable and self.need_motor_enable:
-            self.mcu_stepper.reset_step_clock(print_time)
         if (self.mcu_enable is not None
-            and self.mcu_enable.get_last_setting() != enable):
+            and self.need_motor_enable != (not enable)):
             self.mcu_enable.set_digital(print_time, enable)
         self.need_motor_enable = not enable
 
@@ -155,7 +153,7 @@ class PrinterHomingStepper(PrinterStepper):
     def set_homing_offset(self, offset):
         self.homing_offset = offset
     def get_endstops(self):
-        return [(self.mcu_endstop, self.mcu_stepper, self.name)]
+        return [(self.mcu_endstop, self.name)]
     def get_homing_speed(self):
         # Round the configured homing speed so that it is an even
         # number of ticks per step.
@@ -199,8 +197,7 @@ class PrinterMultiStepper(PrinterHomingStepper):
             if extraendstop is not None:
                 mcu_endstop = pins.setup_pin(printer, 'endstop', extraendstop)
                 mcu_endstop.add_stepper(extra.mcu_stepper)
-                self.endstops.append(
-                    (mcu_endstop, extra.mcu_stepper, extra.name))
+                self.endstops.append((mcu_endstop, extra.name))
             else:
                 self.mcu_endstop.add_stepper(extra.mcu_stepper)
         self.step_const = self.step_multi_const

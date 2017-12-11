@@ -331,8 +331,6 @@ class ToolHead:
         self.move_queue.add_move(move)
         if self.print_time > self.need_check_stall:
             self._check_stall()
-    def home(self, homing_state):
-        self.kin.home(homing_state)
     def dwell(self, delay, check_stall=True):
         self.get_last_move_time()
         self.update_move_time(delay)
@@ -354,9 +352,6 @@ class ToolHead:
         while (not self.sync_print_time
                or self.print_time >= self.mcu.estimated_print_time(eventtime)):
             eventtime = self.reactor.pause(eventtime + 0.100)
-    def query_endstops(self, query_flags=""):
-        last_move_time = self.get_last_move_time()
-        return self.kin.query_endstops(last_move_time, query_flags)
     def set_extruder(self, extruder):
         last_move_time = self.get_last_move_time()
         self.extruder.set_active(last_move_time, False)
@@ -382,6 +377,8 @@ class ToolHead:
             self.reset_print_time()
         except:
             logging.exception("Exception in do_shutdown")
+    def get_kinematics(self):
+        return self.kin
     def get_max_velocity(self):
         return self.max_velocity, self.max_accel
     def get_max_axis_halt(self):
