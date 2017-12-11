@@ -14,17 +14,28 @@ SLOW_RATIO = 3.
 class DeltaKinematics:
     name = "delta"
     def __init__(self, toolhead, printer, config):
-        self.steppers = [stepper.PrinterHomingStepper(
-            printer, config.getsection('stepper_' + n))
-                         for n in ['a', 'b', 'c']]
+        stepper_configs = [config.getsection('stepper_' + n)
+                           for n in ['a', 'b', 'c']]
+        stepper_a = stepper.PrinterHomingStepper(printer, stepper_configs[0])
+        stepper_b = stepper.PrinterHomingStepper(
+            printer, stepper_configs[1],
+            default_position=stepper_a.position_endstop)
+        stepper_c = stepper.PrinterHomingStepper(
+            printer, stepper_configs[2],
+            default_position=stepper_a.position_endstop)
+        self.steppers = [stepper_a, stepper_b, stepper_c]
         self.need_motor_enable = self.need_home = True
         radius = config.getfloat('delta_radius', above=0.)
-        arm_length = config.getfloat('delta_arm_length', above=radius)
-        self.arm_length2 = arm_length**2
+        arm_length_a = stepper_configs[0].getfloat('arm_length', above=radius)
+        arm_lengths = [sconfig.getfloat('arm_length', arm_length_a, above=radius)
+                       for sconfig in stepper_configs]
+        self.arm2 = [arm**2 for arm in arm_lengths]
+        self.endstops = [s.position_endstop + math.sqrt(arm2 - radius**2)
+                         for s, arm2 in zip(self.steppers, self.arm2)]
         self.limit_xy2 = -1.
-        tower_height_at_zeros = math.sqrt(self.arm_length2 - radius**2)
         self.max_z = min([s.position_endstop for s in self.steppers])
-        self.limit_z = self.max_z - (arm_length - tower_height_at_zeros)
+        self.limit_z = min([ep - arm
+                            for ep, arm in zip(self.endstops, arm_lengths)])
         logging.info(
             "Delta max build height %.2fmm (radius tapered above %.2fmm)" % (
                 self.max_z, self.limit_z))
@@ -39,22 +50,22 @@ class DeltaKinematics:
         self.require_home_after_motor_off = config.getboolean(
             'require_home_after_motor_off', True)
         # Determine tower locations in cartesian space
-        angles = [config.getsection('stepper_a').getfloat('angle', 210.),
-                  config.getsection('stepper_b').getfloat('angle', 330.),
-                  config.getsection('stepper_c').getfloat('angle', 90.)]
+        angles = [sconfig.getfloat('angle', angle)
+                  for sconfig, angle in zip(stepper_configs, [210., 330., 90.])]
         self.towers = [(math.cos(math.radians(angle)) * radius,
                         math.sin(math.radians(angle)) * radius)
                        for angle in angles]
         # Find the point where an XY move could result in excessive
         # tower movement
         half_min_step_dist = min([s.step_dist for s in self.steppers]) * .5
+        min_arm_length = min(arm_lengths)
         def ratio_to_dist(ratio):
-            return (ratio * math.sqrt(self.arm_length2 / (ratio**2 + 1.)
+            return (ratio * math.sqrt(min_arm_length**2 / (ratio**2 + 1.)
                                       - half_min_step_dist**2)
                     + half_min_step_dist)
         self.slow_xy2 = (ratio_to_dist(SLOW_RATIO) - radius)**2
         self.very_slow_xy2 = (ratio_to_dist(2. * SLOW_RATIO) - radius)**2
-        self.max_xy2 = min(radius, arm_length - radius,
+        self.max_xy2 = min(radius, min_arm_length - radius,
                            ratio_to_dist(4. * SLOW_RATIO) - radius)**2
         logging.info(
             "Delta max build radius %.2fmm (moves slowed past %.2fmm and %.2fmm)"
@@ -64,41 +75,34 @@ class DeltaKinematics:
     def get_steppers(self):
         return list(self.steppers)
     def _cartesian_to_actuator(self, coord):
-        return [math.sqrt(self.arm_length2
-                          - (self.towers[i][0] - coord[0])**2
+        return [math.sqrt(self.arm2[i] - (self.towers[i][0] - coord[0])**2
                           - (self.towers[i][1] - coord[1])**2) + coord[2]
                 for i in StepList]
     def _actuator_to_cartesian(self, pos):
-        # Based on code from Smoothieware
-        tower1 = list(self.towers[0]) + [pos[0]]
-        tower2 = list(self.towers[1]) + [pos[1]]
-        tower3 = list(self.towers[2]) + [pos[2]]
+        # Find nozzle position using trilateration (see wikipedia)
+        carriage1 = list(self.towers[0]) + [pos[0]]
+        carriage2 = list(self.towers[1]) + [pos[1]]
+        carriage3 = list(self.towers[2]) + [pos[2]]
 
-        s12 = matrix_sub(tower1, tower2)
-        s23 = matrix_sub(tower2, tower3)
-        s13 = matrix_sub(tower1, tower3)
+        s21 = matrix_sub(carriage2, carriage1)
+        s31 = matrix_sub(carriage3, carriage1)
 
-        normal = matrix_cross(s12, s23)
+        d = math.sqrt(matrix_magsq(s21))
+        ex = matrix_mul(s21, 1. / d)
+        i = matrix_dot(ex, s31)
+        vect_ey = matrix_sub(s31, matrix_mul(ex, i))
+        ey = matrix_mul(vect_ey, 1. / math.sqrt(matrix_magsq(vect_ey)))
+        ez = matrix_cross(ex, ey)
+        j = matrix_dot(ey, s31)
 
-        magsq_s12 = matrix_magsq(s12)
-        magsq_s23 = matrix_magsq(s23)
-        magsq_s13 = matrix_magsq(s13)
+        x = (self.arm2[0] - self.arm2[1] + d**2) / (2. * d)
+        y = (self.arm2[0] - self.arm2[2] - x**2 + (x-i)**2 + j**2) / (2. * j)
+        z = -math.sqrt(self.arm2[0] - x**2 - y**2)
 
-        inv_nmag_sq = 1.0 / matrix_magsq(normal)
-        q = 0.5 * inv_nmag_sq
-
-        a = q * magsq_s23 * matrix_dot(s12, s13)
-        b = -q * magsq_s13 * matrix_dot(s12, s23) # negate because we use s12 instead of s21
-        c = q * magsq_s12 * matrix_dot(s13, s23)
-
-        circumcenter = [tower1[0] * a + tower2[0] * b + tower3[0] * c,
-                        tower1[1] * a + tower2[1] * b + tower3[1] * c,
-                        tower1[2] * a + tower2[2] * b + tower3[2] * c]
-
-        r_sq = 0.5 * q * magsq_s12 * magsq_s23 * magsq_s13
-        dist = math.sqrt(inv_nmag_sq * (self.arm_length2 - r_sq))
-
-        return matrix_sub(circumcenter, matrix_mul(normal, dist))
+        ex_x = matrix_mul(ex, x)
+        ey_y = matrix_mul(ey, y)
+        ez_z = matrix_mul(ez, z)
+        return matrix_add(carriage1, matrix_add(ex_x, matrix_add(ey_y, ez_z)))
     def set_homing_offset(self, offsets):
         mapping = {'a':'x', 'b':'y', 'b':'z'}
         for s in self.steppers:
@@ -123,7 +127,7 @@ class DeltaKinematics:
         homing_speed = s.get_homing_speed()
         homepos = [0., 0., self.max_z, None]
         coord = list(homepos)
-        coord[2] = -1.5 * math.sqrt(self.arm_length2-self.max_xy2)
+        coord[2] = -1.5 * math.sqrt(max(self.arm2)-self.max_xy2)
         homing_state.home(coord, homepos, endstops, homing_speed)
         # Retract
         coord[2] = homepos[2] - s.homing_retract_dist
@@ -133,10 +137,8 @@ class DeltaKinematics:
         homing_state.home(coord, homepos, endstops,
                           homing_speed/2.0, second_home=True)
         # Set final homed position
-        spos = self._cartesian_to_actuator(homepos)
-        spos = [spos[i] + self.steppers[i].position_endstop - self.max_z
-                + self.steppers[i].get_homed_offset()
-                for i in StepList]
+        spos = [ep + s.get_homed_offset()
+                for ep, s in zip(self.endstops, self.steppers)]
         homing_state.set_homed_position(self._actuator_to_cartesian(spos))
     def motor_off(self, print_time):
         self.limit_xy2 = -1.
@@ -217,7 +219,7 @@ class DeltaKinematics:
             towery_d = self.towers[i][1] - origy
             vt_startxy_d = (towerx_d*axes_d[0] + towery_d*axes_d[1])*inv_movexy_d
             tangentxy_d2 = towerx_d**2 + towery_d**2 - vt_startxy_d**2
-            vt_arm_d = math.sqrt(self.arm_length2 - tangentxy_d2)
+            vt_arm_d = math.sqrt(self.arm2[i] - tangentxy_d2)
             vt_startz = origz
 
             # Generate steps
@@ -254,6 +256,9 @@ def matrix_dot(m1, m2):
 
 def matrix_magsq(m1):
     return m1[0]**2 + m1[1]**2 + m1[2]**2
+
+def matrix_add(m1, m2):
+    return [m1[0] + m2[0], m1[1] + m2[1], m1[2] + m2[2]]
 
 def matrix_sub(m1, m2):
     return [m1[0] - m2[0], m1[1] - m2[1], m1[2] - m2[2]]

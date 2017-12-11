@@ -62,14 +62,17 @@ class PrinterStepper:
 
 # Support for stepper controlled linear axis with an endstop
 class PrinterHomingStepper(PrinterStepper):
-    def __init__(self, printer, config):
+    def __init__(self, printer, config, default_position=None):
         PrinterStepper.__init__(self, printer, config)
         # Endstop and its position
         self.mcu_endstop = pins.setup_pin(
             printer, 'endstop', config.get('endstop_pin'))
         self.mcu_endstop.add_stepper(self.mcu_stepper)
-        self.position_endstop = config.getfloat('position_endstop')
-        self.position_endstop_original = self.position_endstop
+        if default_position is None:
+            self.position_endstop = config.getfloat('position_endstop')
+        else:
+            self.position_endstop = config.getfloat(
+                'position_endstop', default_position)
         # Homing offset will be substracted from homed position
         self.homing_offset = config.getfloat('homing_offset', 0.)
         # Axis range
@@ -107,7 +110,8 @@ class PrinterHomingStepper(PrinterStepper):
             self.homing_endstop_phase = config.getint(
                 'homing_endstop_phase', None, minval=0
                 , maxval=self.homing_stepper_phases-1)
-            if self.homing_endstop_phase is not None:
+            if (self.homing_endstop_phase is not None
+                and config.getboolean('homing_endstop_align_zero', False)):
                 # Adjust the endstop position so 0.0 is always at a full step
                 micro_steps = self.homing_stepper_phases // 4
                 phase_offset = (
