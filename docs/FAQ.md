@@ -29,6 +29,29 @@ serial: /dev/serial/by-id/usb-UltiMachine__ultimachine.com__RAMBo_12345678912345
 Be sure to copy-and-paste the name from the "ls" command above as the
 name will be different on each printer.
 
+### The "make flash" command doesn't work.
+
+The code attempts to flash the device using the most common method for
+each platform. Unfortunately, there is a lot of variance in flashing
+methods, so the "make flash" command may not work on all boards.
+
+If you're having an intermittent failure or you do have a standard
+setup, then double check that Klipper isn't running when flashing
+(sudo service klipper stop), make sure Octoprint isn't trying to
+connect directly to the device (open the Connection tab in the web
+page and click Disconnect if the Serial Port is set to the device),
+and make sure FLASH_DEVICE is set correctly for your board (see the
+[question above](#when-i-restart-my-micro-controller-the-device-changes-to-devttyacm1)).
+
+However, if "make flash" just doesn't work for your board, then you
+will need to manually flash. See if there is a config file in the
+[config directory](../config) with specific instructions for flashing
+the device. Also, check the board manufacturer's documentation to see
+if it describes how to flash the device. Finally, on AVR devices, it
+may be possible to manually flash the device using
+[avrdude](http://www.nongnu.org/avrdude/) with custom command-line
+parameters - see the avrdude documentation for further information.
+
 ### Can I run Klipper on something other than a Raspberry Pi?
 
 Klipper only requires Python running on a Linux (or similar)
@@ -101,3 +124,18 @@ rates, but the stepper motor may not have sufficient torque to move at
 a higher speed. So, for a Z axis with a very precise step_distance the
 actual obtainable max_z_velocity may be smaller than what is
 configured in Marlin.
+
+### When I set "restart_method=command" my AVR device just hangs on a restart
+
+Some old versions of the AVR bootloader have a known bug in watchdog
+event handling. This typically manifests when the printer.cfg file has
+restart_method set to "command". When the bug occurs, the AVR device
+will be unresponsive until power is removed and reapplied to the
+device (the power or status LEDs may also blink repeatedly until the
+power is removed).
+
+The workaround is to use a restart_method other than "command" or to
+flash an updated bootloader to the AVR devices. Flashing a new
+bootloader is a one time step that typically requires an external
+programmer - search the web to find the instructions for your
+particular device.
