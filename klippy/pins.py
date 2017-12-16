@@ -5,7 +5,6 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import re
 
-
 ######################################################################
 # Hardware pin names
 ######################################################################
@@ -31,10 +30,13 @@ def beaglebone_pins():
     return gpios
 
 MCU_PINS = {
-    "atmega168": port_pins(5), "atmega328": port_pins(5),
-    "atmega644p": port_pins(4), "atmega1284p": port_pins(4),
+    "atmega168": port_pins(5),
+    "atmega328": port_pins(5),
+    "atmega644p": port_pins(4),
+    "atmega1284p": port_pins(4),
     "at90usb1286": port_pins(6),
-    "atmega1280": port_pins(12), "atmega2560": port_pins(12),
+    "atmega1280": port_pins(12),
+    "atmega2560": port_pins(12),
     "sam3x8e": port_pins(4, 32),
     "pru": beaglebone_pins(),
     "linux": {"analog%d" % i: i for i in range(8)}, # XXX
@@ -211,7 +213,7 @@ def get_printer_pins(printer):
 
 def setup_pin(printer, pin_type, pin_desc):
     ppins = get_printer_pins(printer)
-    can_invert = pin_type in ['stepper', 'endstop', 'digital_out', 'pwm', 'thermocouple']
+    can_invert = pin_type in ['stepper', 'endstop', 'digital_out', 'pwm', 'thermocouple', 'spibus']
     can_pullup = pin_type == 'endstop'
     pin_params = ppins.parse_pin_desc(pin_desc, can_invert, can_pullup)
     pin_params['type'] = pin_type

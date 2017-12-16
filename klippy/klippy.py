@@ -200,6 +200,9 @@ class Printer:
         for m in [pins, mcu, chipmisc, heater, fan, toolhead, extruder]:
             m.add_printer_objects(self, config)
         self.mcus = mcu.get_printer_mcus(self)
+        '''
+        # NOTE: Removed to allow debugging stuff to be left in config files....
+
         # Validate that there are no undefined parameters in the config file
         valid_sections = { s: 1 for s, o in self.all_config_options }
         for section in self.fileconfig.sections():
@@ -213,6 +216,7 @@ class Printer:
                     raise self.config_error(
                         "Unknown option '%s' in section '%s'" % (
                             option, section))
+        '''
     def _connect(self, eventtime):
         self.reactor.unregister_timer(self.connect_timer)
         try:
@@ -516,6 +520,7 @@ def start_helper(cfg_file,
                                                 loglevel)
     else:
         logging.basicConfig(level=loglevel)
+    logging.getLogger().setLevel(loglevel)
 
     logging.info("Starting Klippy...")
     start_args['software_version'] = util.get_git_version()

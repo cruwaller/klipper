@@ -404,7 +404,6 @@ class MCU_temper_adc:
 
 
 class MCU_temper_spi:
-
     def __init__(self, mcu, pin_params):
         self._mcu           = mcu
         self._pin           = pin_params['pin']
@@ -445,7 +444,6 @@ class MCU_temper_spi:
         self._callback    = callback
 
     def build_config(self):
-
         self._mcu.add_config_cmd(
             "config_thermocouple_ss_pin oid=%d pin=%s spi_mode=%u spi_speed=%u" %
             (self._oid, self._pin, self._spi_mode, self._spi_speed))
@@ -482,6 +480,49 @@ class MCU_temper_spi:
         if self._callback is not None:
             self._callback(last_read_time, last_value, params['fault'])
 
+class MCU_spibus:
+    def __init__(self, mcu, pin_params):
+        self._mcu           = mcu
+        self._pin           = pin_params['pin']
+        self._oid           = self._mcu.create_oid()
+        # default SPI_MODE0 and 4MHz
+        self._spi_speed     = 4000000
+        self._spi_mode      = 0
+
+    def get_mcu(self):
+        return self._mcu
+    def get_oid(self):
+        return self._oid
+
+    def set_spi_settings(self, mode, speed):
+        self._spi_speed     = speed
+        self._spi_mode      = mode
+
+    def build_config(self):
+        self._mcu.add_config_cmd(
+            "config_spibus_ss_pin oid=%d pin=%s spi_mode=%u spi_speed=%u" %
+            (self._oid, self._pin, self._spi_mode, self._spi_speed))
+        self.write_cmd = self._mcu.lookup_command(
+            "spibus_write oid=%c cmd=%c cfg=%*s")
+        self.read_cmd = self._mcu.lookup_command(
+            "spibus_read oid=%c cmd=%c len=%hu")
+
+    def write(self, cmd, val):
+        cmd = self.write_cmd.encode(self._oid, cmd, val)
+        params = self._mcu.send_with_response(cmd, 'spibus_write_resp', self._oid)
+        if params['status'] is 0:
+            return True
+        # TODO raise error!
+        return False
+
+    def read(self, cmd, cnt):
+        cmd = self.read_cmd.encode(self._oid, cmd, cnt)
+        params = self._mcu.send_with_response(cmd, 'spibus_read_resp', self._oid)
+        if params['status'] is 0:
+            return list(bytearray(params['data']))
+        else:
+            return []
+
 class MCU:
     error = error
     def __init__(self, printer, config, clocksync):
@@ -514,6 +555,7 @@ class MCU:
         # Config building
         pins.get_printer_pins(printer).register_chip(self._name, self)
         self._oid_count = 0
+        self._init_cbs = []
         self._config_objects = []
         self._init_cmds = []
         self._config_cmds = []
@@ -662,6 +704,8 @@ class MCU:
         self._ffi_lib.steppersync_set_time(self._steppersync, 0., self._mcu_freq)
         for c in self._init_cmds:
             self.send(self.create_command(c))
+        for cb in self._init_cbs:
+            cb()
     def connect(self):
         if self.is_fileoutput():
             self._connect_file()
@@ -690,7 +734,8 @@ class MCU:
             'digital_out' : MCU_digital_out,
             'pwm'         : MCU_pwm,
             'temp_adc'    : MCU_temper_adc,
-            'temp_spi'    : MCU_temper_spi
+            'temp_spi'    : MCU_temper_spi,
+            'spibus'      : MCU_spibus,
         }
         pin_type = pin_params['type']
         if pin_type not in pcs:
@@ -708,6 +753,8 @@ class MCU:
             self._init_cmds.append(cmd)
         else:
             self._config_cmds.append(cmd)
+    def register_init_cb(self, cb):
+        self._init_cbs.append(cb)
     def get_query_slot(self, oid):
         slot = self.seconds_to_clock(oid * .01)
         t = int(self.estimated_print_time(self.monotonic()) + 1.5)

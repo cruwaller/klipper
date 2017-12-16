@@ -187,6 +187,7 @@ class ToolHead:
         self.reactor = printer.reactor
         self.all_mcus = mcu.get_printer_mcus(printer)
         self.mcu = self.all_mcus[0]
+        self.homing_order = config.get('homing_order', 'XYZ').upper()
         self.max_velocity = config.getfloat('max_velocity', above=0.)
         self.max_accel = config.getfloat('max_accel', above=0.)
         self.max_accel_to_decel = config.getfloat(
@@ -318,12 +319,12 @@ class ToolHead:
         self._flush_lookahead()
         self.commanded_pos[:] = newpos
         self.kin.set_position(newpos)
-    def move(self, newpos, speed):
+    def move(self, newpos, speed, check=True):
         speed = min(speed, self.max_velocity)
         move = Move(self, self.commanded_pos, newpos, speed)
         if not move.move_d:
             return
-        if move.is_kinematic_move:
+        if move.is_kinematic_move and check:
             self.kin.check_move(move)
         if move.axes_d[3]:
             self.extruder.check_move(move)

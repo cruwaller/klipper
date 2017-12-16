@@ -5,6 +5,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math, logging
 import homing, pins
+import drivers
 
 # Code storing the definitions for a stepper motor
 class PrinterStepper:
@@ -17,15 +18,14 @@ class PrinterStepper:
             self.is_Z = True
 
         self.need_motor_enable = True
+        # get a driver
+        self.driver = \
+            drivers.get_driver(printer,
+                               config,
+                               config.get('driver', None))
+        self.step_dist = self.driver.step_dist
+        self.inv_step_dist = self.driver.inv_step_dist
         # Stepper definition
-        self.step_dist = config.getfloat('step_distance', None, above=0.)
-        if self.step_dist is not None:
-            self.inv_step_dist = 1. / self.step_dist
-        else:
-            self.inv_step_dist = config.getfloat('steps_per_mm', above=0.)
-            self.step_dist = 1.0 / float(self.inv_step_dist)
-        logging.info("PrintStepper '{}': steps per mm {} , step in mm {}".
-                     format(self.name, self.inv_step_dist, self.step_dist))
         self.mcu_stepper = pins.setup_pin(
             printer, 'stepper', config.get('step_pin'))
         dir_pin_params = pins.get_printer_pins(printer).parse_pin_desc(
@@ -40,6 +40,10 @@ class PrinterStepper:
         if enable_pin is not None:
             self.mcu_enable = pins.setup_pin(printer, 'digital_out', enable_pin)
             self.mcu_enable.setup_max_duration(0.)
+
+        logging.info("PrintStepper '{}': steps per mm {} , step in mm {}".
+                     format(self.name, self.inv_step_dist, self.step_dist))
+
     def _dist_to_time(self, dist, start_velocity, accel):
         # Calculate the time it takes to travel a distance with constant accel
         time_offset = start_velocity / accel
