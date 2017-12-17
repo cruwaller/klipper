@@ -3,16 +3,20 @@
 # Copyright (C) 2016,2017  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import math, logging
+import math
 import homing, pins
 import drivers
 
 # Code storing the definitions for a stepper motor
 class PrinterStepper:
-    def __init__(self, printer, config):
+    def __init__(self, printer, config, logger=None):
         self.name = config.section
         if self.name.startswith('stepper_'):
             self.name = self.name[8:]
+        if logger is None:
+            self.logger = printer.logger.getChild('stepper.%s' % self.name)
+        else:
+            self.logger = logger.getChild('stepper')
         self.is_Z = False
         if ('Z' in self.name.upper()):
             self.is_Z = True
@@ -22,7 +26,8 @@ class PrinterStepper:
         self.driver = \
             drivers.get_driver(printer,
                                config,
-                               config.get('driver', None))
+                               name=config.get('driver', None),
+                               logger=self.logger)
         self.step_dist = self.driver.step_dist
         self.inv_step_dist = self.driver.inv_step_dist
         # Stepper definition
@@ -41,8 +46,8 @@ class PrinterStepper:
             self.mcu_enable = pins.setup_pin(printer, 'digital_out', enable_pin)
             self.mcu_enable.setup_max_duration(0.)
 
-        logging.info("PrintStepper '{}': steps per mm {} , step in mm {}".
-                     format(self.name, self.inv_step_dist, self.step_dist))
+        self.logger.info("steps per mm {} , step in mm {}".
+                     format(self.inv_step_dist, self.step_dist))
 
     def _dist_to_time(self, dist, start_velocity, accel):
         # Calculate the time it takes to travel a distance with constant accel
@@ -125,9 +130,9 @@ class PrinterHomingStepper(PrinterStepper):
                 es_pos = (int(self.position_endstop / full_step + .5) * full_step
                           + phase_offset)
                 if es_pos != self.position_endstop:
-                    logging.info("Changing %s endstop position to %.3f"
-                                 " (from %.3f)", self.name, es_pos,
-                                 self.position_endstop)
+                    self.logger.info("Changing endstop position to %.3f"
+                                     " (from %.3f)", es_pos,
+                                     self.position_endstop)
                     self.position_endstop = es_pos
             if endstop_accuracy is None:
                 self.homing_endstop_accuracy = self.homing_stepper_phases//2 - 1
@@ -138,8 +143,8 @@ class PrinterHomingStepper(PrinterStepper):
                 self.homing_endstop_accuracy = int(math.ceil(
                     endstop_accuracy / self.step_dist))
             if self.homing_endstop_accuracy >= self.homing_stepper_phases // 2:
-                logging.info("Endstop for %s is not accurate enough for stepper"
-                             " phase adjustment", name)
+                self.logger.info("Endstop is not accurate enough for stepper"
+                                 " phase adjustment")
                 self.homing_stepper_phases = None
             if self.mcu_endstop.get_mcu().is_fileoutput():
                 self.homing_endstop_accuracy = self.homing_stepper_phases
@@ -175,7 +180,7 @@ class PrinterHomingStepper(PrinterStepper):
         pos = self.mcu_stepper.get_mcu_position()
         pos %= self.homing_stepper_phases
         if self.homing_endstop_phase is None:
-            logging.info("Setting %s endstop phase to %d", self.name, pos)
+            self.logger.info("Setting endstop phase to %d", pos)
             self.homing_endstop_phase = pos
             return 0.0 - self.homing_offset
         delta = (pos - self.homing_endstop_phase) % self.homing_stepper_phases

@@ -3,7 +3,7 @@
 # Copyright (C) 2016  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import math, logging
+import math
 import mcu, homing, cartesian, corexy, delta, extruder
 
 # Common suffixes: _d is distance (in mm), _v is velocity (in
@@ -182,7 +182,8 @@ STALL_TIME = 0.100
 # Main code to track events (and their timing) on the printer toolhead
 class ToolHead:
     def __init__(self, printer, config):
-        logging.debug("Add toolhead '{}'".format(config.section))
+        self.logger = printer.logger.getChild('toolhead')
+        self.logger.debug("Add toolhead '{}'".format(config.section))
         self.printer = printer
         self.reactor = printer.reactor
         self.all_mcus = mcu.get_printer_mcus(printer)
@@ -293,7 +294,7 @@ class ToolHead:
             if print_time != self.print_time:
                 self.last_flush_from_idle = True
         except:
-            logging.exception("Exception in flush_handler")
+            self.logger.exception("Exception in flush_handler")
             self.printer.invoke_shutdown("Exception in flush_handler")
         return self.reactor.NEVER
     # Motor off timer
@@ -306,7 +307,7 @@ class ToolHead:
         try:
             self.motor_off()
         except:
-            logging.exception("Exception in motor_off_handler")
+            self.logger.exception("Exception in motor_off_handler")
             self.printer.invoke_shutdown("Exception in motor_off_handler")
         return eventtime + self.motor_off_time
     # Homing offset (GCode command)
@@ -344,7 +345,7 @@ class ToolHead:
         self.extruder.motor_off(last_move_time)
         self.dwell(STALL_TIME)
         self.need_motor_off = False
-        logging.debug('; Max time of %f', last_move_time)
+        self.logger.debug('; Max time of %f', last_move_time)
     def wait_moves(self):
         self._flush_lookahead()
         if self.mcu.is_fileoutput():
@@ -377,7 +378,7 @@ class ToolHead:
             self.move_queue.reset()
             self.reset_print_time()
         except:
-            logging.exception("Exception in do_shutdown")
+            self.logger.exception("Exception in do_shutdown")
     def get_kinematics(self):
         return self.kin
     def get_max_velocity(self):

@@ -3,7 +3,7 @@
 # Copyright (C) 2016  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import math, logging
+import math
 import stepper, heater, homing
 
 EXTRUDE_DIFF_IGNORE = 1.02
@@ -12,12 +12,13 @@ EXTRUDE_DIFF_IGNORE = 1.02
 class PrinterExtruder:
     def __init__(self, printer, config, index):
         self.name   = config.section
+        self.logger = printer.logger.getChild(self.name)
         self.config = config
         self.index  = index
         self.heater = printer.objects.get(config.get('heater'))
         self.heater.set_min_extrude_temp(config.getfloat('min_extrude_temp',
                                                          170.0))
-        self.stepper = stepper.PrinterStepper(printer, config)
+        self.stepper = stepper.PrinterStepper(printer, config, self.logger)
         self.nozzle_diameter = config.getfloat('nozzle_diameter', above=0.)
         filament_diameter = config.getfloat('filament_diameter',
                                             minval=self.nozzle_diameter)
@@ -55,8 +56,8 @@ class PrinterExtruder:
                                               1.0,
                                               minval=0.5,
                                               maxval=1.5)
-        logging.debug("Add extruder[{}] '{}' heater={}".
-                      format(self.index, self.name, self.heater.name))
+        self.logger.debug("Add extruder[{}] heater={}".
+                          format(self.index, self.heater.name))
     def get_index(self):
         return self.index
     def get_heater(self):
@@ -90,9 +91,9 @@ class PrinterExtruder:
         elif (move.extrude_r > self.max_extrude_ratio
               and move.axes_d[3] > self.nozzle_diameter*self.max_extrude_ratio):
             area = move.axes_d[3] * self.filament_area / move.move_d
-            logging.debug("Overextrude: %s vs %s (area=%.3f dist=%.3f)",
-                          move.extrude_r, self.max_extrude_ratio,
-                          area, move.move_d)
+            self.logger.debug("Overextrude: %s vs %s (area=%.3f dist=%.3f)",
+                              move.extrude_r, self.max_extrude_ratio,
+                              area, move.move_d)
             raise homing.EndstopError(
                 "Move exceeds maximum extrusion (%.3fmm^2 vs %.3fmm^2)\n"
                 "See the 'max_extrude_cross_section' config option for details"

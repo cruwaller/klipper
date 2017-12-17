@@ -12,6 +12,7 @@ TRANSMIT_EXTRA = .001
 
 class ClockSync:
     def __init__(self, reactor):
+        self.logger = logging.getLogger('clocksync')
         self.reactor = reactor
         self.serial = None
         self.status_timer = self.reactor.register_timer(self._status_event)
@@ -27,6 +28,9 @@ class ClockSync:
         self.clock_avg = self.clock_covariance = 0.
         self.prediction_variance = 0.
         self.last_prediction_time = 0.
+    def setLogger(self, logger):
+        if logger is not None:
+            self.logger = logger
     def connect(self, serial):
         self.serial = serial
         msgparser = serial.msgparser
@@ -76,8 +80,8 @@ class ClockSync:
         if half_rtt < self.min_half_rtt + aged_rtt:
             self.min_half_rtt = half_rtt
             self.min_rtt_time = sent_time
-            logging.debug("new minimum rtt %.3f: hrtt=%.6f freq=%d",
-                          sent_time, half_rtt, self.clock_est[2])
+            self.logger.debug("new minimum rtt %.3f: hrtt=%.6f freq=%d",
+                              sent_time, half_rtt, self.clock_est[2])
         # Filter out samples that are extreme outliers
         exp_clock = ((sent_time - self.time_avg) * self.clock_est[2]
                      + self.clock_avg)
@@ -85,15 +89,15 @@ class ClockSync:
         if (clock_diff2 > 25. * self.prediction_variance
             and clock_diff2 > (.000500 * self.mcu_freq)**2):
             if clock > exp_clock and sent_time < self.last_prediction_time + 10.:
-                logging.debug("Ignoring clock sample %.3f:"
-                              " freq=%d diff=%d stddev=%.3f",
-                              sent_time, self.clock_est[2], clock - exp_clock,
-                              math.sqrt(self.prediction_variance))
+                self.logger.debug("Ignoring clock sample %.3f:"
+                                  " freq=%d diff=%d stddev=%.3f",
+                                  sent_time, self.clock_est[2], clock - exp_clock,
+                                  math.sqrt(self.prediction_variance))
                 return
-            logging.info("Resetting prediction variance %.3f:"
-                         " freq=%d diff=%d stddev=%.3f",
-                         sent_time, self.clock_est[2], clock - exp_clock,
-                         math.sqrt(self.prediction_variance))
+            self.logger.info("Resetting prediction variance %.3f:"
+                             " freq=%d diff=%d stddev=%.3f",
+                             sent_time, self.clock_est[2], clock - exp_clock,
+                             math.sqrt(self.prediction_variance))
             self.prediction_variance = (.001 * self.mcu_freq)**2
         else:
             self.last_prediction_time = sent_time
@@ -115,8 +119,8 @@ class ClockSync:
                                   int(self.clock_avg - 3. * pred_stddev))
         self.clock_est = (self.time_avg - self.min_half_rtt,
                           self.clock_avg, new_freq)
-        #logging.debug("regr %.3f: freq=%.3f d=%d(%.3f)",
-        #              sent_time, new_freq, clock - exp_clock, pred_stddev)
+        #self.logger.debug("regr %.3f: freq=%.3f d=%d(%.3f)",
+        #                  sent_time, new_freq, clock - exp_clock, pred_stddev)
     # clock frequency conversions
     def print_time_to_clock(self, print_time):
         return int(print_time * self.mcu_freq)
@@ -165,6 +169,9 @@ class SecondarySync(ClockSync):
         ClockSync.__init__(self, reactor)
         self.main_sync = main_sync
         self.clock_adj = (0., 1.)
+    def setLogger(self, logger):
+        if logger is not None:
+            self.logger = logger
     def connect(self, serial):
         ClockSync.connect(self, serial)
         self.clock_adj = (0., self.mcu_freq)

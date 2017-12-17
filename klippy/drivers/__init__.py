@@ -1,7 +1,20 @@
-import os
-for module in os.listdir(os.path.dirname(__file__)):
-    if module == '__init__.py' or module[-3:] != '.py' or module == 'driverbase.py':
-        continue
-    __import__(module[:-3], locals(), globals())
-del module
-from driverbase import *
+import os, sys
+'''
+TODO:
+  - L6470
+  - TMC26XX
+  - Other?
+'''
+from driverbase import DriverBase
+from tmc2130    import TMC2130
+
+def get_driver(printer, config, name=None, logger=None):
+    if name is not None:
+        config = config.getsection("driver %s" % (name,))
+    mapping = { 'DEFAULT' : DriverBase,
+                'A4988'   : DriverBase,
+                'DRV8825' : DriverBase,
+                'TMC2130' : TMC2130 }
+    return mapping[config.get('type', 'default').upper()](printer,
+                                                          config,
+                                                          logger=logger)

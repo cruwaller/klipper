@@ -3,7 +3,6 @@
 # Copyright (C) 2016  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import logging
 import stepper, homing
 
 StepList = (0, 1, 2)
@@ -11,6 +10,7 @@ StepList = (0, 1, 2)
 class CartKinematics:
     name = "cartesian"
     def __init__(self, toolhead, printer, config):
+        self.logger = printer.logger.getChild(self.name)
         self.steppers = [stepper.LookupMultiHomingStepper(
             printer, config.getsection('stepper_' + n))
                          for n in ['x', 'y', 'z']]

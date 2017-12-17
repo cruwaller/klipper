@@ -3,7 +3,7 @@
 # Copyright (C) 2017  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import logging, math
+import math
 import stepper, homing
 
 StepList = (0, 1, 2)
@@ -11,6 +11,7 @@ StepList = (0, 1, 2)
 class CoreXYKinematics:
     name = "coreXY"
     def __init__(self, toolhead, printer, config):
+        self.logger = printer.logger.getChild(self.name)
         self.steppers = [
             stepper.PrinterHomingStepper(
                 printer, config.getsection('stepper_x')),

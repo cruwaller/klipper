@@ -13,7 +13,11 @@ class error(Exception):
 
 class SerialReader:
     BITS_PER_BYTE = 10.
-    def __init__(self, reactor, serialport, baud):
+    def __init__(self, reactor, serialport, baud, logger=None):
+        if logger is not None:
+            self.logger = logger
+        else:
+            self.logger = logging.getLogger('serial')
         self.reactor = reactor
         self.serialport = serialport
         self.baud = baud
@@ -50,10 +54,10 @@ class SerialReader:
             try:
                 hdl(params)
             except:
-                logging.exception("Exception in serial callback")
+                self.logger.exception("Exception in serial callback")
     def connect(self):
         # Initial connection
-        logging.info("Starting serial connect")
+        self.logger.info("Starting serial connect")
         while 1:
             starttime = self.reactor.monotonic()
             try:
@@ -63,7 +67,7 @@ class SerialReader:
                 else:
                     self.ser = open(self.serialport, 'rb+')
             except (OSError, IOError, serial.SerialException) as e:
-                logging.warn("Unable to open port: %s", e)
+                self.logger.warn("Unable to open port: %s", e)
                 self.reactor.pause(starttime + 5.)
                 continue
             if self.baud:
@@ -73,10 +77,10 @@ class SerialReader:
             self.background_thread = threading.Thread(target=self._bg_thread)
             self.background_thread.start()
             # Obtain and load the data dictionary from the firmware
-            sbs = SerialBootStrap(self)
+            sbs = SerialBootStrap(self, self.logger)
             identify_data = sbs.get_identify_data(starttime + 5.)
             if identify_data is None:
-                logging.warn("Timeout on serial connect")
+                self.logger.warn("Timeout on serial connect [{}]".format(self.serialport,))
                 self.disconnect()
                 continue
             break
@@ -84,9 +88,9 @@ class SerialReader:
         msgparser.process_identify(identify_data)
         self.msgparser = msgparser
         self.register_callback(self.handle_unknown, '#unknown')
-        logging.info("Loaded %d commands (%s)",
+        self.logger.info("Loaded %d commands (%s)",
                      len(msgparser.messages_by_id), msgparser.version)
-        logging.info("MCU config: %s", " ".join(
+        self.logger.info("MCU config: %s", " ".join(
             ["%s=%s" % (k, v) for k, v in msgparser.config.items()]))
         # Setup baud adjust
         mcu_baud = float(msgparser.config.get('SERIAL_BAUD', 0.))
@@ -165,12 +169,12 @@ class SerialReader:
         return '\n'.join(out)
     # Default message handlers
     def handle_unknown(self, params):
-        logging.warn("Unknown message type %d: %s",
+        self.logger.warn("Unknown message type %d: %s",
                      params['#msgid'], repr(params['#msg']))
     def handle_output(self, params):
-        logging.info("%s: %s", params['#name'], params['#msg'])
+        self.logger.info("%s: %s", params['#name'], params['#msg'])
     def handle_default(self, params):
-        logging.warn("got %s", params)
+        self.logger.warn("got %s", params)
     def __del__(self):
         self.disconnect()
 
@@ -213,7 +217,11 @@ class SerialRetryCommand:
 # Code to start communication and download message type dictionary
 class SerialBootStrap:
     RETRY_TIME = 0.500
-    def __init__(self, serial):
+    def __init__(self, serial, logger=None):
+        if logger is not None:
+            self.logger = logger
+        else:
+            self.logger = logging
         self.serial = serial
         self.identify_data = ""
         self.identify_cmd = self.serial.msgparser.lookup_command(
@@ -249,7 +257,7 @@ class SerialBootStrap:
         self.serial.send(imsg)
         return eventtime + self.RETRY_TIME
     def handle_unknown(self, params):
-        logging.debug("Unknown message %d (len %d) while identifying",
+        self.logger.debug("Unknown message %d (len %d) while identifying",
                       params['#msgid'], len(params['#msg']))
 
 # Attempt to place an AVR stk500v2 style programmer into normal mode

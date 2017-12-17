@@ -3,7 +3,7 @@
 # Copyright (C) 2016,2017  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import math, logging
+import math
 import stepper, homing
 
 StepList = (0, 1, 2)
@@ -14,6 +14,7 @@ SLOW_RATIO = 3.
 class DeltaKinematics:
     name = "delta"
     def __init__(self, toolhead, printer, config):
+        self.logger = printer.logger.getChild(self.name)
         stepper_configs = [config.getsection('stepper_' + n)
                            for n in ['a', 'b', 'c']]
         stepper_a = stepper.PrinterHomingStepper(printer, stepper_configs[0])
@@ -36,7 +37,7 @@ class DeltaKinematics:
         self.max_z = min([s.position_endstop for s in self.steppers])
         self.limit_z = min([ep - arm
                             for ep, arm in zip(self.endstops, arm_lengths)])
-        logging.info(
+        self.logger.info(
             "Delta max build height %.2fmm (radius tapered above %.2fmm)" % (
                 self.max_z, self.limit_z))
         # Setup stepper max halt velocity
@@ -67,7 +68,7 @@ class DeltaKinematics:
         self.very_slow_xy2 = (ratio_to_dist(2. * SLOW_RATIO) - radius)**2
         self.max_xy2 = min(radius, min_arm_length - radius,
                            ratio_to_dist(4. * SLOW_RATIO) - radius)**2
-        logging.info(
+        self.logger.info(
             "Delta max build radius %.2fmm (moves slowed past %.2fmm and %.2fmm)"
             % (math.sqrt(self.max_xy2), math.sqrt(self.slow_xy2),
                math.sqrt(self.very_slow_xy2)))

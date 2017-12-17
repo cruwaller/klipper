@@ -3,7 +3,7 @@
 # Copyright (C) 2016,2017  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import math, logging, threading
+import math, threading
 import pins, reactor
 
 
@@ -416,7 +416,8 @@ class PrinterHeater:
         self.is_bed = False
         if "bed" in self.name:
             self.is_bed = True
-        logging.debug("Add heater [{}] '{}'".format(self.index, self.name))
+        self.logger = printer.logger.getChild(self.name)
+        self.logger.debug("Add heater [{}] '{}'".format(self.index, self.name))
         sensor_params = config.getchoice('sensor_type', Sensors)
         self.sensor   = sensor_params['class'](config, sensor_params)
         self.min_temp = config.getfloat('min_temp', minval=0.0)
@@ -537,9 +538,9 @@ class PrinterHeater:
                     self._printer.request_exit('shutdown')
             self.protection_last_temp = current_temp
             next_time = self.protection_period_heat
-        logging.debug("check_heating(eventtime {}, next {}) {} / {}".
-                      format(eventtime, (eventtime + next_time),
-                             current_temp, target_temp))
+        self.logger.debug("check_heating(eventtime {}, next {}) {} / {}".
+                          format(eventtime, (eventtime + next_time),
+                                 current_temp, target_temp))
         return eventtime + next_time
     def get_min_extrude_status(self):
         stat = "prevented"
@@ -569,9 +570,9 @@ class PrinterHeater:
         pwm_time = read_time + REPORT_TIME + self.sensor.sample_time*self.sensor.sample_count
         self.next_pwm_time = pwm_time + 0.75 * MAX_HEAT_TIME
         self.last_pwm_value = value
-        logging.debug("%s: pwm=%.3f@%.3f (from %.3f@%.3f [%.3f])",
-                      self.name, value, pwm_time,
-                      self.last_temp, self.last_temp_time, self.target_temp)
+        self.logger.debug("pwm=%.3f@%.3f (from %.3f@%.3f [%.3f])",
+                          value, pwm_time,
+                          self.last_temp, self.last_temp_time, self.target_temp)
         self.mcu_pwm.set_pwm(pwm_time, value)
     def adc_callback(self, read_time, read_value, fault = 0):
         if (fault):
@@ -584,8 +585,8 @@ class PrinterHeater:
             self.can_extrude = self.min_extrude_temp_disabled or \
                                (temp >= self.min_extrude_temp)
             self.control.adc_callback(read_time, temp)
-        #logging.debug("%s : read_time=%.3f read_value=%f temperature=%f",
-        #              self.name, read_time, read_value, temp)
+        #self.logger.debug("read_time=%.3f read_value=%f temperature=%f",
+        #                  read_time, read_value, temp)
     # External commands
     def set_temp(self, print_time, degrees, auto_tune=False):
         if degrees and (degrees < self.min_temp or degrees > self.max_temp):
@@ -598,12 +599,12 @@ class PrinterHeater:
             self.protection_last_temp = None
             self.reactor.update_timer(self.protection_timer,
                                       self.reactor.NOW)
-            logging.debug("Temperature protection timer started")
+            self.logger.debug("Temperature protection timer started")
         else:
             # stop checking
             self.reactor.update_timer(self.protection_timer,
                                       self.reactor.NEVER)
-            logging.debug("Temperature protection timer stopped")
+            self.logger.debug("Temperature protection timer stopped")
 
     def get_temp(self, eventtime):
         print_time = self.mcu_sensor.get_mcu().estimated_print_time(eventtime) - 5.
@@ -636,6 +637,7 @@ class PrinterHeater:
 
 class ControlBangBang:
     def __init__(self, heater, config):
+        self.logger = heater.logger.getChild('bangbang')
         self.heater = heater
         self.max_delta = config.getfloat('max_delta', 2.0, above=0.)
         self.heating = False
@@ -659,6 +661,7 @@ class ControlBangBang:
 
 class ControlPID:
     def __init__(self, heater, config):
+        self.logger = heater.logger.getChild('pid')
         self.heater = heater
         self.Kp = config.getfloat('pid_Kp') / PID_PARAM_BASE
         self.Ki = config.getfloat('pid_Ki') / PID_PARAM_BASE
@@ -695,7 +698,7 @@ class ControlPID:
         temp_integ = max(0., min(self.temp_integ_max, temp_integ))
         # Calculate output
         co = self.Kp*temp_err + self.Ki*temp_integ - self.Kd*temp_deriv
-        #logging.debug("pid: %f@%.3f -> diff=%f deriv=%f err=%f integ=%f co=%d",
+        #self.logger.debug("pid: %f@%.3f -> diff=%f deriv=%f err=%f integ=%f co=%d",
         #    temp, read_time, temp_diff, temp_deriv, temp_err, temp_integ, co)
         bounded_co = max(0., min(self.heater.max_power, co))
         self.heater.set_pwm(read_time, bounded_co)
@@ -721,6 +724,7 @@ class ControlAutoTune:
     Ki = None
     Kd = None
     def __init__(self, heater, old_control):
+        self.logger = heater.logger.getChild('autotune')
         self.heater = heater
         self.old_control = old_control
         self.heating = False
@@ -764,7 +768,7 @@ class ControlAutoTune:
         Td = 0.125 * Tu
         self.Ki = self.Kp / Ti
         self.Kd = self.Kp * Td
-        logging.info("Autotune: raw=%f/%f Ku=%f Tu=%f  Kp=%f Ki=%f Kd=%f",
+        self.logger.info("Autotune: raw=%f/%f Ku=%f Tu=%f  Kp=%f Ki=%f Kd=%f",
                      temp_diff, max_power, Ku, Tu, self.Kp * PID_PARAM_BASE,
                      self.Ki * PID_PARAM_BASE, self.Kd * PID_PARAM_BASE)
     def check_busy(self, eventtime):

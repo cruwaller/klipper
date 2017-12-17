@@ -10,9 +10,11 @@ FAN_MIN_TIME = 0.1
 PWM_CYCLE_TIME = 0.010
 
 class PrinterFan:
-    def __init__(self, printer, config):
-        if 'heater' not in config.section:
-            logging.debug("Add fan '{}'".format(config.section))
+    def __init__(self, printer, config, logger=None):
+        if logger is None:
+            self.logger = printer.logger.getChild(config.section)
+        else:
+            self.logger = logger
         self.last_fan_value = 0.
         self.last_fan_time = 0.
         self.max_power = config.getfloat('max_power', 1., above=0., maxval=1.)
@@ -21,6 +23,7 @@ class PrinterFan:
         self.mcu_fan.setup_max_duration(0.)
         self.mcu_fan.setup_cycle_time(PWM_CYCLE_TIME)
         self.mcu_fan.setup_hard_pwm(config.getint('hard_pwm', 0))
+        self.logger.debug("fan '{}' initialized".format(config.section))
 
     def set_speed(self, print_time, value):
         value = max(0., min(self.max_power, value))
@@ -35,13 +38,15 @@ class PrinterFan:
         self.mcu_fan.set_pwm(print_time, value)
         self.last_fan_time = print_time
         self.last_fan_value = value
+        self.logger.debug("Fan speed set to {}".format(value))
 
 class PrinterHeaterFan:
     def __init__(self, printer, config):
-        self.fan = PrinterFan(printer, config)
-        self.mcu = printer.objects['mcu']
         heater_name = config.get("heater")
         self.heater = heater.get_printer_heater(printer, heater_name)
+        self.logger = self.heater.logger.getChild('fan')
+        self.fan = PrinterFan(printer, config, self.logger)
+        self.mcu = printer.objects['mcu']
         self.heater_temp = config.getfloat("heater_temp")
         max_power = self.fan.max_power
         self.fan_speed = config.getfloat("fan_speed",
@@ -50,15 +55,16 @@ class PrinterHeaterFan:
                                          maxval=max_power)
         self.fan.mcu_fan.setup_shutdown_value(max_power)
         printer.reactor.register_timer(self.callback, printer.reactor.NOW)
-        logging.debug("Add heater_fan '{}' heater={}".
-                      format(config.section, heater_name))
+        self.logger.debug("heater = {}".
+                          format(heater_name))
     def callback(self, eventtime):
         current_temp, target_temp = self.heater.get_temp(eventtime)
         if not current_temp and not target_temp and not self.fan.last_fan_time:
             # Printer still starting
             return eventtime + 1.
         power = 0.
-        if target_temp or current_temp > self.heater_temp:
+        # if target_temp or current_temp > self.heater_temp:
+        if current_temp > self.heater_temp:
             power = self.fan_speed
         print_time = self.mcu.estimated_print_time(eventtime) + FAN_MIN_TIME
         self.fan.set_speed(print_time, power)

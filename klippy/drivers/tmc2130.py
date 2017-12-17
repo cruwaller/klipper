@@ -1,11 +1,11 @@
 # system
 import logging, types, struct
 # project
-import driverbase
+from driverbase import DriverBase
 import mcu, pins
 
 
-class TMC2130(driverbase.DriverBase):
+class TMC2130(DriverBase):
     vsense = 0
     V_fs   = 0.325
     Rsense = None
@@ -25,8 +25,14 @@ class TMC2130(driverbase.DriverBase):
     diag0_stall = False
     diag1_stall = False
 
-    def __init__(self, printer, config):
-        super(TMC2130, self).__init__(printer, config)
+    def __init__(self, printer, config, logger):
+        super(TMC2130, self).__init__(printer, config, None)
+        self.name = config.section[7:]
+
+        if logger is not None:
+            self.logger = logger.getChild('tmc2130')
+        else:
+            self.logger = logging.getLogger("driver.%s"%(self.name,))
 
         self.current     = config.getfloat('current', 1000.0, above=200., maxval=1200.0)
         self.Rsense      = config.getfloat('sense_R', 0.11, above=0.09)
@@ -74,18 +80,18 @@ class TMC2130(driverbase.DriverBase):
             self.pwm_mode = mode['spreadCycle']
 
         # ========== SPI config ==========
-        pin     = config.get('ss_pin')
-        mode    = config.getint('spi_mode', 0, minval=0, maxval=3)
-        speed   = config.getint('spi_speed', 8000000)
+        spipin     = config.get('ss_pin')
+        spimode    = config.getint('spi_mode', 3, minval=0, maxval=3)
+        spispeed   = config.getint('spi_speed', 8000000)
         # setup SPI pins and configure mcu
-        self.mcu_driver = pins.setup_pin(printer, 'spibus', pin)
-        self.mcu_driver.set_spi_settings(mode, speed)
+        self.mcu_driver = pins.setup_pin(printer, 'spibus', spipin)
+        self.mcu_driver.set_spi_settings(spimode, spispeed)
         self._mcu = self.mcu_driver.get_mcu()
         # self._mcu.add_config_object(self) # call build_config on connect
         self._mcu.register_init_cb(self.__init_callback)
 
-        printer.add_object(config.section, self)
-        logging.debug("TMC2130 class '{}' created!".format(config.section))
+        printer.add_object(self.name, self)
+        self.logger.debug("config ok")
 
     '''
     ~                    READ / WRITE data transfer example
@@ -189,10 +195,10 @@ class TMC2130(driverbase.DriverBase):
 
         self.get_REG_DRV_STATUS()
 
-        logging.info(" !!!! init_config TMC2130 done !!!!!")
+        self.logger.info(" init done!")
 
     #def build_config(self):
-    #    logging.info(" !!!! build_config TMC2130 !!!!!")
+    #    self.logger.info("build_config()")
 
 
 
@@ -619,39 +625,40 @@ class TMC2130(driverbase.DriverBase):
 
     def get_REG_DRV_STATUS(self, ):
         val = self.__command_read(0x6F)
-        logging.debug("TMC2130 - status value: {}".format(hex(val)))
+        self.logger.debug("status ( reg value = {} )".format(hex(val)))
 
         if (val & 0b10000000000000000000000000000000):
             # 31: standstill indicator
-            logging.info("TMC2130 - Stand still")
+            self.logger.info("Stand still")
         if (val & 0b00010000000000000000000000000000):
             # 28: short to ground indicator phase B
-            logging.error("TMC2130 - Phase B short to ground")
+            self.logger.error("Phase B short to ground")
         if (val & 0b00001000000000000000000000000000):
             # 27: short to ground indicator phase A
-            logging.error("TMC2130 - Phase A short to ground")
+            self.logger.error("Phase A short to ground")
         if (val & 0b00000100000000000000000000000000):
             # 26: overtemperature prewarning
-            logging.warning("TMC2130 - Over temperature prewarning!")
+            self.logger.warning("Over temperature prewarning!")
         if (val & 0b00000010000000000000000000000000):
             # 25: overtemperature
-            logging.error("TMC2130 - Over temperature!")
+            self.logger.error("Over temperature!")
         if (val & 0b00000001000000000000000000000000):
             # 24: stallGuard2 status
-            logging.error("TMC2130 - motor stall")
+            self.logger.error("motor stall")
 
         # 20-16: actual motor current / smart energy current
         CS_ACTUAL = (val & 0b00000000000111110000000000000000) >> 16
+        # Stall Guard status
         SG_RESULT = (val & 0b00000000000000000000001111111111)
 
-        logging.debug("TMC2130 - DRV_STATUS : CS Actual = %d, SG Result = %d" %
-                      (CS_ACTUAL, SG_RESULT))
+        self.logger.debug("DRV_STATUS : CS Actual = %d, SG Result = %d" %
+                          (CS_ACTUAL, SG_RESULT))
         return val
 
     def set_REG_PWMCONF(self,
                         stealth_amplitude = 255,
                         stealth_gradient  = 5,
-                        stealth_freq      = "PWMFREQ_1_683",
+                        stealth_freq      = "fPWM_2/683",
                         stealth_autoscale = 1,
                         stealth_symmetric = 0,
                         standstill_mode   = "FREEWHEEL_NORMAL"):
@@ -694,10 +701,10 @@ class TMC2130(driverbase.DriverBase):
                                       3: Coil shorted using HS drivers
         '''
         pwm_freq_t = {
-            "PWMFREQ_1_1024" : 0b00, # %00: fPWM = 2/1024 fCLK
-            "PWMFREQ_1_683"  : 0b01, # %01: fPWM = 2/683  fCLK
-            "PWMFREQ_1_512"  : 0b10, # %10: fPWM = 2/512  fCLK
-            "PWMFREQ_1_410"  : 0b11  # %11: fPWM = 2/410  fCLK
+            "fPWM_2/1024" : 0b00, # %00: fPWM = 2/1024 fCLK
+            "fPWM_2/683"  : 0b01, # %01: fPWM = 2/683  fCLK
+            "fPWM_2/512"  : 0b10, # %10: fPWM = 2/512  fCLK
+            "fPWM_2/410"  : 0b11  # %11: fPWM = 2/410  fCLK
         }
         freewheel_t = {
             "FREEWHEEL_NORMAL"    : 0b00, # %00: Normal operation
@@ -731,5 +738,5 @@ class TMC2130(driverbase.DriverBase):
     def get_LOST_STEPS(self):
         val = self.__command_read(0x73)
         if val:
-            logging.error("TMC2130 - LOST_STEPS: {}".format(hex(val)))
+            self.logger.error("TMC2130 - LOST_STEPS: {}".format(hex(val)))
         return val

@@ -129,11 +129,12 @@ class ConfigWrapper:
 
 class ConfigLogger():
     def __init__(self, cfg, bglogger):
+        self.logger = logging.getLogger('config')
         self.lines = ["===== Config file ====="]
         cfg.write(self)
         self.lines.append("=======================")
         data = "\n".join(self.lines)
-        logging.info(data)
+        self.logger.info(data)
         bglogger.set_rollover_info("config", data)
     def write(self, data):
         self.lines.append(data.strip())
@@ -142,6 +143,7 @@ class Printer:
     config_error = ConfigParser.Error
     def __init__(self, input_fd, bglogger, start_args):
         self.name = "Klipper printer"
+        self.logger = logging.getLogger('printer')
         self.bglogger = bglogger
         self.start_args = start_args
         if bglogger is not None:
@@ -174,7 +176,7 @@ class Printer:
         out.append(toolhead.stats(eventtime))
         for m in self.mcus:
             out.append(m.stats(eventtime))
-        logging.info("Stats %.1f: %s", eventtime, ' '.join(out))
+        self.logger.info("Stats %.1f: %s", eventtime, ' '.join(out))
         return eventtime + status_delay
     def add_object(self, name, obj):
         self.objects[name] = obj
@@ -228,30 +230,30 @@ class Printer:
             if self.start_args.get('debugoutput') is None:
                 self.reactor.update_timer(self.stats_timer, self.reactor.NOW)
         except (self.config_error, pins.error) as e:
-            logging.exception("Config error")
+            self.logger.exception("Config error")
             self.state_message = "%s%s" % (str(e), message_restart)
         except msgproto.error as e:
-            logging.exception("Protocol error")
+            self.logger.exception("Protocol error")
             self.state_message = "%s%s" % (str(e), message_protocol_error)
         except mcu.error as e:
-            logging.exception("MCU error during connect")
+            self.logger.exception("MCU error during connect")
             self.state_message = "%s%s" % (str(e), message_mcu_connect_error)
         except:
-            logging.exception("Unhandled exception during connect")
+            self.logger.exception("Unhandled exception during connect")
             self.state_message = "Internal error during connect.%s" % (
                 message_restart,)
         return self.reactor.NEVER
     def run(self):
         systime = time.time()
         monotime = self.reactor.monotonic()
-        logging.info("Start printer at %s (%.1f %.1f)",
+        self.logger.info("Start printer at %s (%.1f %.1f)",
                      time.asctime(time.localtime(systime)), systime, monotime)
         while 1:
             # Enter main reactor loop
             try:
                 self.reactor.run()
             except:
-                logging.exception("Unhandled exception during run")
+                self.logger.exception("Unhandled exception during run")
                 return "exit"
             # Check restart flags
             run_result = self.run_result
@@ -265,7 +267,7 @@ class Printer:
                         m.microcontroller_restart()
                     m.disconnect()
             except:
-                logging.exception("Unhandled exception during post run")
+                self.logger.exception("Unhandled exception during post run")
             return run_result
     def get_state_message(self):
         return self.state_message
@@ -288,7 +290,7 @@ class Printer:
         self.reactor.end()
 
     def web_getconfig(self):
-        # logging.info("****** KLIPPER: web_getconfig() *******")
+        # self.logger.info("****** KLIPPER: web_getconfig() *******")
         toolhead = self.objects.get('toolhead')
 
         _extrs   = extruder.get_printer_extruders(self)
@@ -519,7 +521,10 @@ def start_helper(cfg_file,
         bglogger = queuelogger.setup_bg_logging(logfile,
                                                 loglevel)
     else:
-        logging.basicConfig(level=loglevel)
+        # FORMAT = '%(levelname)-8s %(name)-18s %(message)s'
+        FORMAT = '%(levelname)-8s %(name)s :: %(message)s'
+        logging.basicConfig(level=loglevel,
+                            format=FORMAT)
     logging.getLogger().setLevel(loglevel)
 
     logging.info("Starting Klippy...")

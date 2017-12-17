@@ -3,7 +3,7 @@
 # Copyright (C) 2016,2017  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import os, re, logging, collections
+import os, re, collections
 import homing, extruder, heater
 
 '''
@@ -36,6 +36,7 @@ class GCodeParser:
     error = error
     RETRY_TIME = 0.100
     def __init__(self, printer, fd_link):
+        self.logger = printer.logger.getChild('gcode')
         self.printer = printer
         self.fd_r = fd_link.fd_r
         self.fd_w = fd_link.fd_w
@@ -129,7 +130,7 @@ class GCodeParser:
             len(self.input_log),))
         for eventtime, data in self.input_log:
             out.append("Read %f: %s" % (eventtime, repr(data)))
-        logging.info("\n".join(out))
+        self.logger.info("\n".join(out))
     # Parse input into commands
     args_r = re.compile('([A-Z_]+|[A-Z*])')
     def process_commands(self, commands, need_ack=True):
@@ -163,7 +164,7 @@ class GCodeParser:
                 self.reset_last_position()
             except:
                 msg = 'Internal error on command:"%s"' % (cmd,)
-                logging.exception(msg)
+                self.logger.exception(msg)
                 self.printer.invoke_shutdown(msg)
                 self.respond_error(msg)
             # self.ack()
@@ -215,11 +216,11 @@ class GCodeParser:
             return
         self.__write_resp(msg+"\n")
     def respond_info(self, msg):
-        logging.debug(msg)
+        self.logger.debug(msg)
         lines = [l.strip() for l in msg.strip().split('\n')]
         self.respond("// " + "\n// ".join(lines))
     def respond_error(self, msg):
-        logging.warning(msg)
+        self.logger.warning(msg)
         lines = msg.strip().split('\n')
         if len(lines) > 1:
             self.respond_info("\n".join(lines[:-1]))
@@ -329,7 +330,7 @@ class GCodeParser:
             return
         cmd = params.get('#command')
         if not cmd:
-            logging.debug(params['#original'])
+            self.logger.debug(params['#original'])
             return
         if cmd[0] == 'T' and len(cmd) > 1 and cmd[1].isdigit():
             # Tn command has to be handled specially
@@ -832,7 +833,7 @@ class GCodeParser:
     def cmd_M550(self, params):
         if 'P' in params:
             self.printer.name = params['P']
-        logging.info("My name is now {}".format(self.printer.name))
+        self.logger.info("My name is now {}".format(self.printer.name))
 
     def cmd_M851(self, params):
         # Set X, Y, Z offsets
