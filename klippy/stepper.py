@@ -83,7 +83,17 @@ class PrinterHomingStepper(PrinterStepper):
             self.position_endstop = config.getfloat(
                 'position_endstop', default_position)
         # Homing offset will be substracted from homed position
-        self.homing_offset = config.getfloat('homing_offset', 0.)
+        self.homing_offset = config.getfloat('homing_offset', None)
+        if self.homing_offset is None:
+            # Try in steps and convert steps to mm
+            self.homing_offset = (config.getfloat('homing_offset_steps', 0.) *
+                                  self.step_dist)
+        # Homing finetune after enstop hit (mainly for deltas)
+        self.tune_after_homing = \
+            config.getfloat('endstop_correction', None) # in mm
+        if (self.tune_after_homing is None):
+            self.tune_after_homing = (config.getfloat('endstop_correction_steps', 0.) *
+                                      self.step_dist)
         # Axis range
         self.position_min = config.getfloat('position_min', 0.)
         self.position_max = config.getfloat('position_max', 0.,
