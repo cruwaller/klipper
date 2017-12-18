@@ -560,7 +560,8 @@ void SystemInit (void)
   LPC_SC->CCLKCFG   = 0x00000002;       /* Setup CPU Clock Divider            */
 
   /* Run @100MHz by default! */
-  if(/*can_120MHz()*/ 0) {
+  //if(/*can_120MHz()*/ 0) {
+  if(can_120MHz()) {
     LPC_SC->PLL0CFG   = 0x0000000E;     /* configure PLL0                     */
     LPC_SC->PLL0FEED  = 0xAA;
     LPC_SC->PLL0FEED  = 0x55;

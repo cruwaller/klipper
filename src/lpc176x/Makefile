@@ -1,12 +1,14 @@
 # Additional sam3x8e build rules
 
+USBLIBDIR = lib/lpc176x/VCOM_lib/
+
 # Setup the toolchain
 CROSS_PREFIX=arm-none-eabi-
 
 dirs-y += src/lpc176x src/generic
 dirs-y += lib/lpc176x/driver lib/lpc176x/startup
-dirs-y += lib/lpc176x/lib/chanfs lib/lpc176x/lib/usb
-#dirs-y += lib/lpc176x/VCOM_lib/src/usbserial
+#dirs-y += lib/lpc176x/lib/chanfs lib/lpc176x/lib/usb
+dirs-y += lib/lpc176x/VCOM_lib/src/usbSerial
 
 #CFLAGS += -std=c99
 CFLAGS += -std=gnu99
@@ -15,7 +17,7 @@ CFLAGS += -D__LPC176x__ -D__LPC1768__ -Dprintf=iprintf
 CFLAGS += -DTARGET_LPC1768 -DTOOLCHAIN_GCC_ARM
 CFLAGS += -Ilib/cmsis-include
 CFLAGS += -Ilib/lpc176x/include
-#CFLAGS += -Ilib/lpc176x/VCOM_lib/inc/usbserial
+CFLAGS += -Ilib/lpc176x/VCOM_lib/inc/usbSerial
 
 CFLAGS_klipper.elf += -Llib/lpc176x/startup
 CFLAGS_klipper.elf += -TLPC1768.ld
@@ -43,6 +45,12 @@ src-y += ../lib/lpc176x/driver/lpc17xx_timer.c
 
 src-y += ../lib/lpc176x/startup/system_LPC17xx.c
 asm-y += ../lib/lpc176x/startup/startup_LPC17xx.s
+
+# usb serial:
+src-$(CONFIG_SERIAL) += ../lib/lpc176x/VCOM_lib/src/usbSerial/usbcontrol.c
+src-$(CONFIG_SERIAL) += ../lib/lpc176x/VCOM_lib/src/usbSerial/usbhw_lpc.c
+src-$(CONFIG_SERIAL) += ../lib/lpc176x/VCOM_lib/src/usbSerial/usbinit.c
+src-$(CONFIG_SERIAL) += ../lib/lpc176x/VCOM_lib/src/usbSerial/usbstdreq.c
 
 # Build the additional hex output file
 target-y += $(OUT)klipper.bin

@@ -13,9 +13,18 @@ config BOARD_DIRECTORY
     string
     default "lpc176x"
 
+choice
+    prompt "Processor model"
+    config MACH_LPC1768
+        bool "lpc1768/67/66/65/64/63"
+    config MACH_LPC1769
+        bool "lpc1769"
+endchoice
+
 config CLOCK_FREQ
     int
-    default 30000000 # 120000000/4
+    default 25000000 if MACH_LPC1768 # 100000000 / 4
+    default 30000000 if MACH_LPC1769 # 120000000 / 4
 
 config SERIAL
     bool
@@ -24,6 +33,6 @@ config SERIAL
 config SERIAL_BAUD
     depends on SERIAL
     int "Baud rate for serial port"
-    default 250000
+    default 115200
 
 endif

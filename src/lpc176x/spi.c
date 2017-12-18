@@ -21,24 +21,26 @@ typedef struct ADC_mapping_t {
  *   * SSEL is handled by application using GPIO
  */
 static const ADC_mapping_t g_pinsSPI[] = {
-  {
-    // SPI ( overlap pins with SSP0 )
-    { 0, 15, PINSEL_FUNC_3 }, // CLK  - P0.15
-    { 0, 18, PINSEL_FUNC_3 }, // MOSI - P0.18
-    { 0, 17, PINSEL_FUNC_3 }  // MISO - P0.17
-  },
-  {
-    // SSP0 ( overlap pins with SPI )
-    { 0, 15, PINSEL_FUNC_2 }, // CLK  - P0.15
-    { 0, 18, PINSEL_FUNC_2 }, // MOSI - P0.18
-    { 0, 17, PINSEL_FUNC_2 }  // MISO - P0.17
-  },
-  {
-    // SSP1
-    { 0,  7, PINSEL_FUNC_2 }, // CLK  - P0.07
-    { 0,  9, PINSEL_FUNC_2 }, // MOSI - P0.09
-    { 0,  8, PINSEL_FUNC_2 }  // MISO - P0.08
-  }
+    {
+        // SPI ( overlap pins with SSP0 )
+        { 0, 15, PINSEL_FUNC_3 }, // CLK  - P0.15
+        { 0, 18, PINSEL_FUNC_3 }, // MOSI - P0.18
+        { 0, 17, PINSEL_FUNC_3 }  // MISO - P0.17
+    }
+#if 0
+    ,{
+        // SSP0 ( overlap pins with SPI )
+        { 0, 15, PINSEL_FUNC_2 }, // CLK  - P0.15
+        { 0, 18, PINSEL_FUNC_2 }, // MOSI - P0.18
+        { 0, 17, PINSEL_FUNC_2 }  // MISO - P0.17
+    },
+    {
+        // SSP1
+        { 0,  7, PINSEL_FUNC_2 }, // CLK  - P0.07
+        { 0,  9, PINSEL_FUNC_2 }, // MOSI - P0.09
+        { 0,  8, PINSEL_FUNC_2 }  // MISO - P0.08
+    }
+#endif
 };
 
 
@@ -48,7 +50,7 @@ static uint32_t
 spi_get_clock(uint32_t const target_clock)
 {
     uint32_t prescale = 8;
-    uint32_t const spi_pclk = CLKPWR_GetPCLK (CLKPWR_PCLKSEL_SPI);
+    uint32_t const spi_pclk = CLKPWR_GetPCLK(CLKPWR_PCLKSEL_SPI);
 
     // Find closest clock to target clock
     while (1) {
@@ -56,7 +58,7 @@ spi_get_clock(uint32_t const target_clock)
             break;
         }
         prescale += 2;
-        if (254 <= prescale) {
+        if (254 < prescale) {
             break;
         }
     }
@@ -73,7 +75,8 @@ spi_init(void)
     gpio_peripheral(&g_pinsSPI[0].miso, 0);
 
     // Power on the SPI
-    CLKPWR_ConfigPPWR (CLKPWR_PCONP_PCSPI, ENABLE);
+    CLKPWR_ConfigPPWR(CLKPWR_PCONP_PCSPI, ENABLE);
+    CLKPWR_SetPCLKDiv(CLKPWR_PCLKSEL_SPI, CLKPWR_PCLKSEL_CCLK_DIV_1);
 
     // Set SPI default settings
     spi_basic_config = spi_get_config(0, 4000000); // 4MHz, SPI Mode0

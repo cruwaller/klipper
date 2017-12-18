@@ -1,5 +1,5 @@
 /*
-	LPCUSB, an USB device driver for LPC microcontrollers	
+	LPCUSB, an USB device driver for LPC microcontrollers
 	Copyright (C) 2006 Bertrik Sikken (bertrik@sikken.nl)
 
 	Redistribution and use in source and binary forms, with or without
@@ -16,7 +16,7 @@
 	THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
 	IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
 	OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-	IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, 
+	IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
 	INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
 	NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
 	DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
@@ -33,6 +33,28 @@
 #include "lpcusb_type.h"
 
 #include "usbstruct.h"		// for TSetupPacket
+
+#define LE_WORD(x)              ((x)&0xFF),((x)>>8)
+
+/*************************************************************************
+	USB CONFIGs
+**************************************************************************/
+
+#define INT_IN_EP               0x81
+#define BULK_OUT_EP             0x05
+#define BULK_IN_EP              0x82
+
+/*************************************************************************
+	USB CDC
+**************************************************************************/
+
+// CDC definitions
+#define CS_INTERFACE            0x24
+#define CS_ENDPOINT             0x25
+
+#define	SET_LINE_CODING         0x20
+#define	GET_LINE_CODING         0x21
+#define	SET_CONTROL_LINE_STATE  0x22
 
 /*************************************************************************
 	USB configuration

@@ -15,6 +15,7 @@
 #include <LPC17xx.h>
 #include <lpc17xx_pinsel.h>
 #include <lpc17xx_gpio.h>
+#include <lpc17xx_clkpwr.h>
 
 #ifndef _BV
 #define _BV(_b) (1 << (_b))
@@ -133,3 +134,10 @@ gpio_in_read(struct gpio_in g)
     LPC_GPIO_TypeDef * const regs = g.regs;
     return !!(regs->FIOPIN & g.bit);
 }
+
+void
+gpio_init(void)
+{
+    CLKPWR_ConfigPPWR(CLKPWR_PCONP_PCGPIO, ENABLE);
+}
+DECL_INIT(gpio_init);

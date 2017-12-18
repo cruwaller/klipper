@@ -16,9 +16,9 @@
 
 #define SERIAL_BUFFER_SIZE 96
 static char receive_buf[SERIAL_BUFFER_SIZE];
-static uint32_t receive_pos;
+static uint32_t receive_pos = 0;
 static char transmit_buf[SERIAL_BUFFER_SIZE];
-static uint32_t transmit_pos, transmit_max;
+static uint32_t transmit_pos = 0, transmit_max = 0;
 
 
 /****************************************************************
@@ -58,11 +58,9 @@ UART_Handler(void)
         uint8_t data = UART->UART_RHR;
         if (data == MESSAGE_SYNC)
             sched_wake_tasks();
-        if (receive_pos >= sizeof(receive_buf))
-            // Serial overflow - ignore it as crc error will force retransmit
-            return;
-        receive_buf[receive_pos++] = data;
-        return;
+        // in case of serial overflow - ignore it as crc error will force retransmit
+        if (receive_pos < SERIAL_BUFFER_SIZE)
+            receive_buf[receive_pos++] = data;
     }
     if (status & UART_SR_TXRDY) {
         if (transmit_pos >= transmit_max)
@@ -136,8 +134,8 @@ console_sendf(const struct command_encoder *ce, va_list args)
         writel(&transmit_pos, 0);
     }
     uint32_t max_size = ce->max_size;
-    if (tmax + max_size > sizeof(transmit_buf)) {
-        if (tmax + max_size - tpos > sizeof(transmit_buf))
+    if (tmax + max_size > SERIAL_BUFFER_SIZE) {
+        if (tmax + max_size - tpos > SERIAL_BUFFER_SIZE)
             // Not enough space for message
             return;
         // Disable TX irq and move buffer

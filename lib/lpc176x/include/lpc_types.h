@@ -53,7 +53,7 @@
 /**
  * @brief Boolean Type definition
  */
-typedef enum {FALSE = 0, TRUE = !FALSE} Bool;
+typedef enum {FALSE = 0, TRUE = 1} Bool;
 
 /**
  * @brief Flag Status and Interrupt Flag Status type definition
@@ -193,11 +193,12 @@ typedef uint64_t UNS_64;
 typedef Bool BOOL_32;
 
 /** 16 bit boolean type */
-typedef Bool BOOL_16;
+//typedef Bool BOOL_16;
+typedef UNS_16 BOOL_16;
 
 /** 8 bit boolean type */
-typedef Bool BOOL_8;
-
+//typedef Bool BOOL_8;
+typedef UNS_8 BOOL_8;
 /**
  * @}
  */

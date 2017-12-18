@@ -16,7 +16,7 @@ choice
     config MACH_SAM3X8E
         bool "SAM3x8e (Arduino Due)"
     config MACH_LPC176X
-        bool "LPC1768 or LPC1769 (ReARM, SBase, Smoothie etc)"
+        bool "LPC176x (ReARM, SBase, Smoothie...)"
     config MACH_PRU
         bool "Beaglebone PRU"
     config MACH_LINUX

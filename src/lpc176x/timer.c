@@ -13,6 +13,7 @@
 
 #include <LPC17xx.h>
 #include <lpc17xx_timer.h>
+#include <lpc17xx_clkpwr.h>
 
 #define TC_CHANNEL 0
 
@@ -61,24 +62,45 @@ timer_kick(void)
 void
 timer_init(void)
 {
-    TIM_TIMERCFG_Type cfg;
-    cfg.PrescaleOption = TIM_PRESCALE_USVAL;
-    cfg.PrescaleValue  = CONFIG_CLOCK_FREQ;
-    TIM_Init(LPC_TIM0, TIM_TIMER_MODE, &cfg);
+    /* Enable clocks just in case */
+    CLKPWR_ConfigPPWR(CLKPWR_PCONP_PCTIM0, ENABLE);
+    CLKPWR_SetPCLKDiv(CLKPWR_PCLKSEL_TIMER0, CLKPWR_PCLKSEL_CCLK_DIV_1);
 
-    TIM_MATCHCFG_Type match;
-    match.MatchChannel       = TC_CHANNEL;
-    match.IntOnMatch         = ENABLE;
-    match.StopOnMatch        = DISABLE;
-    match.ResetOnMatch       = ENABLE;
-    match.ExtMatchOutputType = TIM_EXTMATCH_NOTHING; // Don't touch any pin
-    match.MatchValue         = 0x7FFFFFFF; // int32_t max
-    TIM_ConfigMatch(LPC_TIM0, &match);
+    LPC_TIM0->TCR |=  (1 << 1); // Set timer to reset
+
+    // Count and Capture Control Register
+    LPC_TIM0->CTCR = 0;
+    LPC_TIM0->CCR  = 0; // = timer mode
+
+    /********************************
+      PR = 4
+      FCPU / ( CCLK_DIV_1 (1) * PR ) -->
+      LPC1768 -> 100MHz / 4 = 25MHz
+      LPC1769 -> 120MHz / 4 = 30MHz
+    *********************************/
+    LPC_TIM0->PR   = 3;
+    LPC_TIM0->TC   = 0;
+    LPC_TIM0->PC   = 0;
+    LPC_TIM0->MR0  = 0x7FFFFFFF;
+    LPC_TIM0->MR1  = 0x7FFFFFFF;
+    LPC_TIM0->MR2  = 0x7FFFFFFF;
+    LPC_TIM0->MR3  = 0x7FFFFFFF;
+
+    // ISR on match + Clear TC
+    LPC_TIM0->MCR  = (0b011 << (TC_CHANNEL * 3));
+
+    // No external actions
+    LPC_TIM0->EMR  = 0;
+
+    // Clear pending interrupts
+    LPC_TIM0->IR = 0xFFFFFFFF;
 
     NVIC_SetPriority(TIMER0_IRQn, 1);
     NVIC_ClearPendingIRQ(TIMER0_IRQn); // Clear existings
     NVIC_EnableIRQ(TIMER0_IRQn);       // Enable IRQ
 
+    LPC_TIM0->TCR |=  (1);      // Make sure the counter is enabled
+    LPC_TIM0->TCR &= ~(1 << 1); // Release reset
     timer_kick();
 }
 DECL_INIT(timer_init);

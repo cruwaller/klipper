@@ -9,6 +9,7 @@
 #include <LPC17xx.h>
 #include <lpc17xx_adc.h>
 #include <lpc17xx_pinsel.h>
+#include <lpc17xx_clkpwr.h>
 
 
 /****************************************************************
@@ -30,13 +31,25 @@ static const _gpio_peripheral_t adc_pins[8] = {
   { 0,  2, PINSEL_FUNC_2 }  // ADC7
 };
 
-#define ADC_FREQ_MAX 200000 // Should be less or equal to 200kHz
+#define ADC_FREQ_MAX 2000000 // 2MHz (should be less than or equal to 13MHz)
 DECL_CONSTANT(ADC_MAX, 4095);
 
 void
 gpio_adc_init(void) {
     /* Init ADC HW */
-    ADC_Init(LPC_ADC, ADC_FREQ_MAX);
+    uint32_t rate, reg;
+
+    CLKPWR_ConfigPPWR(CLKPWR_PCONP_PCAD, ENABLE);
+    CLKPWR_SetPCLKDiv(CLKPWR_PCLKSEL_ADC, CLKPWR_PCLKSEL_CCLK_DIV_2);
+    LPC_ADC->ADCR = 0;
+    //Enable PDN bit
+    reg = ADC_CR_PDN;
+
+    // Set clock frequency
+    rate = (SystemCoreClock / (2 * ADC_FREQ_MAX)) - 1;
+    reg |=  ADC_CR_CLKDIV(rate);
+
+    LPC_ADC->ADCR = reg;
 }
 DECL_INIT(gpio_adc_init);
 
@@ -65,18 +78,18 @@ gpio_adc_setup(uint8_t pin)
 uint32_t
 gpio_adc_sample(struct gpio_adc g)
 {
-    uint32_t const chsr = LPC_ADC->ADGDR;
-    if (!chsr) {
+    uint32_t const chsr = LPC_ADC->ADGDR; // read global status reg
+    if (! (LPC_ADC->ADCR & ADC_CR_START_MASK)) {
         // Start sample
+        //LPC_ADC->ADCR &= ~ADC_CR_START_MASK;
         LPC_ADC->ADCR |= ADC_CR_CH_SEL(g.channel);
-        LPC_ADC->ADCR &= ~ADC_CR_START_MASK;
         LPC_ADC->ADCR |= ADC_CR_START_MODE_SEL((uint32_t)ADC_START_NOW);
         goto need_delay;
     }
     if (ADC_GDR_CH(chsr) != g.channel)
         // Sampling in progress on another channel
         goto need_delay;
-    if (!( chsr & ADC_GDR_DONE_FLAG))
+    if (! (chsr & ADC_GDR_DONE_FLAG))
         // Conversion still in progress
         goto need_delay;
     // Conversion ready
@@ -97,11 +110,9 @@ gpio_adc_read(struct gpio_adc g)
 void
 gpio_adc_cancel_sample(struct gpio_adc g)
 {
-    //irqstatus_t flag = irq_save();
-    if (LPC_ADC->ADCR & ADC_CR_START_MASK) {
-        //need to stop START bits before disable channel
-        LPC_ADC->ADCR &= ~ADC_CR_START_MASK;
-    }
+    irqstatus_t flag = irq_save();
+    //need to stop START bits before disable channel
+    LPC_ADC->ADCR &= ~ADC_CR_START_MASK;
     LPC_ADC->ADCR &= ~ADC_CR_CH_SEL(g.channel);
-    //irq_restore(flag);
+    irq_restore(flag);
 }
