@@ -521,10 +521,8 @@ def start_helper(cfg_file,
         bglogger = queuelogger.setup_bg_logging(logfile,
                                                 loglevel)
     else:
-        # FORMAT = '%(levelname)-8s %(name)-18s %(message)s'
-        FORMAT = '%(levelname)-8s %(name)s :: %(message)s'
         logging.basicConfig(level=loglevel,
-                            format=FORMAT)
+                            format=queuelogger.LOGFORMAT)
     logging.getLogger().setLevel(loglevel)
 
     logging.info("Starting Klippy...")
