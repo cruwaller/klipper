@@ -3,3 +3,6 @@ out
 *.pyc
 .config
 .config.old
+*.map
+*.pdf
+*.log

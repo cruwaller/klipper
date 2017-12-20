@@ -1,8 +1,5 @@
-// sam3x8e serial port
+// lpc176x serial port
 //
-// Copyright (C) 2016,2017  Kevin O'Connor <kevin@koconnor.net>
-//
-// This file may be distributed under the terms of the GNU GPLv3 license.
 
 #include <string.h>     // memmove
 #include "autoconf.h"   // CONFIG_SERIAL_BAUD
@@ -13,8 +10,11 @@
 #include "command.h"    // DECL_CONSTANT
 #include "sched.h"      // DECL_INIT
 
+#include "pins_MKS.h"
+
 #include <LPC17xx.h>
 #include <lpc17xx_clkpwr.h>
+#include <cmsis_nvic.h>
 
 #include <usbapi.h>
 
@@ -52,18 +52,25 @@ static TLineCoding LineCoding = {CONFIG_SERIAL_BAUD, 0, 0, 8};
 static U8 abBulkBuf[64];
 static U8 abClassReqData[8];
 
+#define USB_VERSION_1_0             0x0100
+#define USB_VERSION_1_1             0x0110
+#define USB_VERSION_2_0             0x0200
+#define USB_VERSION_3_0             0x0300
+
+#define mA                          /2
+
 static const U8 abDescriptors[] = {
 
 // device descriptor
     0x12,
     DESC_DEVICE,
-    LE_WORD(0x0101),            // bcdUSB
-    0x02,                       // bDeviceClass
-    0x00,                       // bDeviceSubClass
-    0x00,                       // bDeviceProtocol
+    LE_WORD(USB_VERSION_2_0),   // bcdUSB // OLD: LE_WORD(0x0101)
+    0xEF,                       // bDeviceClass , 2 = UC_COMM, 0xEF = UC_MISC
+    0x02,                       // bDeviceSubClass
+    0x01,                       // bDeviceProtocol
     MAX_PACKET_SIZE0,           // bMaxPacketSize
-    LE_WORD(0xFFFF),            // idVendor
-    LE_WORD(0x0005),            // idProduct
+    LE_WORD(0x1d50),            // idVendor
+    LE_WORD(0x6015),            // idProduct
     LE_WORD(0x0100),            // bcdDevice
     0x01,                       // iManufacturer
     0x02,                       // iProduct
@@ -77,8 +84,9 @@ static const U8 abDescriptors[] = {
     0x02,                       // bNumInterfaces
     0x01,                       // bConfigurationValue
     0x00,                       // iConfiguration
-    0xC0,                       // bmAttributes
-    0x32,                       // bMaxPower
+    0x80,                       // bmAttributes // 0xC0
+    500 mA,                     // bMaxPower
+
 // control class interface
     0x09,
     DESC_INTERFACE,
@@ -144,18 +152,21 @@ static const U8 abDescriptors[] = {
     0x00,                       // bInterval
 
     // string descriptors
-    0x04,
+    0x04, // LANGUAGE
     DESC_STRING,
-    LE_WORD(0x0409),
+    LE_WORD(0x0409), // US ENGLISH
 
+    // iManufacturer , idx 1
     0x0E,
     DESC_STRING,
     'L', 0, 'P', 0, 'C', 0, 'U', 0, 'S', 0, 'B', 0,
 
+    // iProduct , idx 2
     0x14,
     DESC_STRING,
     'U', 0, 'S', 0, 'B', 0, 'S', 0, 'e', 0, 'r', 0, 'i', 0, 'a', 0, 'l', 0,
 
+    // iSerialNumber , idx 3
     0x12,
     DESC_STRING,
     'D', 0, 'E', 0, 'A', 0, 'D', 0, 'C', 0, '0', 0, 'D', 0, 'E', 0,
@@ -271,11 +282,17 @@ static void USBFrameHandler(U16 wFrame) {
 */
 void USB_IRQHandler(void) {
     // Simply calls the USB ISR
+    DEBUG_OUT("usb isr\n");
     USBHwISR();
+}
+void USBActivity_IRQHandler(void) {
+    // ???
 }
 
 
 void init_usb_cdc(void) {
+    NVIC_DisableIRQ(USB_IRQn);
+
     // initialise stack
     USBInit();
 
@@ -297,9 +314,12 @@ void init_usb_cdc(void) {
     USBHwNakIntEnable(INACK_BI);
 
     // CodeRed - add in interrupt setup code for RDB1768
-#ifndef POLLED_USBSERIAL
+//#ifndef POLLED_USBSERIAL
+    //NVIC_SetPriority(USB_IRQn, 1);
+    NVIC_ClearPendingIRQ(USB_IRQn); // Clear existings
+    //NVIC_SetVector(USB_IRQn, (uint32_t)&USBHwISR);
     NVIC_EnableIRQ(USB_IRQn);
-#endif
+//#endif
 
     // connect to bus
     USBHwConnect(TRUE);
@@ -308,18 +328,16 @@ void init_usb_cdc(void) {
 
 void serial_init(void) {
     // Power on the USB
-    //CLKPWR_ConfigPPWR(CLKPWR_PCONP_PCUART0, ENABLE);
-    //CLKPWR_ConfigPPWR(CLKPWR_PCONP_PCUART1, ENABLE);
-    //CLKPWR_ConfigPPWR(CLKPWR_PCONP_PCUART2, ENABLE);
-    //CLKPWR_ConfigPPWR(CLKPWR_PCONP_PCUART3, ENABLE);
-    CLKPWR_ConfigPPWR(CLKPWR_PCONP_PCUSB, ENABLE);
+    //CLKPWR_ConfigPPWR(CLKPWR_PCONP_PCUSB, ENABLE);
 
     receive_pos = 0;
     transmit_pos = transmit_max = 0;
 
     init_usb_cdc();
+    //gpio_out_write(SBASE_LED2, 1);
+    DEBUG_OUT("USB init\n");
 }
-DECL_INIT(serial_init);
+//DECL_INIT(serial_init);
 
 
 /****************************************************************
@@ -360,6 +378,7 @@ console_task(void)
     uint32_t rpos = readl(&receive_pos);
     int8_t ret = command_find_block(receive_buf, rpos, &pop_count);
     if (ret > 0)
+        DEBUG_OUT("rxd\n");
         command_dispatch(receive_buf, pop_count);
     if (ret)
         console_pop_input(pop_count);

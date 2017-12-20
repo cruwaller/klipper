@@ -7,7 +7,6 @@
 
 #include <LPC17xx.h>
 #include <lpc17xx_clkpwr.h>
-#include <lpc17xx_pinsel.h>
 #include <lpc17xx_spi.h>
 
 typedef struct ADC_mapping_t {

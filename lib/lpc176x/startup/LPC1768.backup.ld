@@ -13,6 +13,9 @@ MEMORY
   ETH_RAM(rwx) : ORIGIN = 0x20080000, LENGTH = 16K /* Bank1 */
 }
 
+/*__ram_end__ = ORIGIN(RAM) + LENGTH(RAM) - 4; */
+
+
 /* Linker script to place sections and symbol values. Should be used together
  * with other linker script that defines memory regions FLASH and RAM.
  * It references following symbols, which must be defined in code:
@@ -43,24 +46,10 @@ ENTRY(Reset_Handler)
 
 SECTIONS
 {
-    /* Reset and ISR vectors */
-    .isr_vector :
-    {
-        __isr_vector_start__ = .;
-        KEEP(*(.isr_vector)) /* without 'KEEP' the garbage collector discards this section */
-        ASSERT(. != __isr_vector_start__, "The .isr_vector section is empty");
-    } > FLASH
-
     .text :
     {
-        /*KEEP(*(.isr_vector))*/
-        /*. = 0x000002FC;
-        KEEP(*(.crp))
-        . = 0x300;*/
-
-        . = ALIGN(4);
+        KEEP(*(.isr_vector))
         *(.text*)
-        *(.rodata*)
 
         KEEP(*(.init))
         KEEP(*(.fini))
@@ -78,6 +67,8 @@ SECTIONS
         *(EXCLUDE_FILE(*crtend?.o *crtend.o) .dtors)
         *(SORT(.dtors.*))
         *(.dtors)
+
+        *(.rodata*)
 
         KEEP(*(.eh_frame*))
     } > FLASH
@@ -130,29 +121,35 @@ SECTIONS
 
     } > RAM
 
-    .bss :
+    .bss ALIGN(4) (NOLOAD):
     {
         __bss_start__ = .;
         *(.bss*)
         *(COMMON)
         __bss_end__ = .;
         Image$$RW_IRAM1$$ZI$$Limit = . ;
+        _ebss = . ;
+        _ezero = .;
     } > RAM
 
-    .heap :
+    .heap ALIGN(4) :
     {
         __end__ = .;
         end = __end__;
         *(.heap*)
+        . = ALIGN(4);
         __HeapLimit = .;
     } > RAM
 
     /* .stack_dummy section doesn't contains any symbols. It is only
      * used for linker to calculate size of stack sections, and assign
      * values to stack symbols later */
-    .stack_dummy :
+    .stack_dummy ALIGN(8):
     {
+         _sstack = .;
         *(.stack)
+        . = ALIGN(8);
+        _estack = .;
     } > RAM
 
     /* Set stack top to end of RAM, and stack limit move down by
@@ -193,4 +190,7 @@ SECTIONS
         PROVIDE(__AHB1_dyn_start = .);
         PROVIDE(__AHB1_end = ORIGIN(ETH_RAM) + LENGTH(ETH_RAM));
     } > ETH_RAM
+
+    . = ALIGN(4);
+    _end = . ;
 }

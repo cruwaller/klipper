@@ -11,20 +11,24 @@
 #include "command.h" // DECL_SHUTDOWN
 #include "sched.h" // DECL_INIT
 
+#include "pins_MKS.h"
+
 #include <LPC17xx.h>
 #include <lpc17xx_timer.h>
 #include <lpc17xx_clkpwr.h>
+#include <cmsis_nvic.h>
 
 #define TC_CHANNEL 0
 
-static inline void tc_clear_irq(uint32_t const timer) {
+void timer_isr(void);
+
+/*static inline void tc_clear_irq(uint32_t const timer) {
     LPC_TIM0->IR |= (1 << timer); // read to clear irq pending
-}
+    }*/
 
 // Set the next irq time
 static void
-timer_set(uint32_t value)
-{
+timer_set(uint32_t const value) {
 #if (TC_CHANNEL == 0)
     LPC_TIM0->MR0 = value;
 #elif (TC_CHANNEL == 1)
@@ -38,30 +42,26 @@ timer_set(uint32_t value)
 
 // Return the current time (in absolute clock ticks).
 uint32_t
-timer_read_time(void)
-{
-#if (TC_CHANNEL == 0)
-    return LPC_TIM0->MR0;
-#elif (TC_CHANNEL == 1)
-    return LPC_TIM0->MR1;
-#elif (TC_CHANNEL == 2)
-    return LPC_TIM0->MR2;
-#elif (TC_CHANNEL == 3)
-    return LPC_TIM0->MR3;
-#endif
+timer_read_time(void) {
+    return LPC_TIM0->TC; // Return current timer counter value
 }
 
 // Activate timer dispatch as soon as possible
 void
-timer_kick(void)
-{
-    timer_set(timer_read_time() + 50);
-    tc_clear_irq(TC_CHANNEL);
+timer_kick(void) {
+    /*
+      LPC1768 : 50  = 2.00us
+      LPC1769 : 50 ~= 1.67us
+     */
+    timer_set(LPC_TIM0->TC + 50);
+    //tc_clear_irq(TC_CHANNEL);
 }
 
 void
 timer_init(void)
 {
+    NVIC_DisableIRQ(TIMER0_IRQn);
+
     /* Enable clocks just in case */
     CLKPWR_ConfigPPWR(CLKPWR_PCONP_PCTIM0, ENABLE);
     CLKPWR_SetPCLKDiv(CLKPWR_PCLKSEL_TIMER0, CLKPWR_PCLKSEL_CCLK_DIV_1);
@@ -97,24 +97,32 @@ timer_init(void)
 
     NVIC_SetPriority(TIMER0_IRQn, 1);
     NVIC_ClearPendingIRQ(TIMER0_IRQn); // Clear existings
-    NVIC_EnableIRQ(TIMER0_IRQn);       // Enable IRQ
+    //NVIC_SetVector(TIMER0_IRQn, (uint32_t)&timer_isr);
 
     LPC_TIM0->TCR |=  (1);      // Make sure the counter is enabled
-    LPC_TIM0->TCR &= ~(1 << 1); // Release reset
+
     timer_kick();
+
+    // Start timer
+    LPC_TIM0->TCR &= ~(1 << 1); // Release reset
+    NVIC_EnableIRQ(TIMER0_IRQn);       // Enable IRQ
+
+    //gpio_out_write(SBASE_LED1, 1);
 }
 DECL_INIT(timer_init);
 
 // IRQ handler
-void __visible __aligned(16) // aligning helps stabilize perf benchmarks
-TC0_Handler(void)
+//void __visible __aligned(16) // aligning helps stabilize perf benchmarks
+void TIMER0_IRQHandler(void)
+//void timer_isr(void)
 {
     irq_disable();
-    uint32_t status = LPC_TIM0->IR; // Read pending IRQ
-    tc_clear_irq(TC_CHANNEL);
+    uint32_t const status = LPC_TIM0->IR; // Read pending IRQ
     if (likely(status & (1 << TC_CHANNEL))) {
-        uint32_t next = timer_dispatch_many();
+        uint32_t const next = timer_dispatch_many();
         timer_set(next);
     }
+    //tc_clear_irq(TC_CHANNEL);
+    LPC_TIM0->IR = 0xFFFFFFFF;
     irq_enable();
 }

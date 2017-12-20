@@ -30,13 +30,14 @@
 	USB hardware layer
  */
 
-// CodeRed - include the LPCUSB type.h file rather than NXP one directly
-//#include "type.h"
 #include "lpcusb_type.h"
 
 #include "usbdebug.h"
 #include "usbhw_lpc.h"
 #include "usbapi.h"
+
+#include <lpc17xx_clkpwr.h>
+
 //  Configure LED pin functions
 //
 //  LED pin functions
@@ -548,79 +549,39 @@ void USBHwISR(void)
  */
 BOOL USBHwInit(void)
 {
-/*	CodeRed - comment out original code
- *
-	// configure P0.23 for Vbus sense
-	PINSEL1 = (PINSEL1 & ~(3 << 14)) | (1 << 14);	// P0.23
-	// configure P0.31 for CONNECT
-	PINSEL1 = (PINSEL1 & ~(3 << 30)) | (2 << 30);	// P0.31
-*/
+	// enable PUSB
+	LPC_SC->PCONP |= (1u << 31);
+
+	// Enable clocks
+	LPC_USB->USBClkCtrl = 0x1A;	                  /* Dev clock, AHB clock enable  */
+	while ((LPC_USB->USBClkSt & 0x1A) != 0x1A);
 
 	// CodeRed - set up USB pins
-
 	// P2.9 -> USB_CONNECT
 	LPC_PINCON->PINSEL4 &= ~0x000C0000;
 	LPC_PINCON->PINSEL4 |= 0x00040000;
 
 	// P1.18 -> USB_UP_LED
 	// P1.30 -> VBUS
-	LPC_PINCON->PINSEL3 &= ~0x30000030;
-	LPC_PINCON->PINSEL3 |= 0x20000010;
+	//LPC_PINCON->PINSEL3 &= ~0x30000030;
+	//LPC_PINCON->PINSEL3 |= 0x20000010;
 
 	// P0.29 -> USB_D+
 	// P0.30 -> USB_D-
-	LPC_PINCON->PINSEL1 &= ~0x3C000000;
+	LPC_PINCON->PINSEL1 &= ~0x3C000000; // &= 0xC3FFFFFF
 	LPC_PINCON->PINSEL1 |= 0x14000000;
 
-
-	// enable PUSB
-	LPC_SC->PCONP |= (1 << 31);
-
-/*  CodeRed - Comment out original PLL code
- *  PLL now set up by NXP code in target.c within example projects
- *
-	// initialise PLL
-	PLL1CON = 1;			// enable PLL
-	PLL1CFG = (1 << 5) | 3; // P = 2, M = 4
-	PLL1FEED = 0xAA;
-	PLL1FEED = 0x55;
-	while ((PLL1STAT & (1 << 10)) == 0);
-
-	PLL1CON = 3;			// enable and connect
-	PLL1FEED = 0xAA;
-	PLL1FEED = 0x55;
-
-*/
-
-
-// AWB added USB clock enable
-// These are actually the USBClkCtrl and USBClkSt registers
-//	  OTG_CLK_CTRL = 0x12;	                  /* Dev clock, AHB clock enable  */
-//	  while ((OTG_CLK_STAT & 0x12) != 0x12);
-
-	LPC_USB->USBClkCtrl = 0x1A;	                  /* Dev clock, AHB clock enable  */
-	while ((LPC_USB->USBClkSt & 0x1A) != 0x1A);
-
 	// disable/clear all interrupts for now
-	LPC_USB->USBDevIntEn = 0;
+	LPC_USB->USBDevIntEn  = 0;
 	LPC_USB->USBDevIntClr = 0xFFFFFFFF;
 	LPC_USB->USBDevIntPri = 0;
 
-	LPC_USB->USBEpIntEn = 0;
+	LPC_USB->USBEpIntEn  = 0;
 	LPC_USB->USBEpIntClr = 0xFFFFFFFF;
 	LPC_USB->USBEpIntPri = 0;
 
 	// by default, only ACKs generate interrupts
 	USBHwNakIntEnable(0);
 
-	// CodeRed - commented out LEDs - not used by current port
-	// init debug leds
-    /*
-	DEBUG_LED_INIT(5);
-	DEBUG_LED_INIT(6);
-	DEBUG_LED_INIT(7);
-	*/
-
 	return TRUE;
 }
-

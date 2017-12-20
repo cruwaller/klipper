@@ -10,7 +10,9 @@
 #include <lpc17xx_adc.h>
 #include <lpc17xx_pinsel.h>
 #include <lpc17xx_clkpwr.h>
+#include <cmsis_nvic.h>
 
+#include "pins_MKS.h"
 
 /****************************************************************
  * Analog to Digital Converter (ADC) pins
@@ -34,10 +36,43 @@ static const _gpio_peripheral_t adc_pins[8] = {
 #define ADC_FREQ_MAX 2000000 // 2MHz (should be less than or equal to 13MHz)
 DECL_CONSTANT(ADC_MAX, 4095);
 
+#define ENABLE_BURST_MODE 0 // Enable ADC IRQ
+static int32_t _adc_data[8];
+#if 0
+static void gpio_adc_isr(void) {
+    // Read status
+    uint32_t stat = LPC_ADC->ADSTAT;
+    //Scan channels for over-run or done and update array
+    if (stat & 0x0101) _adc_data[0] = LPC_ADC->ADDR0;
+    if (stat & 0x0202) _adc_data[1] = LPC_ADC->ADDR1;
+    if (stat & 0x0404) _adc_data[2] = LPC_ADC->ADDR2;
+    if (stat & 0x0808) _adc_data[3] = LPC_ADC->ADDR3;
+    if (stat & 0x1010) _adc_data[4] = LPC_ADC->ADDR4;
+    if (stat & 0x2020) _adc_data[5] = LPC_ADC->ADDR5;
+    if (stat & 0x4040) _adc_data[6] = LPC_ADC->ADDR6;
+    if (stat & 0x8080) _adc_data[7] = LPC_ADC->ADDR7;
+}
+#endif
+void ADC_IRQHandler(void)
+//void gpio_adc_isr(void)
+{
+    uint32_t const ADGDR   = LPC_ADC->ADGDR;
+    uint32_t const channel = ADC_GDR_CH(ADGDR); // Extract Channel Number
+    _adc_data[channel] = ADC_GDR_RESULT(ADGDR); // Extract Conversion Result
+}
+
 void
 gpio_adc_init(void) {
     /* Init ADC HW */
     uint32_t rate, reg;
+
+#if (ENABLE_BURST_MODE == 1)
+    uint8_t iter;
+    for (iter = 0; iter < 8; iter++) _adc_data[iter] = -1;
+#endif
+
+    NVIC_DisableIRQ(ADC_IRQn);
+    NVIC_ClearPendingIRQ(ADC_IRQn);
 
     CLKPWR_ConfigPPWR(CLKPWR_PCONP_PCAD, ENABLE);
     CLKPWR_SetPCLKDiv(CLKPWR_PCLKSEL_ADC, CLKPWR_PCLKSEL_CCLK_DIV_2);
@@ -45,11 +80,28 @@ gpio_adc_init(void) {
     //Enable PDN bit
     reg = ADC_CR_PDN;
 
-    // Set clock frequency
+    // Set ADC clock frequency scale
     rate = (SystemCoreClock / (2 * ADC_FREQ_MAX)) - 1;
     reg |=  ADC_CR_CLKDIV(rate);
 
+#if (ENABLE_BURST_MODE == 1)
+    // Enable burst mode (auto mode)
+    reg |= ADC_CR_BURST;
+    // Enable global interrupt
+    LPC_ADC->ADINTEN = ADC_INTEN_GLOBAL;
+    //NVIC_SetVector(ADC_IRQn, (uint32_t)&gpio_adc_isr);
+#else
+    // Disable interrupts
+    LPC_ADC->ADINTEN = 0;
+#endif
+
     LPC_ADC->ADCR = reg;
+
+    DEBUG_OUT("ADC configured\n");
+
+#if (ENABLE_BURST_MODE == 1)
+    NVIC_EnableIRQ(ADC_IRQn);
+#endif
 }
 DECL_INIT(gpio_adc_init);
 
@@ -69,6 +121,12 @@ gpio_adc_setup(uint8_t pin)
             break;
     }
     gpio_peripheral(&adc_pins[chan], 0);
+#if (ENABLE_BURST_MODE == 1)
+    // Enable ADC channel
+    LPC_ADC->ADCR    |= ADC_CR_CH_SEL(chan);
+    // Enable channel ISR
+    LPC_ADC->ADINTEN |= ADC_INTEN_CH(chan);
+#endif
     return (struct gpio_adc){ .channel = chan };
 }
 
@@ -78,6 +136,9 @@ gpio_adc_setup(uint8_t pin)
 uint32_t
 gpio_adc_sample(struct gpio_adc g)
 {
+#if (ENABLE_BURST_MODE == 1)
+    if (_adc_data[g.channel] < 0) goto need_delay;
+#else
     uint32_t const chsr = LPC_ADC->ADGDR; // read global status reg
     if (! (LPC_ADC->ADCR & ADC_CR_START_MASK)) {
         // Start sample
@@ -92,27 +153,49 @@ gpio_adc_sample(struct gpio_adc g)
     if (! (chsr & ADC_GDR_DONE_FLAG))
         // Conversion still in progress
         goto need_delay;
+#endif
     // Conversion ready
     return 0;
 need_delay:
-    return (CONFIG_CLOCK_FREQ / (ADC_FREQ_MAX * 5)); // 5th of the ADC time
+    return (CONFIG_CLOCK_FREQ / (ADC_FREQ_MAX * 2)); // Half of the ADC time
+    //return (SystemCoreClock / (10 * ADC_FREQ_MAX)); // 5th of the ADC time
 }
 
 // Read a value; use only after gpio_adc_sample() returns zero
 uint16_t
 gpio_adc_read(struct gpio_adc g)
 {
+#if (ENABLE_BURST_MODE == 1)
+    return _adc_data[g.channel];
+#else
     gpio_adc_cancel_sample(g);
     return ADC_GDR_RESULT(LPC_ADC->ADGDR);
+#endif
 }
 
 // Cancel a sample that may have been started with gpio_adc_sample()
 void
 gpio_adc_cancel_sample(struct gpio_adc g)
 {
-    irqstatus_t flag = irq_save();
+    //irqstatus_t flag = irq_save();
+    __disable_irq();
+#if (ENABLE_BURST_MODE == 1)
+    _adc_data[g.channel] = -1;
+#else
     //need to stop START bits before disable channel
     LPC_ADC->ADCR &= ~ADC_CR_START_MASK;
     LPC_ADC->ADCR &= ~ADC_CR_CH_SEL(g.channel);
-    irq_restore(flag);
+#endif
+    __enable_irq();
+    //irq_restore(flag);
 }
+
+#if (ENABLE_BURST_MODE == 1)
+// Disable ADC ISR
+void
+gpio_adc_shutdown(void)
+{
+    NVIC_DisableIRQ(ADC_IRQn);
+}
+DECL_SHUTDOWN(gpio_adc_shutdown);
+#endif

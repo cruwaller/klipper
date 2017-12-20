@@ -29,7 +29,7 @@ timer_read_time(void)
 void
 timer_kick(void)
 {
-    timer_set(timer_read_time() + 50);
+    timer_set(timer_read_time() + 50); // 50 ~= 1.2us
     TC0->TC_CHANNEL[0].TC_SR; // read to clear irq pending
 }
 

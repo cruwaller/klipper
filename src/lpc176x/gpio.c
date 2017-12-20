@@ -25,15 +25,17 @@
 /****************************************************************
  * Pin mappings
  ****************************************************************/
-
+#define NUM_PORTS      5
+#define MAX_PIN_VALUE  (NUM_PORTS * 32)
+/*
 static LPC_GPIO_TypeDef * const digital_regs[] = {
-    LPC_GPIO0, // 'A.xx'
-    LPC_GPIO1, // 'B.xx'
-    LPC_GPIO2, // 'C.xx'
-    LPC_GPIO3, // 'D.xx'
-    LPC_GPIO4  // 'E.xx'
+    LPC_GPIO0, // 'A.xx' --> 0.0 .. 0.31
+    LPC_GPIO1, // 'B.xx' --> 1.0 .. 1.31
+    LPC_GPIO2, // 'C.xx' --> 2.0 .. 2.31
+    LPC_GPIO3, // 'D.xx' --> 3.0 .. 3.31
+    LPC_GPIO4  // 'E.xx' --> 4.0 .. 4.31
 };
-
+*/
 
 /****************************************************************
  * General Purpose Input Output (GPIO) pins
@@ -59,21 +61,21 @@ gpio_peripheral(_gpio_peripheral_t const * const ptr,
 struct gpio_out
 gpio_out_setup(uint8_t pin, uint8_t val)
 {
-    if (GPIO2PORT(pin) >= ARRAY_SIZE(digital_regs))
+    if (pin >= MAX_PIN_VALUE)
         goto fail;
-    LPC_GPIO_TypeDef * const regs = digital_regs[GPIO2PORT(pin)];
-    uint8_t const pin_idx = (pin & 31);
+    uint32_t const port_idx = GPIO2PORT(pin);
+    uint32_t const pin_idx = GPIO2PIN(pin);
+    LPC_GPIO_TypeDef * const regs = &LPC_GPIO0[port_idx];
     PINSEL_CFG_Type cfg;
-    irqstatus_t flag = irq_save();
-    cfg.Portnum   = GPIO2PORT(pin);
+    cfg.Portnum   = port_idx;
     cfg.Pinnum    = pin_idx;
     cfg.Funcnum   = PINSEL_FUNC_0; // GPIO
     cfg.Pinmode   = PINSEL_PINMODE_PULLDOWN;
     cfg.OpenDrain = PINSEL_PINMODE_NORMAL;
+
+    irqstatus_t flag = irq_save();
     PINSEL_ConfigPin(&cfg);
-
     regs->FIODIR |= (_BV(pin_idx)); // Mark as output
-
     irq_restore(flag);
     return (struct gpio_out){ .regs=regs, .bit=_BV(pin_idx) };
 fail:
@@ -104,13 +106,13 @@ gpio_out_write(struct gpio_out g, uint8_t val)
 struct gpio_in
 gpio_in_setup(uint8_t pin, int8_t pull_up)
 {
-    if (GPIO2PORT(pin) >= ARRAY_SIZE(digital_regs))
+    if (pin >= MAX_PIN_VALUE)
         goto fail;
-    LPC_GPIO_TypeDef * const regs = digital_regs[GPIO2PORT(pin)];
-    uint8_t const pin_idx = (pin & 31);
+    uint32_t const port_idx = GPIO2PORT(pin);
+    uint32_t const pin_idx = GPIO2PIN(pin);
+    LPC_GPIO_TypeDef * const regs = &LPC_GPIO0[port_idx];
     PINSEL_CFG_Type cfg;
-    irqstatus_t flag = irq_save();
-    cfg.Portnum   = GPIO2PORT(pin);
+    cfg.Portnum   = port_idx;
     cfg.Pinnum    = pin_idx;
     cfg.Funcnum   = PINSEL_FUNC_0; // GPIO
     if (pull_up)
@@ -118,10 +120,10 @@ gpio_in_setup(uint8_t pin, int8_t pull_up)
     else
         cfg.Pinmode = PINSEL_PINMODE_PULLDOWN;
     cfg.OpenDrain = PINSEL_PINMODE_NORMAL;
+
+    irqstatus_t flag = irq_save();
     PINSEL_ConfigPin(&cfg);
-
     regs->FIODIR &= ~(_BV(pin_idx)); // mark as input
-
     irq_restore(flag);
     return (struct gpio_in){ .regs=regs, .bit=_BV(pin_idx) };
 fail:
@@ -135,9 +137,10 @@ gpio_in_read(struct gpio_in g)
     return !!(regs->FIOPIN & g.bit);
 }
 
-void
+/*void
 gpio_init(void)
 {
     CLKPWR_ConfigPPWR(CLKPWR_PCONP_PCGPIO, ENABLE);
 }
 DECL_INIT(gpio_init);
+*/

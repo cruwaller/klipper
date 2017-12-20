@@ -2,6 +2,7 @@
 #define __SAM3X8E_GPIO_H
 
 #include <stdint.h>
+#include <lpc17xx_pinsel.h>
 
 #define GPIO(PORT, NUM) (((PORT)-'A') * 32 + (NUM))
 

@@ -500,7 +500,7 @@ void SystemCoreClockUpdate (void)            /* Get Core Clock Frequency      */
 }
 
 // detect 17x[4-8] (100MHz) or 17x9 (120MHz)
-int can_120MHz(void) {
+static int can_120MHz(void) {
     #define IAP_LOCATION 0x1FFF1FF1
     uint32_t command[1];
     uint32_t result[5];
@@ -512,6 +512,10 @@ int can_120MHz(void) {
 
     return result[1] & 0x00100000;
 }
+
+
+// Make sure we are pulling in the retargeting module at link time
+//extern int stdio_retargeting_module;
 
 /**
  * Initialize the system
@@ -559,8 +563,6 @@ void SystemInit (void)
 
   LPC_SC->CCLKCFG   = 0x00000002;       /* Setup CPU Clock Divider            */
 
-  /* Run @100MHz by default! */
-  //if(/*can_120MHz()*/ 0) {
   if(can_120MHz()) {
     LPC_SC->PLL0CFG   = 0x0000000E;     /* configure PLL0                     */
     LPC_SC->PLL0FEED  = 0xAA;
@@ -622,6 +624,7 @@ void SystemInit (void)
   LPC_SC->FLASHCFG  = (LPC_SC->FLASHCFG & ~0x0000F000) | FLASHCFG_Val;
 #endif
 
+  //stdio_retargeting_module = 1;
 }
 
 /**
