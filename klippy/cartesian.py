@@ -57,7 +57,9 @@ class CartKinematics:
                 rpos = s.position_endstop + s.homing_retract_dist
                 r2pos = rpos + s.homing_retract_dist
             # Initial homing
-            homing_speed = s.get_homing_speed()
+            homing_speed = s.homing_speed
+            if axis == 2:
+                homing_speed = min(homing_speed, self.max_z_velocity)
             homepos = [None, None, None, None]
             # Set Z homing position if defined
             homing_state.retract([s.homing_pos_x, # X axis position

@@ -49,11 +49,9 @@ class PrinterHeaterFan:
         self.mcu = printer.objects['mcu']
         self.heater_temp = config.getfloat("heater_temp")
         max_power = self.fan.max_power
-        self.fan_speed = config.getfloat("fan_speed",
-                                         max_power,
-                                         minval=0.,
-                                         maxval=max_power)
-        self.fan.mcu_fan.setup_shutdown_value(max_power)
+        self.fan_speed = config.getfloat(
+            "fan_speed", max_power, minval=0., maxval=max_power)
+        self.fan.mcu_fan.setup_start_value(0., max_power)
         printer.reactor.register_timer(self.callback, printer.reactor.NOW)
         self.logger.debug("heater = {}".
                           format(heater_name))
