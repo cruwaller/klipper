@@ -74,9 +74,6 @@ class PrinterHomingStepper(PrinterStepper):
     def __init__(self, printer, config, default_position=None):
         PrinterStepper.__init__(self, printer, config)
         # Endstop and its position
-        self.mcu_endstop = pins.setup_pin(
-            printer, 'endstop', config.get('endstop_pin'))
-        self.mcu_endstop.add_stepper(self.mcu_stepper)
         if default_position is None:
             self.position_endstop = config.getfloat('position_endstop')
         else:
@@ -119,6 +116,17 @@ class PrinterHomingStepper(PrinterStepper):
                     raise config.error(
                         "Unable to infer homing_positive_dir in section '%s'" % (
                             config.section,))
+        # Endstop
+        endstop_pin = config.get('endstop_pin', None)
+        if endstop_pin is None:
+            if self.homing_positive_dir is False:
+                # min pin
+                endstop_pin = config.get('endstop_min_pin')
+            else:
+                # max pin
+                endstop_pin = config.get('endstop_max_pin')
+        self.mcu_endstop = pins.setup_pin(printer, 'endstop', endstop_pin)
+        self.mcu_endstop.add_stepper(self.mcu_stepper)
         # Endstop stepper phase position tracking
         self.homing_stepper_phases = config.getint(
             'homing_stepper_phases', None, minval=0)

@@ -29,6 +29,13 @@ def beaglebone_pins():
     gpios.update({"AIN%d" % i: i+4*32 for i in range(8)})
     return gpios
 
+def lpc_arm_port_pins(port_count, bit_count=32):
+    pins = {}
+    for port in range(port_count):
+        for portbit in range(bit_count):
+            pins['P%u.%u' % (port, portbit)] = (port * bit_count) + portbit
+    return pins
+
 MCU_PINS = {
     "atmega168": port_pins(5),
     "atmega328": port_pins(5),
@@ -40,6 +47,7 @@ MCU_PINS = {
     "sam3x8e": port_pins(4, 32),
     "pru": beaglebone_pins(),
     "linux": {"analog%d" % i: i for i in range(8)}, # XXX
+    "lpc176x": lpc_arm_port_pins(5, 32),
 }
 
 
@@ -110,6 +118,7 @@ def update_map_arduino(pins, mcu):
         pins['ar' + str(i)] = pins[dpins[i]]
     for i in range(len(apins)):
         pins['analog%d' % (i,)] = pins[apins[i]]
+        pins['A%d' % (i,)] = pins[apins[i]]
 
 
 ######################################################################
@@ -184,12 +193,11 @@ class PrinterPins:
         self.chips = {}
     def parse_pin_desc(self, pin_desc, can_invert=False, can_pullup=False):
         pullup = invert = 0
-        if can_pullup and pin_desc.startswith('^'):
+        if can_pullup and '^' in pin_desc:
             pullup = 1
-            pin_desc = pin_desc[1:].strip()
-        if can_invert and pin_desc.startswith('!'):
+        if can_invert and '!' in pin_desc:
             invert = 1
-            pin_desc = pin_desc[1:].strip()
+        pin_desc = pin_desc.translate(None, '^!').strip()
         if ':' not in pin_desc:
             chip_name, pin = 'mcu', pin_desc
         else:
