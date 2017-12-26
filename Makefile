@@ -89,7 +89,7 @@ $(OUT)%.o.ctr: $(OUT)%.o
 $(OUT)compile_time_request.o: $(patsubst %.c, $(OUT)src/%.o.ctr,$(src-y)) ./scripts/buildcommands.py
 	@echo "  Building $@"
 	$(Q)cat $(patsubst %.c, $(OUT)src/%.o.ctr,$(src-y)) > $(OUT)klipper.compile_time_request
-	$(Q)$(PYTHON) ./scripts/buildcommands.py -d $(OUT)klipper.dict $(OUT)klipper.compile_time_request $(OUT)compile_time_request.c
+	$(Q)$(PYTHON) ./scripts/buildcommands.py -d $(OUT)klipper.dict -t "$(CC);$(AS);$(LD);$(OBJCOPY);$(OBJDUMP);$(STRIP)" $(OUT)klipper.compile_time_request $(OUT)compile_time_request.c
 	$(Q)$(CC) $(CFLAGS) -c $(OUT)compile_time_request.c -o $@
 
 $(OUT)klipper.elf: $(patsubst %.c, $(OUT)src/%.o,$(src-y)) $(OUT)compile_time_request.o  $(patsubst %.s, $(OUT)src/%.o,$(asm-y))

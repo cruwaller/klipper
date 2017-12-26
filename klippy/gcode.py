@@ -62,16 +62,17 @@ class GCodeParser:
             self.register_command(cmd, func, wnr, desc)
             for a in getattr(self, 'cmd_' + cmd + '_aliases', []):
                 self.register_command(a, func, wnr)
+        # G-Code coordinate manipulation
+        self.absolutecoord = self.absoluteextrude = True
+        self.base_position = [0.0, 0.0, 0.0, 0.0]
+        self.last_position = [0.0, 0.0, 0.0, 0.0]
+        self.homing_add = [0.0, 0.0, 0.0, 0.0]
         # G-Code state
         self.need_ack = False
         self.toolhead = None
         self.extruder = None
         self.extruders = {}
         self.speed = 25.0
-        self.absolutecoord = self.absoluteextrude = True
-        self.base_position = [0.0, 0.0, 0.0, 0.0]
-        self.last_position = [0.0, 0.0, 0.0, 0.0]
-        self.homing_add    = [0.0, 0.0, 0.0, 0.0]
         self.axis2pos = {'X': 0, 'Y': 1, 'Z': 2, 'E': 3}
         self.factor_speed   = 1.0
         #self.tx_sequenceno = 0
@@ -130,6 +131,13 @@ class GCodeParser:
             len(self.input_log),))
         for eventtime, data in self.input_log:
             out.append("Read %f: %s" % (eventtime, repr(data)))
+        out.append(
+            "gcode state: absolutecoord=%s absoluteextrude=%s"
+            " base_position=%s last_position=%s homing_add=%s"
+            " speed=%s" % (
+                self.absolutecoord, self.absoluteextrude,
+                self.base_position, self.last_position, self.homing_add,
+                self.speed))
         self.logger.info("\n".join(out))
     # Parse input into commands
     args_r = re.compile('([A-Z_]+|[A-Z*])')
@@ -323,7 +331,7 @@ class GCodeParser:
         print_time = self.toolhead.get_last_move_time()
         fan.set_speed(print_time, speed)
 
-    # Individual command handlers
+    # G-Code special command handlers
     def cmd_default(self, params):
         if not self.is_printer_ready:
             self.respond_error(self.printer.get_state_message())
@@ -659,6 +667,7 @@ class GCodeParser:
         #self.cmd_default(params)
         pass
 
+    # G-Code coordinate manipulation
     def cmd_G90(self, params):
         # Use absolute coordinates
         self.absolutecoord = True
@@ -723,6 +732,7 @@ class GCodeParser:
     def cmd_M109(self, params):
         # Set Extruder Temperature and Wait
         self.set_temp(params, wait=True)
+    # G-Code miscellaneous commands
     cmd_M112_when_not_ready = True
     def cmd_M112(self, params):
         # Emergency Stop
@@ -744,6 +754,7 @@ class GCodeParser:
         software_version = self.printer.get_start_args().get('software_version')
         kw = {"FIRMWARE_NAME": "Klipper", "FIRMWARE_VERSION": software_version}
         self.ack(" ".join(["%s:%s" % (k, v) for k, v in kw.items()]))
+
     def cmd_M118(self, params):
         self.respond_info(params['#original'].replace(params['#command'], ""))
     def cmd_M140(self, params):
@@ -849,6 +860,7 @@ class GCodeParser:
                               (self.toolhead.kin.steppers[0].homing_offset,
                                self.toolhead.kin.steppers[1].homing_offset,
                                self.toolhead.kin.steppers[2].homing_offset))
+
     cmd_IGNORE_when_not_ready = True
     cmd_IGNORE_aliases = [
         "G21",
