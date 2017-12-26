@@ -37,7 +37,7 @@ static uint32_t transmit_pos = 0, transmit_max = 0;
  * Serial hardware
  ****************************************************************/
 
-#define MAX_PACKET_SIZE         128 // 64
+#define MAX_PACKET_SIZE         64 // MAX_PACKET_SIZE_EPBULK
 #define ASSERT(_x)
 
 // data structure for GET_LINE_CODING / SET_LINE_CODING class requests
@@ -67,15 +67,15 @@ static const U8 abDescriptors[] = {
     LE_WORD(USB_VERSION_2_0),   // bcdUSB // OLD: LE_WORD(0x0101)
     0xEF,                       // bDeviceClass , 2 = UC_COMM, 0xEF = UC_MISC
     0x02,                       // bDeviceSubClass
-    0x01,                       // bDeviceProtocol
-    MAX_PACKET_SIZE0,           // bMaxPacketSize
+    0x01,                       // bDeviceProtocol -
+    MAX_PACKET_SIZE0,           // bMaxPacketSize - Maximum Packet Size for Zero Endpoint. Valid Sizes are 8, 16, 32, 64
     LE_WORD(0x1d50),            // idVendor
     LE_WORD(0x6015),            // idProduct
-    LE_WORD(0x0100),            // bcdDevice
-    0x01,                       // iManufacturer
-    0x02,                       // iProduct
-    0x03,                       // iSerialNumber
-    0x01,                       // bNumConfigurations
+    LE_WORD(0x0103),            // bcdDevice - Device Release Number
+    0x01,                       // iManufacturer - Index of Manufacturer String Descriptor
+    0x02,                       // iProduct - Index of Product String Descriptor
+    0x03,                       // iSerialNumber - Index of Serial Number String Descriptor
+    0x01,                       // bNumConfigurations - Number of Possible Configurations
 
 // configuration descriptor
     0x09,
@@ -84,7 +84,7 @@ static const U8 abDescriptors[] = {
     0x02,                       // bNumInterfaces
     0x01,                       // bConfigurationValue
     0x00,                       // iConfiguration
-    0x80,                       // bmAttributes // 0xC0
+    0xC0,                       // bmAttributes - D7 = 1, D6 = Self powered, D5 = Remote wakeup, D4..0 reserved
     500 mA,                     // bMaxPower
 
 // control class interface
@@ -97,11 +97,13 @@ static const U8 abDescriptors[] = {
     0x02,                       // bInterfaceSubClass
     0x01,                       // bInterfaceProtocol, linux requires value of 1 for the cdc_acm module
     0x00,                       // iInterface
-// header functional descriptor
+
+// header functional descriptor (Endpoint Descriptor)
     0x05,
     CS_INTERFACE,
     0x00,
     LE_WORD(0x0110),
+
 // call management functional descriptor
     0x05,
     CS_INTERFACE,
@@ -119,13 +121,14 @@ static const U8 abDescriptors[] = {
     0x06,
     0x00,                       // bMasterInterface
     0x01,                       // bSlaveInterface0
+
 // notification EP
     0x07,
     DESC_ENDPOINT,
     INT_IN_EP,                  // bEndpointAddress
     0x03,                       // bmAttributes = intr
     LE_WORD(8),                 // wMaxPacketSize
-    0x0A,                       // bInterval
+    0x10,                       // bInterval - was 0x0A
 // data class interface descriptor
     0x09,
     DESC_INTERFACE,
@@ -142,14 +145,14 @@ static const U8 abDescriptors[] = {
     BULK_OUT_EP,                // bEndpointAddress
     0x02,                       // bmAttributes = bulk
     LE_WORD(MAX_PACKET_SIZE),   // wMaxPacketSize
-    0x00,                       // bInterval
+    0x01,                       // bInterval - was 0
 // data EP in
     0x07,
     DESC_ENDPOINT,
     BULK_IN_EP,                 // bEndpointAddress
     0x02,                       // bmAttributes = bulk
     LE_WORD(MAX_PACKET_SIZE),   // wMaxPacketSize
-    0x00,                       // bInterval
+    0x01,                       // bInterval - was 0
 
     // string descriptors
     0x04, // LANGUAGE
@@ -167,9 +170,9 @@ static const U8 abDescriptors[] = {
     'U', 0, 'S', 0, 'B', 0, 'S', 0, 'e', 0, 'r', 0, 'i', 0, 'a', 0, 'l', 0,
 
     // iSerialNumber , idx 3
-    0x12,
+    0x10,
     DESC_STRING,
-    'D', 0, 'E', 0, 'A', 0, 'D', 0, 'C', 0, '0', 0, 'D', 0, 'E', 0,
+    'K', 0, 'L', 0, 'I', 0, 'P', 0, 'P', 0, 'E', 0, 'R', 0,
 
 // terminating zero
     0
@@ -185,14 +188,19 @@ static const U8 abDescriptors[] = {
 static void BulkOut(U8 bEP, U8 bEPStatus)
 {
     int i, iLen;
-    bEPStatus = bEPStatus;
+    //bEPStatus = bEPStatus;
+    (void)bEPStatus;
     if ((SERIAL_BUFFER_SIZE - receive_pos) < MAX_PACKET_SIZE) {
         // may not fit into fifo
+        DEBUG_OUTF("USB in - buff overflow\n");
         return;
     }
 
     // get data from USB into intermediate buffer
     iLen = USBHwEPRead(bEP, abBulkBuf, sizeof(abBulkBuf));
+
+    DEBUG_OUTF("USB in - size %d\n", iLen);
+
     // in case of serial overflow - ignore it as crc error will force retransmit
     for (i = 0; i < iLen && receive_pos < SERIAL_BUFFER_SIZE; i++) {
         if (abBulkBuf[i] == MESSAGE_SYNC)
@@ -211,12 +219,15 @@ static void BulkOut(U8 bEP, U8 bEPStatus)
 static void BulkIn(U8 bEP, U8 bEPStatus)
 {
     int iLen;
-    bEPStatus = bEPStatus;
+    //bEPStatus = bEPStatus;
+    (void)bEPStatus;
     if (transmit_max <= transmit_pos) {
+        DEBUG_OUT("USB out - no data\n");
         // no more data, disable further NAK interrupts until next USB frame
         USBHwNakIntEnable(0);
         return;
     }
+    DEBUG_OUTF("USB out, size: %d\n", (transmit_max - transmit_pos));
 
     // get bytes from transmit FIFO into intermediate buffer
     for (iLen = 0;
@@ -245,19 +256,22 @@ static BOOL HandleClassRequest(TSetupPacket *pSetup, int *piLen, U8 **ppbData)
     switch (pSetup->bRequest) {
         // set line coding
         case SET_LINE_CODING:
+            DEBUG_OUT("USB class req (SET_LINE)\n");
             *piLen = 7;
             for (i = 0; i < 7; i++)
                 ((U8 *)&LineCoding)[i] = (*ppbData)[i];
             break;
 
-            // get line coding
+        // get line coding
         case GET_LINE_CODING:
+            DEBUG_OUT("USB class req (GET_LINE)\n");
             *ppbData = (U8 *)&LineCoding;
             *piLen = 7;
             break;
 
-            // set control line state
+        // set control line state
         case SET_CONTROL_LINE_STATE:
+            DEBUG_OUT("USB class req (SET_CTRL_STATE)\n");
             // bit0 = DTR, bit = RTS
             break;
 
@@ -269,7 +283,8 @@ static BOOL HandleClassRequest(TSetupPacket *pSetup, int *piLen, U8 **ppbData)
 
 
 static void USBFrameHandler(U16 wFrame) {
-    wFrame = wFrame;
+    //wFrame = wFrame;
+    (void)wFrame;
     if (transmit_pos < transmit_max) {
         // data available, enable NAK interrupt on bulk in
         USBHwNakIntEnable(INACK_BI);
@@ -282,7 +297,6 @@ static void USBFrameHandler(U16 wFrame) {
 */
 void USB_IRQHandler(void) {
     // Simply calls the USB ISR
-    DEBUG_OUT("usb isr\n");
     USBHwISR();
 }
 void USBActivity_IRQHandler(void) {
@@ -334,8 +348,8 @@ void serial_init(void) {
     transmit_pos = transmit_max = 0;
 
     init_usb_cdc();
-    //gpio_out_write(SBASE_LED2, 1);
-    DEBUG_OUT("USB init\n");
+
+    DEBUG_OUT("USB init done\n");
 }
 //DECL_INIT(serial_init);
 
@@ -408,7 +422,6 @@ console_sendf(const struct command_encoder *ce, va_list args)
         memmove(&transmit_buf[0], &transmit_buf[tpos], tmax);
         writel(&transmit_pos, 0);
         writel(&transmit_max, tmax);
-        //enable_tx_irq();
     }
 
     // Generate message
@@ -418,5 +431,4 @@ console_sendf(const struct command_encoder *ce, va_list args)
 
     // Start message transmit
     writel(&transmit_max, tmax + msglen);
-    //enable_tx_irq();
 }

@@ -5,31 +5,35 @@ USBLIBDIR = lib/lpc176x/VCOM_lib/
 # Setup the toolchain
 CROSS_PREFIX=arm-none-eabi-
 
-dirs-y += src/lpc176x src/generic
-dirs-y += lib/lpc176x/driver lib/lpc176x/startup
-dirs-y += lib/lpc176x/cmsis
+dirs-y += src/lpc176x
+dirs-y += src/generic
+dirs-y += lib/lpc176x/driver
+dirs-y += lib/lpc176x/libs
+dirs-y += lib/lpc176x/startup
 dirs-y += lib/lpc176x/VCOM_lib/src/usbSerial
 
-#CFLAGS += -std=c99
-CFLAGS += -std=gnu99
-CFLAGS += -mthumb -mcpu=cortex-m3 -mthumb-interwork
-CFLAGS += -D__LPC176x__ -D__LPC1768__ -Dprintf=iprintf
-CFLAGS += -DTARGET_LPC1768 -DTOOLCHAIN_GCC_ARM
+
+CFLAGS += -O2 -g3 -mcpu=cortex-m3 -mthumb -mthumb-interwork
+#CFLAGS += -O2 -g3
+#CFLAGS += -mthumb -mcpu=cortex-m3 -mthumb-interwork
+CFLAGS += -ffunction-sections -fdata-sections  -fno-exceptions -fno-delete-null-pointer-checks
+CFLAGS += -D__LPC17xx__ -D__LPC176x__ -D__LPC1768__ -D__LPC17XX__ -DTARGET_LPC1768
+
+# include dirs
 CFLAGS += -Ilib/cmsis-include
 CFLAGS += -Ilib/lpc176x/include
-CFLAGS += -Ilib/lpc176x/cmsis
+CFLAGS += -Ilib/lpc176x/libs
+CFLAGS += -Ilib/lpc176x/startup
 CFLAGS += -Ilib/lpc176x/VCOM_lib/inc/usbSerial
 
-CFLAGS_klipper.elf += --specs=nano.specs #--specs=nosys.specs #-nostdlib
-CFLAGS_klipper.elf += --specs=nosys.specs
-#CFLAGS_klipper.elf += -specs=nano.specs -lstdc++ -lsupc++ -lm -lgcc -lc -lnosys
-CFLAGS_klipper.elf += -Wl,-Map=$(OUT)klipper.map,--cref
-CLFAGS_klipper.elf += -specs=lib/lpc176x/startup/startfile.spec
-CFLAGS_klipper.elf += -Tlib/lpc176x/startup/LPC1768.ld
-CFLAGS_klipper.elf += -nostartfiles
-#CFLAGS_klipper.elf += -Xlinker #--gc-sections
+ASFLAGS += -mcpu=cortex-m3 -mthumb -g3
 
-ASFLAGS += -mcpu=cortex-m3 -mthumb
+CFLAGS_klipper.elf += -mcpu=cortex-m3 -mthumb
+CFLAGS_klipper.elf += -specs=lib/lpc176x/startup/startfile.spec
+CFLAGS_klipper.elf += -Wl,-Map=$(OUT)klipper.map,--cref,--gc-sections
+CFLAGS_klipper.elf += -Tlib/lpc176x/startup/LPC1768.ld
+CFLAGS_END_klipper.elf += --specs=nano.specs
+CFLAGS_END_klipper.elf += -lstdc++ -lsupc++ -lm -lgcc -lc -lnosys
 
 # Add driver sources
 src-y += ../lib/lpc176x/driver/lpc17xx_clkpwr.c
@@ -41,10 +45,11 @@ src-y += ../lib/lpc176x/driver/lpc17xx_wdt.c
 src-y += ../lib/lpc176x/driver/lpc17xx_timer.c
 src-y += ../lib/lpc176x/driver/lpc17xx_uart.c
 
-src-y += ../lib/lpc176x/cmsis/cmsis_nvic.c
-
+src-y += ../lib/lpc176x/startup/cmsis_nvic.c
 src-y += ../lib/lpc176x/startup/system_LPC17xx.c
 asm-y += ../lib/lpc176x/startup/startup_LPC17xx.s
+
+src-y += ../lib/lpc176x/libs/delay.c
 
 # usb serial:
 src-$(CONFIG_SERIAL) += ../lib/lpc176x/VCOM_lib/src/usbSerial/usbcontrol.c
@@ -53,15 +58,23 @@ src-$(CONFIG_SERIAL) += ../lib/lpc176x/VCOM_lib/src/usbSerial/usbinit.c
 src-$(CONFIG_SERIAL) += ../lib/lpc176x/VCOM_lib/src/usbSerial/usbstdreq.c
 
 # Add source files
-src-y += lpc176x/main.c lpc176x/timer.c lpc176x/gpio.c lpc176x/spi.c lpc176x/adc.c lpc176x/mempool.c
-src-y += generic/crc16_ccitt.c generic/alloc.c generic/timer_irq.c generic/armcm_irq.c
+src-y += lpc176x/main.cpp lpc176x/custom_start.cpp
+src-y += lpc176x/mempool.c lpc176x/watchdog.c
+src-y += lpc176x/timer.c lpc176x/gpio.c lpc176x/spi.c lpc176x/adc.c
 src-$(CONFIG_SERIAL) += lpc176x/serial_usb.c lpc176x/serial_uart.c
+src-y += generic/crc16_ccitt.c generic/alloc.c generic/timer_irq.c generic/armcm_irq.c
 
 # Build the additional hex output file
 target-y += $(OUT)klipper.bin
+target-y += $(OUT)klipper.disasm
 
 $(OUT)klipper.bin: $(OUT)klipper.elf
 	@echo "  Creating hex file $@"
 	$(Q)$(OBJCOPY) -O binary $< $@
+
+$(OUT)klipper.disasm: $(OUT)klipper.elf
+	@echo "  Creating disasm file $@"
+	$(Q)$(OBJDUMP)  -d -f -M reg-names-std --demangle $< > $@
+
 flash: $(OUT)klipper.bin
 	@echo " [LPC176x] Sorry! Flashing is not supported"

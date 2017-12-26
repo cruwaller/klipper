@@ -549,27 +549,29 @@ void USBHwISR(void)
  */
 BOOL USBHwInit(void)
 {
-	// enable PUSB
-	LPC_SC->PCONP |= (1u << 31);
-
-	// Enable clocks
-	LPC_USB->USBClkCtrl = 0x1A;	                  /* Dev clock, AHB clock enable  */
-	while ((LPC_USB->USBClkSt & 0x1A) != 0x1A);
-
 	// CodeRed - set up USB pins
+
 	// P2.9 -> USB_CONNECT
 	LPC_PINCON->PINSEL4 &= ~0x000C0000;
 	LPC_PINCON->PINSEL4 |= 0x00040000;
 
 	// P1.18 -> USB_UP_LED
 	// P1.30 -> VBUS
-	//LPC_PINCON->PINSEL3 &= ~0x30000030;
-	//LPC_PINCON->PINSEL3 |= 0x20000010;
+	LPC_PINCON->PINSEL3 &= ~0x30000030;
+	LPC_PINCON->PINSEL3 |= 0x20000010;
 
 	// P0.29 -> USB_D+
 	// P0.30 -> USB_D-
 	LPC_PINCON->PINSEL1 &= ~0x3C000000; // &= 0xC3FFFFFF
 	LPC_PINCON->PINSEL1 |= 0x14000000;
+
+
+	// enable PUSB
+	LPC_SC->PCONP |= (1u << 31);
+
+	// Enable clocks
+	LPC_USB->USBClkCtrl = 0x1A;	                  /* Dev clock, AHB clock enable  */
+	while ((LPC_USB->USBClkSt & 0x1A) != 0x1A);
 
 	// disable/clear all interrupts for now
 	LPC_USB->USBDevIntEn  = 0;

@@ -14,6 +14,9 @@
 #include <lpc17xx_uart.h>
 #include <cmsis_nvic.h>
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
 
 // UART0
 // P0_02 = TXD0, FUNC_1
@@ -34,6 +37,8 @@ _gpio_peripheral_t RXD = {0, 3, PINSEL_FUNC_1};
 static uint32_t initdone = 0;
 
 
+#define NO_DRIVER 0
+
 void calc_baudrate(uint32_t baud)
 {
     uint32_t pclk, reg;
@@ -53,7 +58,8 @@ void calc_baudrate(uint32_t baud)
 
     LPC_UART0->LCR |= UART_LCR_DLAB_EN;
 
-    pclk = (LPC_SC->PCLKSEL0 >> 6) & 0x03;
+    //pclk = (LPC_SC->PCLKSEL0 >> 6) & 0x03;
+    pclk = CLKPWR_GetPCLKSEL(CLKPWR_PCLKSEL_UART0);
     switch( pclk )
     {
         case 0x00:
@@ -82,47 +88,53 @@ void serial_uart_init(void) {
     if (initdone) return;
 
     // Init pins
-    gpio_peripheral(&TXD, 0);
-    gpio_peripheral(&RXD, 0);
+    gpio_peripheral(&TXD, 1);
+    gpio_peripheral(&RXD, 1);
 
+#if (NO_DRIVER == 1)
     CLKPWR_ConfigPPWR(CLKPWR_PCONP_PCUART0, ENABLE);
-
-    LPC_UART0->FCR = UART_FCR_FIFO_EN | UART_FCR_RX_RS   | UART_FCR_TX_RS;
+    CLKPWR_SetPCLKDiv(CLKPWR_PCLKSEL_UART0, CLKPWR_PCLKSEL_CCLK_DIV_1);
+    LPC_UART0->FCR = UART_FCR_FIFO_EN | UART_FCR_RX_RS | UART_FCR_TX_RS;
     LPC_UART0->LCR = UART_LCR_WLEN8;
+    calc_baudrate(CONFIG_SERIAL_BAUD);
+    // enable TX
+    LPC_UART0->->TER |= UART_TER_TXEN;
 
-    calc_baudrate(115200);
+#else
+    UART_CFG_Type initStruct;
+    /* Initialize UART Configuration parameter structure to default state:
+     * Baudrate = 9600bps
+     * 8 data bit
+     * 1 Stop bit
+     * None parity
+     */
+    UART_ConfigStructInit(&initStruct);
+    initStruct.Baud_rate = CONFIG_SERIAL_BAUD; // Set configured baudrate
+    UART_Init(LPC_UART0, &initStruct);
 
-    /*UART_CFG_Type initStruct;
-    initStruct.Baud_rate = 115200;
-    initStruct.Databits  = UART_DATABIT_8;
-    initStruct.Parity    = UART_PARITY_NONE;
-    initStruct.Stopbits  = UART_STOPBIT_1;
-    UART_Init(LPC_UART0, &initStruct);*/
+    // Enable UART Transmit
+    UART_TxCmd(LPC_UART0, ENABLE);
+
+#endif
+
+    initdone = 1;
 }
-
-// Process any incoming commands
-/*void serial_uart_task(void) {
-}
-DECL_TASK(serial_uart_task);*/
 
 void serial_uart_put(char c) {
     if (initdone) {
-        //UART_SendByte(LPC_UART0, (uint8_t)c);
+#if (NO_DRIVER == 0)
+        UART_SendByte(LPC_UART0, (uint8_t)c);
+#else
         while( !(LPC_UART0->LSR & UART_LSR_THRE) );
-        LPC_UART0->THR = c;
+        LPC_UART0->THR = (uint8_t)c;
+#endif
     }
 }
 
 void serial_uart_puts(char * str) {
     if (initdone) {
-#if 0
-        uint32_t iter, len = strlen(str);
-        for (iter = 0; iter < len; iter++) {
-            //UART_Send(LPC_UART0, (uint8_t*)str, strlen(str), /*NONE_*/BLOCKING);
-            serial_uart_put(str[iter]);
-        }
-        serial_uart_put('\r');
-        serial_uart_put('\n');
+#if (NO_DRIVER == 0)
+        UART_Send(LPC_UART0, (uint8_t*)str, strlen(str), /*NONE_*/BLOCKING);
 #else
         while(*str) serial_uart_put(*str++);
 #endif
@@ -138,6 +150,112 @@ uint8_t serial_uart_get(void) {
 }
 
 
+void serial_uart_put_num(uint32_t n, uint8_t const base) {
+    if (n) {
+#if 1
+        static char Representation[]= "0123456789ABCDEF";
+        static char buffer[50]; // Enough space for base 2
+        char *ptr = &buffer[49];
+        *ptr = '\0';
+        do
+        {
+            *--ptr = Representation[n % base];
+            n /= base;
+        } while (n != 0);
+        serial_uart_puts(ptr);
+#else
+        unsigned char buf[8 * sizeof(long)]; // Enough space for base 2
+        int8_t i = 0;
+        while (n) {
+            //buf[i++] = n % base;
+            n /= base;
+        }
+        while (i--) {
+            //serial_uart_put((char)(buf[i] + (buf[i] < 10 ? '0' : 'A' - 10)));
+        }
+#endif
+    } else {
+        serial_uart_put('0');
+    }
+}
+
+void serial_uart_printf(char* format,...)
+{
+    char *traverse;
+    unsigned int i;
+    char *s;
+
+    //Module 1: Initializing Myprintf's arguments
+    va_list arg;
+    va_start(arg, format);
+
+    for(traverse = format; *traverse != '\0'; traverse++)
+    {
+        while( *traverse != '%' )
+        {
+            serial_uart_put(*traverse);
+            traverse++;
+        }
+
+        traverse++;
+
+        //Module 2: Fetching and executing arguments
+        switch (*traverse) {
+            case 'c' : i = va_arg(arg,int); //Fetch char argument
+                serial_uart_put(i);
+                break;
+
+            case 'd' : i = va_arg(arg,int); //Fetch Decimal/Integer argument
+                if (i < 0)
+                {
+                    i = -i;
+                    serial_uart_put('-');
+                }
+                serial_uart_put_num(i, 10);
+                break;
+
+            case 'o': i = va_arg(arg,unsigned int); //Fetch Octal representation
+                serial_uart_put_num(i, 8);
+                break;
+
+            case 's': s = va_arg(arg,char *); //Fetch string
+                serial_uart_puts(s);
+                break;
+
+            case 'x': i = va_arg(arg,unsigned int); //Fetch Hexadecimal representation
+                serial_uart_put_num(i, 16);
+                break;
+        }
+    }
+
+    //Module 3: Closing argument list to necessary clean-up
+    va_end(arg);
+}
+
+/*
+char *convert(unsigned int num, int base)
+{
+    static char Representation[]= "0123456789ABCDEF";
+    static char buffer[50];
+    char *ptr;
+
+    ptr = &buffer[49];
+    *ptr = '\0';
+
+    do
+    {
+        *--ptr = Representation[num%base];
+        num /= base;
+    }while(num != 0);
+
+    return(ptr);
+}
+*/
+
+
+
+/*
 void UART0_IRQHandler(void) {
     ;
 }
+*/

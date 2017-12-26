@@ -25,7 +25,13 @@ extern struct gpio_out SBASE_LED4;
 extern void serial_uart_init(void);
 extern void serial_uart_put(char c);
 extern void serial_uart_puts(char * str);
+extern void serial_uart_put_num(uint32_t n, uint8_t const base);
+extern void serial_uart_printf(char* format,...);
 
 #define DEBUG_OUT(_x) serial_uart_puts(_x)
+#define DEBUG_OUTF(...) serial_uart_printf(__VA_ARGS__)
+
+
+#define FORCE_INLINE __attribute__((always_inline)) inline
 
 #endif // LPC176X_PINS_H_

@@ -500,7 +500,7 @@ void SystemCoreClockUpdate (void)            /* Get Core Clock Frequency      */
 }
 
 // detect 17x[4-8] (100MHz) or 17x9 (120MHz)
-static int can_120MHz(void) {
+int can_120MHz(void) {
     #define IAP_LOCATION 0x1FFF1FF1
     uint32_t command[1];
     uint32_t result[5];

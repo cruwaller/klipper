@@ -9,8 +9,8 @@ MEMORY
   RAM (rwx) : ORIGIN = 0x100000C8, LENGTH = (32K - 0xC8)
 
   /* On-chip AHB SRAM */
-  USB_RAM(rwx) : ORIGIN = 0x2007C000, LENGTH = 16K /* Bank0 */
-  ETH_RAM(rwx) : ORIGIN = 0x20080000, LENGTH = 16K /* Bank1 */
+  USB_RAM(rwx) : ORIGIN = 0x2007C000, LENGTH = 16K
+  ETH_RAM(rwx) : ORIGIN = 0x20080000, LENGTH = 16K
 }
 
 /* Linker script to place sections and symbol values. Should be used together
@@ -43,24 +43,11 @@ ENTRY(Reset_Handler)
 
 SECTIONS
 {
-    /* Reset and ISR vectors */
-    .isr_vector :
-    {
-        __isr_vector_start__ = .;
-        KEEP(*(.isr_vector)) /* without 'KEEP' the garbage collector discards this section */
-        ASSERT(. != __isr_vector_start__, "The .isr_vector section is empty");
-    } > FLASH
-
     .text :
     {
-        /*KEEP(*(.isr_vector))*/
-        /*. = 0x000002FC;
-        KEEP(*(.crp))
-        . = 0x300;*/
-
-        . = ALIGN(4);
+        /* Reset and ISR vectors */
+        KEEP(*(.isr_vector))
         *(.text*)
-        *(.rodata*)
 
         KEEP(*(.init))
         KEEP(*(.fini))
@@ -78,6 +65,8 @@ SECTIONS
         *(EXCLUDE_FILE(*crtend?.o *crtend.o) .dtors)
         *(SORT(.dtors.*))
         *(.dtors)
+
+        *(.rodata*)
 
         KEEP(*(.eh_frame*))
     } > FLASH

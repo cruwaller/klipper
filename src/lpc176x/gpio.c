@@ -65,6 +65,7 @@ gpio_out_setup(uint8_t pin, uint8_t val)
         goto fail;
     uint32_t const port_idx = GPIO2PORT(pin);
     uint32_t const pin_idx = GPIO2PIN(pin);
+    uint32_t const bit = _BV(pin_idx);
     LPC_GPIO_TypeDef * const regs = &LPC_GPIO0[port_idx];
     PINSEL_CFG_Type cfg;
     cfg.Portnum   = port_idx;
@@ -75,9 +76,13 @@ gpio_out_setup(uint8_t pin, uint8_t val)
 
     irqstatus_t flag = irq_save();
     PINSEL_ConfigPin(&cfg);
-    regs->FIODIR |= (_BV(pin_idx)); // Mark as output
+    regs->FIODIR |= bit; // Mark as output
     irq_restore(flag);
-    return (struct gpio_out){ .regs=regs, .bit=_BV(pin_idx) };
+    if (val)
+        regs->FIOSET = bit;
+    else
+        regs->FIOCLR = bit;
+    return (struct gpio_out){ .regs=regs, .bit=bit };
 fail:
     shutdown("Not an output pin");
 }
@@ -87,9 +92,9 @@ gpio_out_toggle(struct gpio_out g)
 {
     LPC_GPIO_TypeDef * const regs = g.regs;
     if (regs->FIOPIN & g.bit)
-        regs->FIOCLR |= g.bit;
+        regs->FIOCLR = g.bit;
     else
-        regs->FIOSET |= g.bit;
+        regs->FIOSET = g.bit;
 }
 
 void
@@ -97,9 +102,9 @@ gpio_out_write(struct gpio_out g, uint8_t val)
 {
     LPC_GPIO_TypeDef * const regs = g.regs;
     if (val)
-        regs->FIOSET |= g.bit;
+        regs->FIOSET = g.bit;
     else
-        regs->FIOCLR |= g.bit;
+        regs->FIOCLR = g.bit;
 }
 
 
@@ -136,11 +141,3 @@ gpio_in_read(struct gpio_in g)
     LPC_GPIO_TypeDef * const regs = g.regs;
     return !!(regs->FIOPIN & g.bit);
 }
-
-/*void
-gpio_init(void)
-{
-    CLKPWR_ConfigPPWR(CLKPWR_PCONP_PCGPIO, ENABLE);
-}
-DECL_INIT(gpio_init);
-*/

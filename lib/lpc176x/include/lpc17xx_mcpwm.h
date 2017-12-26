@@ -117,14 +117,14 @@ extern "C"
  * - MCPWM Control set address
  * - MCPWM Control clear address
  */
-#define MCPWM_CON_RUN(n)		((n<=2) ? ((uint32_t)(1<<((n*8)+0))) : (0))		/**< Stops/starts timer channel n */
-#define MCPWM_CON_CENTER(n)		((n<=2) ? ((uint32_t)(1<<((n*8)+1))) : (0))		/**< Edge/center aligned operation for channel n */
-#define MCPWM_CON_POLAR(n)		((n<=2) ? ((uint32_t)(1<<((n*8)+2))) : (0))		/**< Select polarity of the MCOAn and MCOBn pin */
-#define MCPWM_CON_DTE(n)		((n<=2) ? ((uint32_t)(1<<((n*8)+3))) : (0))		/**< Control the dead-time feature for channel n */
-#define MCPWM_CON_DISUP(n)		((n<=2) ? ((uint32_t)(1<<((n*8)+4))) : (0))		/**< Enable/Disable update of functional register for channel n */
-#define MCPWM_CON_INVBDC		((uint32_t)(1<<29))								/**< Control the polarity for all 3 channels */
-#define MCPWM_CON_ACMODE		((uint32_t)(1<<30))								/**< 3-phase AC mode select */
-#define MCPWM_CON_DCMODE		((uint32_t)(0x80000000))						/**< 3-phase DC mode select */
+#define MCPWM_CON_RUN(n)		((n<=2) ? ((uint32_t)(1UL<<((n*8)+0))) : (0))		/**< Stops/starts timer channel n */
+#define MCPWM_CON_CENTER(n)		((n<=2) ? ((uint32_t)(1UL<<((n*8)+1))) : (0))		/**< Edge/center aligned operation for channel n */
+#define MCPWM_CON_POLAR(n)		((n<=2) ? ((uint32_t)(1UL<<((n*8)+2))) : (0))		/**< Select polarity of the MCOAn and MCOBn pin */
+#define MCPWM_CON_DTE(n)		((n<=2) ? ((uint32_t)(1UL<<((n*8)+3))) : (0))		/**< Control the dead-time feature for channel n */
+#define MCPWM_CON_DISUP(n)		((n<=2) ? ((uint32_t)(1UL<<((n*8)+4))) : (0))		/**< Enable/Disable update of functional register for channel n */
+#define MCPWM_CON_INVBDC		((uint32_t)(1UL<<29))										/**< Control the polarity for all 3 channels */
+#define MCPWM_CON_ACMODE		((uint32_t)(1UL<<30))										/**< 3-phase AC mode select */
+#define MCPWM_CON_DCMODE		((uint32_t)(1UL<<31))										/**< 3-phase DC mode select */
 
 /*********************************************************************//**
  * Macro defines for MCPWM Capture Control register

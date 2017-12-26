@@ -118,11 +118,11 @@ void TIMER0_IRQHandler(void)
 {
     irq_disable();
     uint32_t const status = LPC_TIM0->IR; // Read pending IRQ
+    //tc_clear_irq(TC_CHANNEL);
+    LPC_TIM0->IR = 0xFFFFFFFF;
     if (likely(status & (1 << TC_CHANNEL))) {
         uint32_t const next = timer_dispatch_many();
         timer_set(next);
     }
-    //tc_clear_irq(TC_CHANNEL);
-    LPC_TIM0->IR = 0xFFFFFFFF;
     irq_enable();
 }
