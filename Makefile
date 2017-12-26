@@ -120,7 +120,7 @@ $(OUT)%.o.ctr: $(OUT)%.o
 $(OUT)compile_time_request.o: $(ctr-y) ./scripts/buildcommands.py
 	@echo "  Building $@"
 	$(Q)cat $(ctr-y) > $(OUT)klipper.compile_time_request
-	$(Q)$(PYTHON) ./scripts/buildcommands.py -d $(OUT)klipper.dict $(OUT)klipper.compile_time_request $(OUT)compile_time_request.c
+	$(Q)$(PYTHON) ./scripts/buildcommands.py -d $(OUT)klipper.dict -t "$(CC);$(AS);$(LD);$(OBJCOPY);$(OBJDUMP);$(STRIP)" $(OUT)klipper.compile_time_request $(OUT)compile_time_request.c
 	$(Q)$(CC) $(STD-c) $(CFLAGS) -c $(OUT)compile_time_request.c -o $@
 
 $(OUT)klipper.elf: $(objects-y) $(OUT)compile_time_request.o

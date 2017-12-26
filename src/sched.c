@@ -291,6 +291,7 @@ sched_clear_shutdown(void)
 static void
 run_shutdown(int reason)
 {
+    irq_disable();
     uint32_t cur = timer_read_time();
     if (!shutdown_status)
         shutdown_reason = reason;
@@ -357,12 +358,16 @@ sched_main(void)
     gpio_out_write(SBASE_LED1, 1);
 #endif
 
+    irq_disable();
     int ret = setjmp(shutdown_jmp);
     if (ret)
         run_shutdown(ret);
+
 #ifdef __LPC1768__
     serial_uart_puts("enter to sched loop\n");
 #endif
+    irq_enable();
+
     run_tasks();
 #ifdef __LPC1768__
     serial_uart_puts("exit\n");
