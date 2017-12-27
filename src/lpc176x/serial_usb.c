@@ -25,7 +25,7 @@ DECL_CONSTANT(SERIAL_BAUD, CONFIG_SERIAL_BAUD);
 /****************************************************************
  * RX and TX FIFOs
  ****************************************************************/
-#define SERIAL_BUFFER_SIZE 256
+#define SERIAL_BUFFER_SIZE 1024
 static char receive_buf[SERIAL_BUFFER_SIZE];
 static uint32_t receive_pos = 0;
 static char transmit_buf[SERIAL_BUFFER_SIZE];
@@ -49,7 +49,7 @@ typedef struct {
 } TLineCoding;
 
 static TLineCoding LineCoding = {CONFIG_SERIAL_BAUD, 0, 0, 8};
-static U8 abBulkBuf[64];
+static U8 abBulkBuf[MAX_PACKET_SIZE];
 static U8 abClassReqData[8];
 
 #define USB_VERSION_1_0             0x0100
@@ -187,25 +187,23 @@ static const U8 abDescriptors[] = {
  */
 static void BulkOut(U8 bEP, U8 bEPStatus)
 {
-    int i, iLen;
-    //bEPStatus = bEPStatus;
-    (void)bEPStatus;
-    if ((SERIAL_BUFFER_SIZE - receive_pos) < MAX_PACKET_SIZE) {
+    int iLen;
+    int space = (int)SERIAL_BUFFER_SIZE - receive_pos;
+    int i;
+    if (space < MAX_PACKET_SIZE) {
         // may not fit into fifo
-        DEBUG_OUTF("USB in - buff overflow\n");
         return;
     }
 
     // get data from USB into intermediate buffer
-    iLen = USBHwEPRead(bEP, abBulkBuf, sizeof(abBulkBuf));
+    iLen = USBHwEPRead(bEP, abBulkBuf, MAX_PACKET_SIZE /*sizeof(abBulkBuf)*/);
 
-    DEBUG_OUTF("USB in - size %d\n", iLen);
-
-    // in case of serial overflow - ignore it as crc error will force retransmit
-    for (i = 0; i < iLen && receive_pos < SERIAL_BUFFER_SIZE; i++) {
+    for (i = 0;
+         i < iLen && receive_pos < SERIAL_BUFFER_SIZE;
+         i++, receive_pos++) {
         if (abBulkBuf[i] == MESSAGE_SYNC)
             sched_wake_tasks();
-        receive_buf[receive_pos++] = abBulkBuf[i];
+        receive_buf[receive_pos] = abBulkBuf[i];
     }
 }
 
@@ -218,27 +216,16 @@ static void BulkOut(U8 bEP, U8 bEPStatus)
  */
 static void BulkIn(U8 bEP, U8 bEPStatus)
 {
-    int iLen;
-    //bEPStatus = bEPStatus;
+    int iLen = (int)transmit_max - transmit_pos;
     (void)bEPStatus;
-    if (transmit_max <= transmit_pos) {
-        DEBUG_OUT("USB out - no data\n");
-        // no more data, disable further NAK interrupts until next USB frame
-        USBHwNakIntEnable(0);
-        return;
-    }
-    DEBUG_OUTF("USB out, size: %d\n", (transmit_max - transmit_pos));
-
-    // get bytes from transmit FIFO into intermediate buffer
-    for (iLen = 0;
-         iLen < MAX_PACKET_SIZE && transmit_pos < transmit_max; // TODO  : onko <= vai < !!!!
-         iLen++, transmit_pos++) {
-
-        abBulkBuf[iLen] = transmit_buf[transmit_pos++];
-    }
     // send over USB
-    if (iLen > 0) {
-        USBHwEPWrite(bEP, abBulkBuf, iLen);
+    if (0 < iLen) {
+        if (MAX_PACKET_SIZE < iLen) iLen = MAX_PACKET_SIZE; // Limit to max size
+        USBHwEPWrite(bEP, (U8*)&transmit_buf[transmit_pos], iLen);
+        transmit_pos += iLen;
+    } else {
+        // No more data
+        USBHwNakIntEnable(0);
     }
 }
 
@@ -256,7 +243,6 @@ static BOOL HandleClassRequest(TSetupPacket *pSetup, int *piLen, U8 **ppbData)
     switch (pSetup->bRequest) {
         // set line coding
         case SET_LINE_CODING:
-            DEBUG_OUT("USB class req (SET_LINE)\n");
             *piLen = 7;
             for (i = 0; i < 7; i++)
                 ((U8 *)&LineCoding)[i] = (*ppbData)[i];
@@ -264,14 +250,12 @@ static BOOL HandleClassRequest(TSetupPacket *pSetup, int *piLen, U8 **ppbData)
 
         // get line coding
         case GET_LINE_CODING:
-            DEBUG_OUT("USB class req (GET_LINE)\n");
             *ppbData = (U8 *)&LineCoding;
             *piLen = 7;
             break;
 
         // set control line state
         case SET_CONTROL_LINE_STATE:
-            DEBUG_OUT("USB class req (SET_CTRL_STATE)\n");
             // bit0 = DTR, bit = RTS
             break;
 
@@ -283,12 +267,7 @@ static BOOL HandleClassRequest(TSetupPacket *pSetup, int *piLen, U8 **ppbData)
 
 
 static void USBFrameHandler(U16 wFrame) {
-    //wFrame = wFrame;
     (void)wFrame;
-    if (transmit_pos < transmit_max) {
-        // data available, enable NAK interrupt on bulk in
-        USBHwNakIntEnable(INACK_BI);
-    }
 }
 
 
@@ -298,9 +277,6 @@ static void USBFrameHandler(U16 wFrame) {
 void USB_IRQHandler(void) {
     // Simply calls the USB ISR
     USBHwISR();
-}
-void USBActivity_IRQHandler(void) {
-    // ???
 }
 
 
@@ -325,15 +301,13 @@ void init_usb_cdc(void) {
     USBHwRegisterFrameHandler(USBFrameHandler);
 
     // enable bulk-in interrupts on NAKs
-    USBHwNakIntEnable(INACK_BI);
+    //USBHwNakIntEnable(INACK_BI);
+    USBHwNakIntEnable(0); // Disable TX ISR by default
 
     // CodeRed - add in interrupt setup code for RDB1768
-//#ifndef POLLED_USBSERIAL
     //NVIC_SetPriority(USB_IRQn, 1);
     NVIC_ClearPendingIRQ(USB_IRQn); // Clear existings
-    //NVIC_SetVector(USB_IRQn, (uint32_t)&USBHwISR);
     NVIC_EnableIRQ(USB_IRQn);
-//#endif
 
     // connect to bus
     USBHwConnect(TRUE);
@@ -341,17 +315,13 @@ void init_usb_cdc(void) {
 
 
 void serial_init(void) {
-    // Power on the USB
-    //CLKPWR_ConfigPPWR(CLKPWR_PCONP_PCUSB, ENABLE);
-
     receive_pos = 0;
     transmit_pos = transmit_max = 0;
 
     init_usb_cdc();
 
-    DEBUG_OUT("USB init done\n");
+    serial_uart_printf("USB init done\n");
 }
-//DECL_INIT(serial_init);
 
 
 /****************************************************************
@@ -384,18 +354,20 @@ console_pop_input(uint32_t len)
     }
 }
 
+
 // Process any incoming commands
 void
 console_task(void)
 {
-    uint8_t pop_count;
+    uint8_t pop_count = 0;
     uint32_t rpos = readl(&receive_pos);
     int8_t ret = command_find_block(receive_buf, rpos, &pop_count);
-    if (ret > 0)
-        DEBUG_OUT("rxd\n");
+    if (ret > 0) {
         command_dispatch(receive_buf, pop_count);
-    if (ret)
+    }
+    if (ret) {
         console_pop_input(pop_count);
+    }
 }
 DECL_TASK(console_task);
 
@@ -422,6 +394,7 @@ console_sendf(const struct command_encoder *ce, va_list args)
         memmove(&transmit_buf[0], &transmit_buf[tpos], tmax);
         writel(&transmit_pos, 0);
         writel(&transmit_max, tmax);
+        USBHwNakIntEnable(INACK_BI); // Enable TX ISR
     }
 
     // Generate message
@@ -431,4 +404,5 @@ console_sendf(const struct command_encoder *ce, va_list args)
 
     // Start message transmit
     writel(&transmit_max, tmax + msglen);
+    USBHwNakIntEnable(INACK_BI); // Enable TX ISR
 }

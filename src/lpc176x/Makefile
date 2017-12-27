@@ -17,7 +17,7 @@ CFLAGS += -O2 -g3 -mcpu=cortex-m3 -mthumb -mthumb-interwork
 #CFLAGS += -O2 -g3
 #CFLAGS += -mthumb -mcpu=cortex-m3 -mthumb-interwork
 CFLAGS += -ffunction-sections -fdata-sections  -fno-exceptions -fno-delete-null-pointer-checks
-CFLAGS += -D__LPC17xx__ -D__LPC176x__ -D__LPC1768__ -D__LPC17XX__ -DTARGET_LPC1768
+CFLAGS += -D__LPC176x__
 
 # include dirs
 CFLAGS += -Ilib/cmsis-include

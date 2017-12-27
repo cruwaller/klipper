@@ -500,7 +500,8 @@ def start_helper(cfg_file,
                   'start_reason': startreason}
 
     input_fd = bglogger = None
-    status_delay = stat_interval
+    if stat_interval is not None:
+        status_delay = stat_interval
 
     if inputtty.__class__.__name__ is not "InputLink":
         if debuginput:
@@ -598,8 +599,8 @@ def main():
         logging.info("Restarting printer")
         start_reason = res
 
-    if bglogger is not None:
-        bglogger.stop()
+        if printer.bglogger is not None:
+            printer.bglogger.stop()
 
 if __name__ == '__main__':
     util.fix_sigint()

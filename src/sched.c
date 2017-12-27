@@ -15,7 +15,7 @@
 #include "sched.h" // sched_check_periodic
 #include "stepper.h" // stepper_event
 
-#ifdef __LPC1768__
+#ifdef __LPC176x__
 #include "lpc176x/pins_MKS.h"
 static uint32_t state = 0;
 #endif
@@ -254,7 +254,7 @@ run_tasks(void)
         stats_update(start, cur);
         start = cur;
 
-#ifdef __LPC1768__
+#ifdef __LPC176x__
         state ^= 1;
         gpio_out_write(SBASE_LED2, state);
 #endif
@@ -302,10 +302,8 @@ run_shutdown(int reason)
     shutdown_status = 1;
     irq_enable();
 
-#ifdef __LPC1768__
-    serial_uart_puts("shutdown static_string_id=");
-    serial_uart_put_num(shutdown_reason, 10);
-    serial_uart_put('\n');
+#ifdef __LPC176x__
+    serial_uart_printf("shutdown static_string_id=%d\n", shutdown_reason);
 #endif
     sendf("shutdown clock=%u static_string_id=%hu", cur, shutdown_reason);
 }
@@ -314,10 +312,8 @@ run_shutdown(int reason)
 void
 sched_report_shutdown(void)
 {
-#ifdef __LPC1768__
-    serial_uart_puts("is_shutdown static_string_id=");
-    serial_uart_put_num(shutdown_reason, 10);
-    serial_uart_put('\n');
+#ifdef __LPC176x__
+    serial_uart_printf("is_shutdown static_string_id=%d\n", shutdown_reason);
 #endif
     sendf("is_shutdown static_string_id=%hu", shutdown_reason);
 }
@@ -353,7 +349,7 @@ sched_main(void)
     ctr_run_initfuncs();
 
     sendf("starting");
-#ifdef __LPC1768__
+#ifdef __LPC176x__
     serial_uart_puts("starting\n");
     gpio_out_write(SBASE_LED1, 1);
 #endif
@@ -363,13 +359,13 @@ sched_main(void)
     if (ret)
         run_shutdown(ret);
 
-#ifdef __LPC1768__
+#ifdef __LPC176x__
     serial_uart_puts("enter to sched loop\n");
 #endif
     irq_enable();
 
     run_tasks();
-#ifdef __LPC1768__
+#ifdef __LPC176x__
     serial_uart_puts("exit\n");
     gpio_out_write(SBASE_LED1, 0);
 #endif

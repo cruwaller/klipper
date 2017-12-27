@@ -11,22 +11,37 @@ typedef enum {
     pin_SBASE_LED4 = GPIO('E', 28), // P4_28
 } MKS_SBASE_LED_pins;
 
-extern struct gpio_out SBASE_LED0;
-extern struct gpio_out SBASE_LED1;
-extern struct gpio_out SBASE_LED2;
-extern struct gpio_out SBASE_LED3;
-extern struct gpio_out SBASE_LED4;
+extern struct gpio_out SBASE_LED0; //
+extern struct gpio_out SBASE_LED1; // scheduler started
+extern struct gpio_out SBASE_LED2; // scheduler run (blink)
+extern struct gpio_out SBASE_LED3; //
+extern struct gpio_out SBASE_LED4; //
 
-// gpio_out_write(SBASE_LED0, 0);
+/*
+#ifdef __LPC176x__
+#include "pins_MKS.h"
+#endif
 
-// #include "pins_MKS.h"
+#ifdef __LPC176x__
+#include "lpc176x/pins_MKS.h"
+#endif
+
+#ifdef __LPC176x__
+serial_uart_printf();
+#endif
+
+#ifdef __LPC176x__
+gpio_out_write(SBASE_LED0, 0);
+#endif
+
+*/
 
 // Debug UART0
 extern void serial_uart_init(void);
-extern void serial_uart_put(char c);
-extern void serial_uart_puts(char * str);
+extern void serial_uart_put(char const c);
+extern void serial_uart_puts(char const * const str);
 extern void serial_uart_put_num(uint32_t n, uint8_t const base);
-extern void serial_uart_printf(char* format,...);
+extern void serial_uart_printf(char const * const format,...);
 
 #define DEBUG_OUT(_x) serial_uart_puts(_x)
 #define DEBUG_OUTF(...) serial_uart_printf(__VA_ARGS__)

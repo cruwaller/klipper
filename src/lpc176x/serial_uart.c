@@ -37,7 +37,8 @@ _gpio_peripheral_t RXD = {0, 3, PINSEL_FUNC_1};
 static uint32_t initdone = 0;
 
 
-#define NO_DRIVER 0
+//#define NO_DRIVER 0
+#define NO_DRIVER 2
 
 void calc_baudrate(uint32_t baud)
 {
@@ -120,7 +121,7 @@ void serial_uart_init(void) {
     initdone = 1;
 }
 
-void serial_uart_put(char c) {
+void serial_uart_put(char const c) {
     if (initdone) {
 #if (NO_DRIVER == 0)
         UART_SendByte(LPC_UART0, (uint8_t)c);
@@ -131,12 +132,13 @@ void serial_uart_put(char c) {
     }
 }
 
-void serial_uart_puts(char * str) {
+void serial_uart_puts(char const * const str) {
     if (initdone) {
 #if (NO_DRIVER == 0)
         UART_Send(LPC_UART0, (uint8_t*)str, strlen(str), /*NONE_*/BLOCKING);
 #else
-        while(*str) serial_uart_put(*str++);
+        char * tmp = (char*)str;
+        while(*tmp) serial_uart_put(*tmp++);
 #endif
     }
 }
@@ -179,17 +181,17 @@ void serial_uart_put_num(uint32_t n, uint8_t const base) {
     }
 }
 
-void serial_uart_printf(char* format,...)
+void serial_uart_printf(char const * const format, ...)
 {
     char *traverse;
     unsigned int i;
     char *s;
 
-    //Module 1: Initializing Myprintf's arguments
     va_list arg;
     va_start(arg, format);
 
-    for(traverse = format; *traverse != '\0'; traverse++)
+    //for(traverse = format; *traverse != '\0'; traverse++)
+    for(traverse = (char*)format; *traverse != '\n'; traverse++)
     {
         while( *traverse != '%' )
         {
@@ -199,7 +201,6 @@ void serial_uart_printf(char* format,...)
 
         traverse++;
 
-        //Module 2: Fetching and executing arguments
         switch (*traverse) {
             case 'c' : i = va_arg(arg,int); //Fetch char argument
                 serial_uart_put(i);
@@ -214,6 +215,10 @@ void serial_uart_printf(char* format,...)
                 serial_uart_put_num(i, 10);
                 break;
 
+            case 'u' : i = va_arg(arg,unsigned int); //Fetch Unsigned Integer argument
+                serial_uart_put_num(i, 10);
+                break;
+
             case 'o': i = va_arg(arg,unsigned int); //Fetch Octal representation
                 serial_uart_put_num(i, 8);
                 break;
@@ -222,14 +227,17 @@ void serial_uart_printf(char* format,...)
                 serial_uart_puts(s);
                 break;
 
+            case 'X':
             case 'x': i = va_arg(arg,unsigned int); //Fetch Hexadecimal representation
+                serial_uart_put('0');
+                serial_uart_put('x');
                 serial_uart_put_num(i, 16);
                 break;
         }
     }
 
-    //Module 3: Closing argument list to necessary clean-up
     va_end(arg);
+    serial_uart_put('\n');
 }
 
 /*

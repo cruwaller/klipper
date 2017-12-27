@@ -5,8 +5,10 @@
 // This file may be distributed under the terms of the GNU GPLv3 license.
 
 extern "C" {
+#include "autoconf.h"
 #include "command.h" // DECL_CONSTANT
 #include "sched.h" // sched_main
+#include "board/irq.h"  // irq_save
 
 #include <system_LPC17xx.h>
 #include <lpc17xx_clkpwr.h>
@@ -15,15 +17,22 @@ extern "C" {
 #include "pins_MKS.h"
 #include "delay.h"
 
-extern void serial_init(void);
+    extern void serial_init(void);
 
 
     void kill_loop(void) {
+        irq_disable();
         while(1) {
             gpio_out_write(SBASE_LED0, 1);
+            gpio_out_write(SBASE_LED1, 1);
+            gpio_out_write(SBASE_LED2, 1);
+            gpio_out_write(SBASE_LED3, 1);
             gpio_out_write(SBASE_LED4, 1);
             DELAY_ms(500);
             gpio_out_write(SBASE_LED0, 0);
+            gpio_out_write(SBASE_LED1, 0);
+            gpio_out_write(SBASE_LED2, 0);
+            gpio_out_write(SBASE_LED3, 0);
             gpio_out_write(SBASE_LED4, 0);
             DELAY_ms(500);
         }
@@ -72,9 +81,15 @@ int main(void) {
     serial_uart_init();
     serial_init();
 
-    gpio_out_write(SBASE_LED0, 1);
-    sched_main();
-    gpio_out_write(SBASE_LED0, 0);
+    serial_uart_printf("CPU freq: %d\n", SystemCoreClock);
+    serial_uart_printf("Clock freq: %d\n", CONFIG_CLOCK_FREQ);
 
+    gpio_out_write(SBASE_LED0, 0);
+    gpio_out_write(SBASE_LED1, 0);
+    gpio_out_write(SBASE_LED2, 0);
+    gpio_out_write(SBASE_LED3, 0);
+    gpio_out_write(SBASE_LED4, 0);
+
+    sched_main();
     return 0;
 }

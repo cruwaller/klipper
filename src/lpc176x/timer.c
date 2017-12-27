@@ -99,15 +99,13 @@ timer_init(void)
     NVIC_ClearPendingIRQ(TIMER0_IRQn); // Clear existings
     //NVIC_SetVector(TIMER0_IRQn, (uint32_t)&timer_isr);
 
-    LPC_TIM0->TCR |=  (1);      // Make sure the counter is enabled
+    LPC_TIM0->TCR |=  (1);       // Make sure the counter is enabled
 
     timer_kick();
 
     // Start timer
-    LPC_TIM0->TCR &= ~(1 << 1); // Release reset
-    NVIC_EnableIRQ(TIMER0_IRQn);       // Enable IRQ
-
-    //gpio_out_write(SBASE_LED1, 1);
+    LPC_TIM0->TCR &= ~(1 << 1);  // Release reset
+    NVIC_EnableIRQ(TIMER0_IRQn); // Enable IRQ
 }
 DECL_INIT(timer_init);
 

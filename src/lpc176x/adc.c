@@ -165,11 +165,17 @@ need_delay:
 uint16_t
 gpio_adc_read(struct gpio_adc g)
 {
+#if 1
 #if (ENABLE_BURST_MODE == 1)
     return _adc_data[g.channel];
 #else
     gpio_adc_cancel_sample(g);
     return ADC_GDR_RESULT(LPC_ADC->ADGDR);
+#endif
+#else
+    // DEBUG DEBUG DEBUG
+    (void)g;
+    return 3276u;
 #endif
 }
 

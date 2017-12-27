@@ -14,6 +14,9 @@
 #if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
 #include <stdio.h>
 #endif
+#ifdef __LPC176x__
+#include "lpc176x/pins_MKS.h"
+#endif
 
 struct analog_in {
     struct timer timer;
@@ -69,6 +72,9 @@ command_config_analog_in(uint32_t *args)
     a->timer.func = analog_in_event;
     a->pin        = gpio_adc_setup(args[1]);
     a->state      = 1;
+#ifdef __LPC176x__
+    serial_uart_printf("ADC pin configured %d\n", args[1]);
+#endif
 }
 DECL_COMMAND(command_config_analog_in, "config_analog_in oid=%c pin=%u");
 
