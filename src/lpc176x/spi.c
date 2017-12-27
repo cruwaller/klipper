@@ -15,6 +15,8 @@ typedef struct ADC_mapping_t {
     _gpio_peripheral_t miso;
 } ADC_mapping_t;
 
+// TODO FIXME: SPI mapping to SSP1 (EXT-2 on Smoothie)
+
 /*
  * SPI or SSP0/1
  *   * SSEL is handled by application using GPIO
@@ -136,7 +138,7 @@ uint8_t
 spi_transfer(uint8_t const data, uint8_t const last)
 {
     // write byte with address and end transmission flag
-    LPC_SPI->SPDR = data;
+    LPC_SPI->SPDR = (data & SPI_SPDR_BITMASK);
     // wait for transmit register empty
     while (!(LPC_SPI->SPSR & SPI_SPSR_SPIF));
     // get data

@@ -55,6 +55,10 @@ analog_in_event(struct timer *timer)
         printf("ADC error %u (min: %u, max: %u)\n",
                a->value, a->min_value, a->max_value);
 #endif
+#ifdef __LPC176x__
+        serial_uart_printf("ADC error %u (min: %u, max: %u)\n",
+                           a->value, a->min_value, a->max_value);
+#endif
         shutdown("ADC out of range");
     }
     sched_wake_task(&analog_wake);

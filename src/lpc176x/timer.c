@@ -22,9 +22,12 @@
 
 void timer_isr(void);
 
-/*static inline void tc_clear_irq(uint32_t const timer) {
-    LPC_TIM0->IR |= (1 << timer); // read to clear irq pending
-    }*/
+static __attribute__((always_inline)) inline void
+tc_clear_irq(uint32_t const timer) {
+//    LPC_TIM0->IR |= (1 << timer); // read to clear irq pending
+    LPC_TIM0->IR = 0xFFFFFFFF;
+    (void)timer;
+}
 
 // Set the next irq time
 static void
@@ -53,8 +56,9 @@ timer_kick(void) {
       LPC1768 : 50  = 2.00us
       LPC1769 : 50 ~= 1.67us
      */
-    timer_set(LPC_TIM0->TC + 50);
-    //tc_clear_irq(TC_CHANNEL);
+    //timer_set(LPC_TIM0->TC + 50); // << cause reschedule failure
+    timer_set(LPC_TIM0->TC + 200); // + 8us
+    tc_clear_irq(TC_CHANNEL);
 }
 
 void
@@ -87,7 +91,9 @@ timer_init(void)
     LPC_TIM0->MR3  = 0x7FFFFFFF;
 
     // ISR on match + Clear TC
-    LPC_TIM0->MCR  = (0b011 << (TC_CHANNEL * 3));
+    //LPC_TIM0->MCR  = (0b011 << (TC_CHANNEL * 3));
+    // ISR on match
+    LPC_TIM0->MCR  = (0b001 << (TC_CHANNEL * 3));
 
     // No external actions
     LPC_TIM0->EMR  = 0;
@@ -116,8 +122,7 @@ void TIMER0_IRQHandler(void)
 {
     irq_disable();
     uint32_t const status = LPC_TIM0->IR; // Read pending IRQ
-    //tc_clear_irq(TC_CHANNEL);
-    LPC_TIM0->IR = 0xFFFFFFFF;
+    tc_clear_irq(TC_CHANNEL);
     if (likely(status & (1 << TC_CHANNEL))) {
         uint32_t const next = timer_dispatch_many();
         timer_set(next);

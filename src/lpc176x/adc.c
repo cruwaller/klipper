@@ -33,7 +33,8 @@ static const _gpio_peripheral_t adc_pins[8] = {
   { 0,  2, PINSEL_FUNC_2 }  // ADC7
 };
 
-#define ADC_FREQ_MAX 2000000 // 2MHz (should be less than or equal to 13MHz)
+//#define ADC_FREQ_MAX 5000000 // 5MHz (should be less than or equal to 13MHz)
+#define ADC_FREQ_MAX 1000000 // 1MHz (should be less than or equal to 13MHz)
 DECL_CONSTANT(ADC_MAX, 4095);
 
 #define ENABLE_BURST_MODE 0 // Enable ADC IRQ
@@ -61,10 +62,13 @@ void ADC_IRQHandler(void)
     _adc_data[channel] = ADC_GDR_RESULT(ADGDR); // Extract Conversion Result
 }
 
+static uint32_t CFG_REG = 0;
+static uint32_t CFG_CURRENT = 0;
+
 void
 gpio_adc_init(void) {
     /* Init ADC HW */
-    uint32_t rate, reg;
+    uint32_t rate;
 
 #if (ENABLE_BURST_MODE == 1)
     uint8_t iter;
@@ -76,26 +80,26 @@ gpio_adc_init(void) {
 
     CLKPWR_ConfigPPWR(CLKPWR_PCONP_PCAD, ENABLE);
     CLKPWR_SetPCLKDiv(CLKPWR_PCLKSEL_ADC, CLKPWR_PCLKSEL_CCLK_DIV_2);
-    LPC_ADC->ADCR = 0;
-    //Enable PDN bit
-    reg = ADC_CR_PDN;
+    //Enable PDN bit = The A/D converter is operational.
+    CFG_REG |= ADC_CR_PDN;
 
     // Set ADC clock frequency scale
     rate = (SystemCoreClock / (2 * ADC_FREQ_MAX)) - 1;
-    reg |=  ADC_CR_CLKDIV(rate);
+    CFG_REG |= ADC_CR_CLKDIV(rate);
 
 #if (ENABLE_BURST_MODE == 1)
     // Enable burst mode (auto mode)
-    reg |= ADC_CR_BURST;
+    CFG_REG |= ADC_CR_BURST;
     // Enable global interrupt
     LPC_ADC->ADINTEN = ADC_INTEN_GLOBAL;
     //NVIC_SetVector(ADC_IRQn, (uint32_t)&gpio_adc_isr);
+
+    LPC_ADC->ADCR = CFG_REG;
 #else
     // Disable interrupts
     LPC_ADC->ADINTEN = 0;
+    //LPC_ADC->ADCR = CFG_REG;
 #endif
-
-    LPC_ADC->ADCR = reg;
 
     DEBUG_OUT("ADC configured\n");
 
@@ -139,43 +143,40 @@ gpio_adc_sample(struct gpio_adc g)
 #if (ENABLE_BURST_MODE == 1)
     if (_adc_data[g.channel] < 0) goto need_delay;
 #else
+
     uint32_t const chsr = LPC_ADC->ADGDR; // read global status reg
-    if (! (LPC_ADC->ADCR & ADC_CR_START_MASK)) {
+
+    if ( /*! (LPC_ADC->ADCR & ADC_CR_START_MASK)*/ CFG_CURRENT == 0) {
         // Start sample
-        //LPC_ADC->ADCR &= ~ADC_CR_START_MASK;
-        LPC_ADC->ADCR |= ADC_CR_CH_SEL(g.channel);
-        LPC_ADC->ADCR |= ADC_CR_START_MODE_SEL((uint32_t)ADC_START_NOW);
+        LPC_ADC->ADCR = (CFG_REG |
+                         ADC_CR_CH_SEL(g.channel) |
+                         ADC_CR_START_NOW);
+        CFG_CURRENT = g.channel;
         goto need_delay;
     }
-    if (ADC_GDR_CH(chsr) != g.channel)
+    if (/*ADC_GDR_CH(chsr)*/ CFG_CURRENT != g.channel)
         // Sampling in progress on another channel
         goto need_delay;
-    if (! (chsr & ADC_GDR_DONE_FLAG))
+    if ( ! (chsr & ADC_GDR_DONE_FLAG) )
         // Conversion still in progress
         goto need_delay;
 #endif
     // Conversion ready
     return 0;
 need_delay:
-    return (CONFIG_CLOCK_FREQ / (ADC_FREQ_MAX * 2)); // Half of the ADC time
-    //return (SystemCoreClock / (10 * ADC_FREQ_MAX)); // 5th of the ADC time
+    return (CONFIG_CLOCK_FREQ / (ADC_FREQ_MAX));
+    //return 500; // ~20us
 }
 
 // Read a value; use only after gpio_adc_sample() returns zero
 uint16_t
 gpio_adc_read(struct gpio_adc g)
 {
-#if 1
 #if (ENABLE_BURST_MODE == 1)
     return _adc_data[g.channel];
 #else
     gpio_adc_cancel_sample(g);
-    return ADC_GDR_RESULT(LPC_ADC->ADGDR);
-#endif
-#else
-    // DEBUG DEBUG DEBUG
-    (void)g;
-    return 3276u;
+    return (uint16_t)ADC_GDR_RESULT( (&LPC_ADC->ADDR0)[g.channel] /*LPC_ADC->ADGDR*/ );
 #endif
 }
 
@@ -184,15 +185,14 @@ void
 gpio_adc_cancel_sample(struct gpio_adc g)
 {
     //irqstatus_t flag = irq_save();
-    __disable_irq();
 #if (ENABLE_BURST_MODE == 1)
     _adc_data[g.channel] = -1;
 #else
     //need to stop START bits before disable channel
-    LPC_ADC->ADCR &= ~ADC_CR_START_MASK;
-    LPC_ADC->ADCR &= ~ADC_CR_CH_SEL(g.channel);
+    /*LPC_ADC->ADCR &= ~ADC_CR_START_MASK;
+      LPC_ADC->ADCR &= ~ADC_CR_CH_SEL(g.channel);*/
+    CFG_CURRENT = 0;
 #endif
-    __enable_irq();
     //irq_restore(flag);
 }
 
