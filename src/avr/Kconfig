@@ -29,14 +29,19 @@ choice
         bool "atmega644p"
     config MACH_atmega328
         bool "atmega328"
+    config MACH_atmega328p
+        bool "atmega328p"
     config MACH_atmega168
         bool "atmega168"
+    config MACH_atmega168p
+        bool "atmega168p"
 endchoice
 
 config MCU
     string
     default "atmega168" if MACH_atmega168
-    default "atmega328" if MACH_atmega328
+    default "atmega168p" if MACH_atmega168p
+    default "atmega328p" if MACH_atmega328p
     default "atmega1284p" if MACH_atmega1284p
     default "atmega644p" if MACH_atmega644p
     default "at90usb1286" if MACH_at90usb1286
@@ -47,7 +52,7 @@ choice
     prompt "Processor speed"
     config AVR_FREQ_20000000
         bool "20Mhz"
-        depends on MACH_atmega168 || MACH_atmega328 || MACH_atmega644p || MACH_atmega1284p
+        depends on MACH_atmega168 || MACH_atmega168p || MACH_atmega328 || MACH_atmega328p || MACH_atmega644p || MACH_atmega1284p
     config AVR_FREQ_16000000
         bool "16Mhz"
     config AVR_FREQ_8000000
@@ -59,6 +64,25 @@ config CLOCK_FREQ
     default 8000000 if AVR_FREQ_8000000
     default 16000000 if AVR_FREQ_16000000
     default 20000000 if AVR_FREQ_20000000
+
+config AVRDUDE_UPLOADSPEED_SET
+    bool "Manual avrdude upload speed"
+    default n
+    help
+        Define upload speed manually.
+config AVRDUDE_UPLOADSPEED
+    depends on AVRDUDE_UPLOADSPEED_SET
+    int "avrdude upload speed"
+    default 115200
+config AVRDUDE_UPLOADSPEED
+    depends on !AVRDUDE_UPLOADSPEED_SET
+    default 115200 if MACH_atmega2560
+    default 57600  if (MACH_atmega328 || MACH_atmega328p || MACH_atmega1280)
+    default 19200
+config AVRDUDE_UPLOADPROTOCOL
+    string
+    default "wiring" if MACH_atmega2560
+    default "arduino"
 
 config CLEAR_PRESCALER
     bool "Manually clear the CPU prescaler field at startup"
@@ -101,7 +125,7 @@ config SERIAL_BAUD_U2X
     default y
 
 config SIMULAVR
-    depends on MACH_atmega168 || MACH_atmega328 || MACH_atmega644p || MACH_atmega1284p
+    depends on MACH_atmega168 || MACH_atmega168p || MACH_atmega328 || MACH_atmega328 || MACH_atmega644p || MACH_atmega1284p
     bool "Compile for simulavr software emulation"
     default n
     help

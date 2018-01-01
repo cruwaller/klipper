@@ -65,7 +65,7 @@ class CartKinematics:
             homing_state.retract([s.homing_pos_x, # X axis position
                                   s.homing_pos_y, # Y axis position
                                   None, None],
-                                 self.steppers[0].get_homing_speed())
+                                 self.steppers[0].homing_speed)
             homepos[axis] = s.position_endstop
             coord = [None, None, None, None]
             coord[axis] = pos

@@ -56,8 +56,10 @@ timer_kick(void) {
       LPC1768 : 50  = 2.00us
       LPC1769 : 50 ~= 1.67us
      */
-    //timer_set(LPC_TIM0->TC + 50); // << cause reschedule failure
-    timer_set(LPC_TIM0->TC + 200); // + 8us
+    //timer_set(LPC_TIM0->TC + 50);  // + ~2us  << cause reschedule failure
+    //timer_set(LPC_TIM0->TC + 200); // + ~8us  << cause reschedule failure
+    //timer_set(LPC_TIM0->TC + 400); // + ~16us << cause reschedule failure
+    timer_set(LPC_TIM0->TC + 1000); // TODO FIXME : Need to be fine tuned!!
     tc_clear_irq(TC_CHANNEL);
 }
 

@@ -184,7 +184,8 @@ void serial_uart_put_num(uint32_t n, uint8_t const base) {
 void serial_uart_printf(char const * const format, ...)
 {
     char *traverse;
-    unsigned int i;
+    int i;
+    unsigned int u;
     char *s;
 
     va_list arg;
@@ -215,12 +216,12 @@ void serial_uart_printf(char const * const format, ...)
                 serial_uart_put_num(i, 10);
                 break;
 
-            case 'u' : i = va_arg(arg,unsigned int); //Fetch Unsigned Integer argument
-                serial_uart_put_num(i, 10);
+            case 'u' : u = va_arg(arg,unsigned int); //Fetch Unsigned Integer argument
+                serial_uart_put_num(u, 10);
                 break;
 
-            case 'o': i = va_arg(arg,unsigned int); //Fetch Octal representation
-                serial_uart_put_num(i, 8);
+            case 'o': u = va_arg(arg,unsigned int); //Fetch Octal representation
+                serial_uart_put_num(u, 8);
                 break;
 
             case 's': s = va_arg(arg,char *); //Fetch string
@@ -228,10 +229,10 @@ void serial_uart_printf(char const * const format, ...)
                 break;
 
             case 'X':
-            case 'x': i = va_arg(arg,unsigned int); //Fetch Hexadecimal representation
+            case 'x': u = va_arg(arg,unsigned int); //Fetch Hexadecimal representation
                 serial_uart_put('0');
                 serial_uart_put('x');
-                serial_uart_put_num(i, 16);
+                serial_uart_put_num(u, 16);
                 break;
         }
     }

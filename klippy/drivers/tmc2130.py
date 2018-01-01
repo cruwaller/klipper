@@ -34,7 +34,7 @@ class TMC2130(DriverBase):
         else:
             self.logger = logging.getLogger("driver.%s"%(self.name,))
 
-        self.current     = config.getfloat('current', 1000.0, above=200., maxval=1200.0)
+        self.current     = config.getfloat('current', 1000.0, above=200., maxval=2000.0)
         self.Rsense      = config.getfloat('sense_R', 0.11, above=0.09)
         self.hold_multip = config.getfloat('hold_multiplier', 0.5, above=0., maxval=1.0)
         self.interpolate = config.getboolean('interpolate', True)
@@ -82,7 +82,7 @@ class TMC2130(DriverBase):
         # ========== SPI config ==========
         spipin     = config.get('ss_pin')
         spimode    = config.getint('spi_mode', 3, minval=0, maxval=3)
-        spispeed   = config.getint('spi_speed', 8000000)
+        spispeed   = config.getint('spi_speed', 2000000)
         # setup SPI pins and configure mcu
         self.mcu_driver = pins.setup_pin(printer, 'spibus', spipin)
         self.mcu_driver.set_spi_settings(spimode, spispeed)
@@ -111,25 +111,28 @@ class TMC2130(DriverBase):
     | S 8bit |      32bit data                   |
     | STATUS |   D    |   D    |   D    |   D    |
     '''
-    def __command_read(self, cmd, cnt=4): # 40bits always = 5 x 8bit!
+    def __command_read(self, cmd, cnt=5): # 40bits always = 5 x 8bit!
         cmd &= 0x7F # Makesure the MSB is 0
-        values = self.mcu_driver.read(cmd, cnt)
-        # values = self.mcu_driver.read(cmd, cnt) # 2nd needed???
+        self.mcu_driver.read(cmd, cnt) # send command first
+        values = self.mcu_driver.read(cmd, cnt) # read actual result
         # convert list of bytes to number
         val    = 0
-        status = -1 # error
         size   = len(values)
         if 0 < size:
             status = values[0]
             if (status):
                 if (status & 0x1):
                     self.isReset = True
+                    self.logger.warning("Reset has occurred!")
                 if (status & 0x2):
                     self.isError = True
+                    self.logger.error("Driver error detected!")
                 if (status & 0x4):
                     self.isStallguard = True
+                    self.logger.warning("Stallguard active")
                 if (status & 0x8):
                     self.isStandstill = True
+                    self.logger.info("Motor stand still")
             for idx in range(1, size):
                 val <<= 8
                 val |= values[idx]
@@ -142,6 +145,7 @@ class TMC2130(DriverBase):
     |  ADDR  |   D    |   D    |   D    |   D    |
     '''
     def __command_write(self, cmd, val=None): # 40bits always = 5 x 8bit!
+        #cmd &= 0xFF;
         if val is not None:
             if type(val) is not types.ListType:
                 #if val > 0xFFFFFFFF:
@@ -155,12 +159,13 @@ class TMC2130(DriverBase):
                 #        val[idx] = int(val[idx])
                 #    except:
                 #        val[idx] = 0
-            cmd |= 0x80
+            cmd |= 0x80 # Make sure command has write bit set
+            if len(val) != 4:
+                raise Exception("TMC2130 internal error! len(val) != 4")
             self.mcu_driver.write(cmd, val)
 
     def __init_callback(self):
-        #if self.diag0purpose = 0:
-
+        val_clear = [0, 0, 0, 0]
 
         self.set_GCONF(external_ref        = 1 if self.Rsense is None else 0,
                        internal_Rsense     = 1 if self.Rsense is not None else 0,
@@ -174,7 +179,7 @@ class TMC2130(DriverBase):
                        diag1_steps_skipped = 1 if self.diag1purpose is 3 else 0,
                        diag0_active_high   = self.diag0act_high,
                        diag1_active_high   = self.diag1act_high,)
-        self.set_rms_current(self.current, self.Rsense, self.hold_multip)
+        self.calc_rms_current(self.current, self.Rsense, self.hold_multip)
         self.set_REG_TPOWERDOWN(128)
         if (self.pwm_mode is True):
             self.set_REG_PWMCONF()
@@ -184,14 +189,19 @@ class TMC2130(DriverBase):
             elif (self.hybrid_threshold is not None):
                 self.set_REG_TPWMTHRS(self.hybrid_threshold)
         else:
+            self.__command_write(0x70, val_clear)
             self.set_REG_TCOOLTHRS(self.coolstep_min_speed)
         if self.sensor_less_homing:
             self.set_REG_COOLCONF(sg_stall_value = self.sg_stall_value)
+        else:
+            self.__command_write(0x6D, val_clear)
         # self.set_REG_THIGH()
         self.set_REG_CHOPCONF(vsense      = self.vsense,
                               interpolate = self.interpolate,
                               microsteps  = self.microsteps)
         # self.set_REG_ENCM_CTRL()
+
+        self.set_IHOLD_IRUN(self.iHold, self.iRun, self.iHoldDelay);
 
         self.get_REG_DRV_STATUS()
 
@@ -213,12 +223,13 @@ class TMC2130(DriverBase):
         self.isStallguard = False
         self.isStandstill = False
 
-    def set_rms_current(self,
+    def calc_rms_current(self,
                         current_in_mA  = 1000,
                         sense_R        = 0.11,
                         multip_for_holding_current = 0.5):
         '''
         '''
+        self.logger.debug("Setting RMS current to {}".format(current_in_mA))
         CS = 32.0 * 1.41421 * current_in_mA / 1000.0 * (sense_R + 0.02) / 0.325 - 1
 
         # If Current Scale is too low, turn on high sensitivity R_sense and calculate again
@@ -231,11 +242,11 @@ class TMC2130(DriverBase):
             self.vsense = False
             self.V_fs   = 0.325
 
-        self.set_IHOLD_IRUN( int(CS * multip_for_holding_current), int(CS), self.iHoldDelay);
-
         self.current     = current_in_mA
         self.Rsense      = sense_R
         self.hold_multip = multip_for_holding_current
+        self.iHold       = int(CS * multip_for_holding_current)
+        self.iRun        = int(CS)
 
     def get_rms_current(self):
         return ( self.iRun + 1 ) / 32.0 * self.V_fs / (self.Rsense + 0.02) / 1.41421 * 1000;
@@ -341,9 +352,10 @@ class TMC2130(DriverBase):
         val[1] = hold_delay   & 0x0F  # IHOLDDELAY bits 19..16
         self.__command_write(reg, val)
 
-        self.iHold      = val[3]
-        self.iRun       = val[2]
-        self.iHoldDelay = val[1]
+        self.logger.debug("Current: hold {} [{}], run {} [{}], delay {} [{}]".
+                          format(hold_current, val[3],
+                                 run_current, val[2],
+                                 hold_delay, val[1]))
 
     def set_REG_TPOWERDOWN(self, power_down_delay):
         '''

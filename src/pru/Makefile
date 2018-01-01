@@ -3,9 +3,7 @@
 # Setup the toolchain
 CROSS_PREFIX=pru-
 
-dirs-y += src/pru src/generic
-dirs-y += lib/pru_rpmsg
-
+CFLAGS += -O2 -g -flto -fwhole-program -fno-use-linker-plugin
 CFLAGS += -Os -minrt -mmcu=am335x.pru1
 CFLAGS += -Ilib/pru_rpmsg/include -Ilib/pru_rpmsg/include/am335x
 

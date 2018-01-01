@@ -137,6 +137,7 @@ spi_transfer_len(char *data, uint8_t len)
 uint8_t
 spi_transfer(uint8_t const data, uint8_t const last)
 {
+    (void)last;
     // write byte with address and end transmission flag
     LPC_SPI->SPDR = (data & SPI_SPDR_BITMASK);
     // wait for transmit register empty

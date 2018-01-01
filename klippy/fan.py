@@ -9,6 +9,9 @@ import logging
 FAN_MIN_TIME = 0.1
 PWM_CYCLE_TIME = 0.010
 
+class FanFailure(Exception):
+    pass
+
 class PrinterFan:
     def __init__(self, printer, config, logger=None):
         if logger is None:
@@ -44,6 +47,8 @@ class PrinterHeaterFan:
     def __init__(self, printer, config):
         heater_name = config.get("heater")
         self.heater = heater.get_printer_heater(printer, heater_name)
+        if self.heater is None:
+            raise FanFailure
         self.logger = self.heater.logger.getChild('fan')
         self.fan = PrinterFan(printer, config, self.logger)
         self.mcu = printer.objects['mcu']
@@ -79,4 +84,7 @@ def add_printer_objects(printer, config):
         name = s.section
         if (name is 'heater_fan'):
             name = 'heater_fan0'
-        printer.add_object(name, PrinterHeaterFan(printer, s))
+        try:
+            printer.add_object(name, PrinterHeaterFan(printer, s))
+        except FanFailure:
+            pass

@@ -135,7 +135,7 @@ struct gpio_adc
 gpio_adc_setup(uint8_t pin)
 {
     // Find pin in adc_pins table
-    int chan;
+    uint32_t chan;
     for (chan=0; ; chan++) {
         if (chan >= ARRAY_SIZE(adc_pins))
             shutdown("Not a valid ADC pin");

@@ -381,6 +381,8 @@ Sensors = {
         'class': ThermistorBeta, 't1': 25., 'r1': 100000., 'beta': 3950. },
     "AD595": {
         'class': Linear, 't1': 25., 'v1': .25, 't2': 300., 'v2': 3.022 },
+    "PT100 INA826": {
+        'class': Linear, 't1': 100., 'v1': 1.52, 't2': 300., 'v2': 2.29 },
 
     # Themocouple readers only
     "MAX6675":  { 'class': Thermocouple, 'simple': True },

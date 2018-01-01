@@ -116,7 +116,7 @@ gpio_adc_setup(uint8_t pin)
     uint8_t const in_pin  = GPIO2PIN(pin);
     // Find pin in adc_pins table
 
-    int chan;
+    uint32_t chan;
     for (chan=0; ; chan++) {
         if (chan >= ARRAY_SIZE(adc_pins))
             shutdown("Not a valid ADC pin");
@@ -164,8 +164,10 @@ gpio_adc_sample(struct gpio_adc g)
     // Conversion ready
     return 0;
 need_delay:
-    return (CONFIG_CLOCK_FREQ / (ADC_FREQ_MAX));
-    //return 500; // ~20us
+    //return (CONFIG_CLOCK_FREQ / 1000000); // ~1us
+    //return (CONFIG_CLOCK_FREQ / (ADC_FREQ_MAX));
+    //return 25; // ~1us
+    return 500;
 }
 
 // Read a value; use only after gpio_adc_sample() returns zero
@@ -188,6 +190,7 @@ gpio_adc_cancel_sample(struct gpio_adc g)
 #if (ENABLE_BURST_MODE == 1)
     _adc_data[g.channel] = -1;
 #else
+    (void)g;
     //need to stop START bits before disable channel
     /*LPC_ADC->ADCR &= ~ADC_CR_START_MASK;
       LPC_ADC->ADCR &= ~ADC_CR_CH_SEL(g.channel);*/

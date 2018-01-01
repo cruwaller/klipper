@@ -38,22 +38,18 @@ static void configureMpuToCatchStackOverflowIntoHeap(unsigned int maximumHeapAdd
 unsigned int g_maximumHeapAddress;
 
 
-extern "C" void exit (int status) {
+void exit (int status) {
+    (void)status;
     while(1);
 }
-extern "C" void abort(void)
+void abort(void)
 {
-    //if (MRI_ENABLE)
-    //    __debugbreak();
-
     exit(1);
 }
-/*void _exit(int status) {
-    exit(status);
-    }*/
-extern "C" int main(void);
-extern "C" void __libc_init_array(void);
-extern "C" void _start(void)
+
+int main(void);
+void __libc_init_array(void);
+void _start(void)
 {
     size_t bssSize = (uintptr_t)&__bss_end__ - (uintptr_t)&__bss_start__;
     int mainReturnValue;
@@ -101,19 +97,19 @@ static __attribute__((naked)) void fillUnusedRAM(void)
     );
 }
 
-static void configureStackSizeLimit(unsigned int stackSizeLimit)
+void configureStackSizeLimit(unsigned int stackSizeLimit)
 {
     // Note: 32 bytes are reserved to fall between top of heap and top of stack for minimum MPU guard region.
     g_maximumHeapAddress = alignTo32Bytes((unsigned int)&__StackTop - stackSizeLimit - 32);
     configureMpuToCatchStackOverflowIntoHeap(g_maximumHeapAddress);
 }
 
-static unsigned int alignTo32Bytes(unsigned int value)
+unsigned int alignTo32Bytes(unsigned int value)
 {
     return (value + 31) & ~31;
 }
 
-static void configureMpuToCatchStackOverflowIntoHeap(unsigned int maximumHeapAddress)
+void configureMpuToCatchStackOverflowIntoHeap(unsigned int maximumHeapAddress)
 {
 #define MPU_REGION_SIZE_OF_32_BYTES ((5-1) << MPU_RASR_SIZE_SHIFT)  // 2^5 = 32 bytes.
 
@@ -123,94 +119,18 @@ static void configureMpuToCatchStackOverflowIntoHeap(unsigned int maximumHeapAdd
     enableMPUWithDefaultMemoryMap();
 }
 
-static void configureMpuRegionToAccessAllMemoryWithNoCaching(void)
-{
-    static const uint32_t regionToStartAtAddress0 = 0U;
-    static const uint32_t regionReadWrite = 1  << MPU_RASR_AP_SHIFT;
-    static const uint32_t regionSizeAt4GB = 31 << MPU_RASR_SIZE_SHIFT; /* 4GB = 2^(31+1) */
-    static const uint32_t regionEnable    = MPU_RASR_ENABLE;
-    static const uint32_t regionSizeAndAttributes = regionReadWrite | regionSizeAt4GB | regionEnable;
-    uint32_t regionIndex = STACK_SIZE ? getHighestMPUDataRegionIndex() - 1 : getHighestMPUDataRegionIndex();
-
-    prepareToAccessMPURegion(regionIndex);
-    setMPURegionAddress(regionToStartAtAddress0);
-    setMPURegionAttributeAndSize(regionSizeAndAttributes);
-}
-
-#if 0
-extern "C" int __real__read(int file, char *ptr, int len);
-extern "C" int __wrap__read(int file, char *ptr, int len)
-{
-    if (MRI_SEMIHOST_STDIO && file < 3)
-        return __mriNewlib_SemihostRead(file, ptr, len);
-    return __real__read(file, ptr, len);
-}
-
-
-extern "C" int __real__write(int file, char *ptr, int len);
-extern "C" int __wrap__write(int file, char *ptr, int len)
-{
-    if (MRI_SEMIHOST_STDIO && file < 3)
-        return __mriNewlib_SemihostWrite(file, ptr, len);
-    return __real__write(file, ptr, len);
-}
-
-
-extern "C" int __real__isatty(int file);
-extern "C" int __wrap__isatty(int file)
-{
-    /* Hardcoding the stdin/stdout/stderr handles to be interactive tty devices, unlike mbed.ar */
-    if (file < 3)
-        return 1;
-    return __real__isatty(file);
-}
-
-
-extern "C" int __wrap_semihost_connected(void)
-{
-    /* MRI makes it look like there is no mbed interface attached since it disables the JTAG portion but MRI does
-       support some of the mbed semihost calls when it is running so force it to return -1, indicating that the
-       interface is attached. */
-    return -1;
-}
-
-
-
-extern "C" void abort(void)
-{
-    //if (MRI_ENABLE)
-    //    __debugbreak();
-
-    exit(1);
-}
-
-
-extern "C" void __cxa_pure_virtual(void)
-{
-    abort();
-}
-
-
-/* Trap calls to malloc/free/realloc in ISR. */
-extern "C" void __malloc_lock(void)
-{
-    if (__get_IPSR() != 0)
-        __debugbreak();
-}
-
-extern "C" void __malloc_unlock(void)
-{
-}
-#endif
-
 /* Turn off the errno macro and use actual external global variable instead. */
 #undef errno
 extern int errno;
 
-static int doesHeapCollideWithStack(unsigned int newHeap);
+int doesHeapCollideWithStack(unsigned int newHeap)
+{
+    return ((newHeap >= __get_MSP()) ||
+            (STACK_SIZE && newHeap >= g_maximumHeapAddress));
+}
 
 /* Dynamic memory allocation related syscalls. */
-extern "C" caddr_t _sbrk(int incr)
+caddr_t _sbrk(int incr)
 {
     static unsigned char *heap = (unsigned char *)&__end__;
     unsigned char        *prev_heap = heap;
@@ -223,10 +143,4 @@ extern "C" caddr_t _sbrk(int incr)
 
     heap = new_heap;
     return (caddr_t) prev_heap;
-}
-
-static int doesHeapCollideWithStack(unsigned int newHeap)
-{
-    return ((newHeap >= __get_MSP()) ||
-            (STACK_SIZE && newHeap >= g_maximumHeapAddress));
 }

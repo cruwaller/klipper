@@ -143,7 +143,8 @@ static const struct gpio_pwm_info pwm_regs[] PROGMEM = {
 };
 
 static const uint8_t pwm_pins[ARRAY_SIZE(pwm_regs)] PROGMEM = {
-#if CONFIG_MACH_atmega168 || CONFIG_MACH_atmega328
+#if CONFIG_MACH_atmega168 || CONFIG_MACH_atmega168p || \
+    CONFIG_MACH_atmega328 || CONFIG_MACH_atmega328p
     GPIO('D', 6), GPIO('D', 5),
     GPIO('B', 1), GPIO('B', 2),
     GPIO('B', 3), GPIO('D', 3),
@@ -248,7 +249,8 @@ gpio_pwm_write(struct gpio_pwm g, uint8_t val)
  ****************************************************************/
 
 static const uint8_t adc_pins[] PROGMEM = {
-#if CONFIG_MACH_atmega168 || CONFIG_MACH_atmega328
+#if CONFIG_MACH_atmega168 || CONFIG_MACH_atmega168p || \
+    CONFIG_MACH_atmega328 || CONFIG_MACH_atmega328p
     GPIO('C', 0), GPIO('C', 1), GPIO('C', 2), GPIO('C', 3),
     GPIO('C', 4), GPIO('C', 5), GPIO('E', 0), GPIO('E', 1),
 #elif CONFIG_MACH_atmega644p || CONFIG_MACH_atmega1284p
@@ -333,6 +335,7 @@ need_delay:
 uint16_t
 gpio_adc_read(struct gpio_adc g)
 {
+    (void)g;
     last_analog_read = ADC_DUMMY;
 #if (CONFIG_SIMULATOR == 1)
     return (uint16_t)(870);
@@ -354,7 +357,8 @@ gpio_adc_cancel_sample(struct gpio_adc g)
  * Serial Peripheral Interface (SPI) hardware
  ****************************************************************/
 
-#if CONFIG_MACH_atmega168 || CONFIG_MACH_atmega328
+#if CONFIG_MACH_atmega168 || CONFIG_MACH_atmega168p || \
+    CONFIG_MACH_atmega328 || CONFIG_MACH_atmega328p
 static const uint8_t SS = GPIO('B', 2), SCK = GPIO('B', 5), MOSI = GPIO('B', 3), MISO = GPIO('B', 4);
 #elif CONFIG_MACH_atmega644p || CONFIG_MACH_atmega1284p
 static const uint8_t SS = GPIO('B', 4), SCK = GPIO('B', 7), MOSI = GPIO('B', 5), MISO = GPIO('B', 6);
@@ -467,6 +471,7 @@ spi_transfer_len(char *data, uint8_t len)
 uint8_t
 spi_transfer(uint8_t const data, uint8_t const last)
 {
+    (void)last;
 #if (CONFIG_SIMULATOR == 1)
     return data;
 #else

@@ -5,17 +5,10 @@ USBLIBDIR = lib/lpc176x/VCOM_lib/
 # Setup the toolchain
 CROSS_PREFIX=arm-none-eabi-
 
-dirs-y += src/lpc176x
-dirs-y += src/generic
-dirs-y += lib/lpc176x/driver
-dirs-y += lib/lpc176x/libs
-dirs-y += lib/lpc176x/startup
-dirs-y += lib/lpc176x/VCOM_lib/src/usbSerial
+OPTIM_LEV := -O2
+PROC_SPEC := -mcpu=cortex-m3 -mthumb
 
-
-CFLAGS += -O2 -g3 -mcpu=cortex-m3 -mthumb -mthumb-interwork
-#CFLAGS += -O2 -g3
-#CFLAGS += -mthumb -mcpu=cortex-m3 -mthumb-interwork
+CFLAGS += $(OPTIM_LEV) $(PROC_SPEC)
 CFLAGS += -ffunction-sections -fdata-sections  -fno-exceptions -fno-delete-null-pointer-checks
 CFLAGS += -D__LPC176x__
 
@@ -26,14 +19,14 @@ CFLAGS += -Ilib/lpc176x/libs
 CFLAGS += -Ilib/lpc176x/startup
 CFLAGS += -Ilib/lpc176x/VCOM_lib/inc/usbSerial
 
-ASFLAGS += -mcpu=cortex-m3 -mthumb -g3
+ASFLAGS += $(OPTIM_LEV) $(PROC_SPEC)
 
-CFLAGS_klipper.elf += -mcpu=cortex-m3 -mthumb
+CFLAGS_klipper.elf += $(PROC_SPEC)
 CFLAGS_klipper.elf += -specs=lib/lpc176x/startup/startfile.spec
 CFLAGS_klipper.elf += -Wl,-Map=$(OUT)klipper.map,--cref,--gc-sections
 CFLAGS_klipper.elf += -Tlib/lpc176x/startup/LPC1768.ld
 CFLAGS_END_klipper.elf += --specs=nano.specs
-CFLAGS_END_klipper.elf += -lstdc++ -lsupc++ -lm -lgcc -lc -lnosys
+CFLAGS_END_klipper.elf += -lm -lgcc -lc -lnosys
 
 # Add driver sources
 src-y += ../lib/lpc176x/driver/lpc17xx_clkpwr.c
@@ -47,7 +40,7 @@ src-y += ../lib/lpc176x/driver/lpc17xx_uart.c
 
 src-y += ../lib/lpc176x/startup/cmsis_nvic.c
 src-y += ../lib/lpc176x/startup/system_LPC17xx.c
-asm-y += ../lib/lpc176x/startup/startup_LPC17xx.s
+src-y += ../lib/lpc176x/startup/startup_LPC17xx.s
 
 src-y += ../lib/lpc176x/libs/delay.c
 
@@ -58,7 +51,7 @@ src-$(CONFIG_SERIAL) += ../lib/lpc176x/VCOM_lib/src/usbSerial/usbinit.c
 src-$(CONFIG_SERIAL) += ../lib/lpc176x/VCOM_lib/src/usbSerial/usbstdreq.c
 
 # Add source files
-src-y += lpc176x/main.cpp lpc176x/custom_start.cpp
+src-y += lpc176x/main.c lpc176x/custom_start.c
 src-y += lpc176x/mempool.c lpc176x/watchdog.c
 src-y += lpc176x/timer.c lpc176x/gpio.c lpc176x/spi.c lpc176x/adc.c
 src-$(CONFIG_SERIAL) += lpc176x/serial_usb.c lpc176x/serial_uart.c

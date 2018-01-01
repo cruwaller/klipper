@@ -17,6 +17,8 @@ choice
         bool "SAM3x8e (Arduino Due)"
     config MACH_LPC176X
         bool "LPC176x (ReARM, SBase, Smoothie...)"
+    config MACH_STM32F1XX
+        bool "STM32F1xx (Cortex-M3)"
     config MACH_PRU
         bool "Beaglebone PRU"
     config MACH_LINUX
@@ -31,6 +33,7 @@ source "src/pru/Kconfig"
 source "src/linux/Kconfig"
 source "src/lpc176x/Kconfig"
 source "src/simulator/Kconfig"
+source "src/stm32f1xx/Kconfig"
 
 # The HAVE_GPIO_x options allow boards to disable support for some
 # commands if the hardware does not support the feature.

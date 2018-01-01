@@ -21,11 +21,11 @@ else
 endif
 # Common command definitions
 CC  = $(GCC_PATH)gcc
-AS  = $(GCC_PATH)as
+AS  = $(GCC_PATH)gcc
 CXX = $(GCC_PATH)g++
 LD  = $(GCC_PATH)ld
 CPP = $(GCC_PATH)cpp
-#CPP = cpp
+
 OBJCOPY = $(GCC_PATH)objcopy
 OBJDUMP = $(GCC_PATH)objdump
 STRIP   = $(GCC_PATH)strip
@@ -37,7 +37,7 @@ STD-cpp = -std=gnu++11
 # Source files
 src-y  =
 asm-y  =
-dirs-y = src
+dirs-y =
 
 # Default compiler flags
 cc-option=$(shell if test -z "`$(1) $(2) -S -o /dev/null -xc /dev/null 2>&1`" \
@@ -46,19 +46,13 @@ cc-option=$(shell if test -z "`$(1) $(2) -S -o /dev/null -xc /dev/null 2>&1`" \
 # dep file generation
 DEPFLAGS := -MMD -MP
 
-CFLAGS   := $(DEPFLAGS) -I$(OUT) -Isrc -I$(OUT)board-generic/ -Wall #-Wextra
+CFLAGS   := $(DEPFLAGS) -I$(OUT) -Isrc -I$(OUT)board-generic/ -Wall \
+ -ffunction-sections -fdata-sections -Wold-style-definition $(call cc-option,$(CC),-Wtype-limits,)
+CFLAGS   += -Wextra
 CXXFLAGS := -fno-rtti
 ASFLAGS  :=
-CFLAGS_klipper.elf :=
+CFLAGS_klipper.elf := -Wl,--gc-sections
 CFLAGS_END_klipper.elf :=
-ifneq ($(CONFIG_MACH_LPC176X),y)
-  CFLAGS += -O2 -MD -g \
-    -Wall -Wold-style-definition $(call cc-option,$(CC),-Wtype-limits,) \
-    -ffunction-sections -fdata-sections
-  CFLAGS += -flto -fwhole-program
-  CFLAGS += -fno-use-linker-plugin
-  CFLAGS_klipper.elf = $(CFLAGS) -Wl,--gc-sections
-endif
 
 # Default targets
 target-y := $(OUT)klipper.elf
@@ -73,9 +67,11 @@ else
   MAKEFLAGS += --no-print-directory
 endif
 
+proc_makefile = src/$(patsubst "%",%,$(CONFIG_BOARD_DIRECTORY))/Makefile
+
 # Include board specific makefile
 include src/Makefile
--include src/$(patsubst "%",%,$(CONFIG_BOARD_DIRECTORY))/Makefile
+-include $(proc_makefile)
 
 CXXFLAGS += $(CFLAGS)
 
@@ -83,11 +79,17 @@ CXXFLAGS += $(CFLAGS)
 
 objects-y = $(src-y:%.c=$(OUT)src/%.o)
 objects-y := $(objects-y:%.cpp=$(OUT)src/%.o)
-objects-y += $(asm-y:%.s=$(OUT)src/%.o)
 objects-y := $(objects-y:%.S=$(OUT)src/%.o)
+objects-y := $(objects-y:%.s=$(OUT)src/%.o)
+objects-y += $(asm-y:%.s=$(OUT)src/%.o)
 
-ctr-y = $(src-y:%.c=$(OUT)src/%.o.ctr)
+# parse only c/cpp files
+c-files := $(filter %.c %.cpp,$(src-y))
+ctr-y = $(c-files:%.c=$(OUT)src/%.o.ctr)
 ctr-y := $(ctr-y:%.cpp=$(OUT)src/%.o.ctr)
+
+# Collect all object dirs
+dirs-y := $(dir $(objects-y))
 
 ################ Common build rules
 
@@ -101,14 +103,13 @@ $(OUT)%.o: %.cpp $(OUT)autoconf.h $(OUT)board-link
 
 $(OUT)%.o: %.s $(OUT)autoconf.h $(OUT)board-link
 	@echo "  Compiling ASM $@"
-#	$(Q)$(AS) $(ASFLAGS) -c $< -o $@
-	$(Q)$(AS) $(ASFLAGS) -o $@ $<
+	$(Q)$(AS) $(ASFLAGS) -c $< -o $@
 
 ################ Main build rules
 
-$(OUT)board-link: $(KCONFIG_CONFIG)
+$(OUT)board-link: $(KCONFIG_CONFIG) $(proc_makefile) src/Makefile ./Makefile
 	@echo "  Creating symbolic link $(OUT)board"
-	$(Q)mkdir -p $(addprefix $(OUT), $(dirs-y))
+	$(Q)mkdir -p $(dirs-y)
 	$(Q)touch $@
 	$(Q)ln -Tsf $(PWD)/src/$(CONFIG_BOARD_DIRECTORY) $(OUT)board
 	$(Q)mkdir -p $(OUT)board-generic
@@ -125,7 +126,7 @@ $(OUT)compile_time_request.o: $(ctr-y) ./scripts/buildcommands.py
 
 $(OUT)klipper.elf: $(objects-y) $(OUT)compile_time_request.o
 	@echo "  Linking $@"
-	$(Q)$(CXX) $(CFLAGS_klipper.elf) $^ $(CFLAGS_END_klipper.elf) -o $@
+	$(Q)$(CC) $(CFLAGS_klipper.elf) $^ $(CFLAGS_END_klipper.elf) -o $@
 
 ################ Kconfig rules
 
@@ -156,4 +157,5 @@ clean:
 distclean: clean
 	$(Q)rm -f .config .config.old
 
--include $(OUT)*.d $(patsubst %,$(OUT)%/*.d,$(dirs-y))
+# include dependency files
+-include $(objects-y:%.o=%.d) # $(OUT)*.d $(patsubst %,$(OUT)%/*.d,$(dirs-y))

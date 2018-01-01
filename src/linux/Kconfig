@@ -58,7 +58,7 @@ config MCU
 config ADC_MAX_VALUE
     int
     default 4095 if !SIMULATOR
-    default 4095 if SIMULATOR && (SIM_MACH_sam3x8e || SIM_MACH_lpc176x)
+    default 4095 if SIMULATOR && (SIM_MACH_sam3x8e || SIM_MACH_lpc176x)
     default 1023 if SIMULATOR && !SIM_MACH_sam3x8e && !SIM_MACH_lpc176x
 
 endif

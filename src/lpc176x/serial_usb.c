@@ -205,6 +205,7 @@ static void BulkOut(U8 bEP, U8 bEPStatus)
             sched_wake_tasks();
         receive_buf[receive_pos] = abBulkBuf[i];
     }
+    (void)bEPStatus;
 }
 
 
