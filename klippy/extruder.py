@@ -52,10 +52,9 @@ class PrinterExtruder:
                                 minval=0.)
         self.need_motor_enable = True
         self.extrude_pos = 0.
-        self.factor_extrude = config.getfloat('extrusion_factor',
+        self.extrude_factor = config.getfloat('extrusion_factor',
                                               1.0,
-                                              minval=0.5,
-                                              maxval=1.5)
+                                              minval=0.1)
         self.logger.debug("Add extruder[{}] heater={}".
                           format(self.index, self.heater.name))
     def get_index(self):

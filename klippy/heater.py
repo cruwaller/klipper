@@ -400,11 +400,12 @@ Sensors = {
 # Heater
 ######################################################################
 
-REPORT_TIME    = 0.300
-PWM_CYCLE_TIME = 0.100
-MAX_HEAT_TIME  = 5.0
-AMBIENT_TEMP   = 25.0
-PID_PARAM_BASE = 255.0
+SAMPLE_TIME = 0.001
+SAMPLE_COUNT = 8
+REPORT_TIME = 0.300
+MAX_HEAT_TIME = 5.0
+AMBIENT_TEMP = 25.
+PID_PARAM_BASE = 255.
 
 class error(Exception):
     pass
@@ -442,7 +443,9 @@ class PrinterHeater:
             self.mcu_pwm = pins.setup_pin(printer, 'digital_out', heater_pin)
         else:
             self.mcu_pwm = pins.setup_pin(printer, 'pwm', heater_pin)
-            self.mcu_pwm.setup_cycle_time(PWM_CYCLE_TIME)
+            pwm_cycle_time = config.getfloat(
+                'pwm_cycle_time', 0.100, above=0., maxval=REPORT_TIME)
+            self.mcu_pwm.setup_cycle_time(pwm_cycle_time)
         self.mcu_pwm.setup_max_duration(MAX_HEAT_TIME)
 
         adc_range = [self.sensor.calc_adc(self.min_temp),
@@ -661,6 +664,9 @@ class ControlBangBang:
 # Proportional Integral Derivative (PID) control algo
 ######################################################################
 
+PID_SETTLE_DELTA = 1.
+PID_SETTLE_SLOPE = .1
+
 class ControlPID:
     def __init__(self, heater, config):
         self.logger = heater.logger.getChild('pid')
@@ -712,7 +718,8 @@ class ControlPID:
             self.prev_temp_integ = temp_integ
     def check_busy(self, eventtime):
         temp_diff = self.heater.target_temp - self.heater.last_temp
-        return abs(temp_diff) > 1. or abs(self.prev_temp_deriv) > 0.1
+        return (abs(temp_diff) > PID_SETTLE_DELTA
+                or abs(self.prev_temp_deriv) > PID_SETTLE_SLOPE)
 
 
 ######################################################################

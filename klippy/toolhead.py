@@ -356,7 +356,7 @@ class ToolHead:
             eventtime = self.reactor.pause(eventtime + 0.100)
     def set_extruder(self, extruder):
         last_move_time = self.get_last_move_time()
-        self.extruder.set_active(last_move_time, False)
+        self.extruder.set_active(last_move_time, False) # Useless...
         extrude_pos = extruder.set_active(last_move_time, True)
         self.extruder = extruder
         self.move_queue.set_extruder(extruder)

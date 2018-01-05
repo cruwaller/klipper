@@ -26,6 +26,16 @@ M1 (partial?)
 
 '''
 
+'''
+extruders: factor_extrude -> extrude_factor
+self.extrude_factor -> self.extruder.extrude_factor!
+
+
+base_position['E'] -> extruder class!
+
+'''
+
+
 tx_sequenceno = 0
 
 class error(Exception):
@@ -67,6 +77,7 @@ class GCodeParser:
         self.base_position = [0.0, 0.0, 0.0, 0.0]
         self.last_position = [0.0, 0.0, 0.0, 0.0]
         self.homing_add = [0.0, 0.0, 0.0, 0.0]
+        self.speed_factor = 1. / 60.
         # G-Code state
         self.need_ack = False
         self.toolhead = None
@@ -74,7 +85,6 @@ class GCodeParser:
         self.extruders = {}
         self.speed = 25.0
         self.axis2pos = {'X': 0, 'Y': 1, 'Z': 2, 'E': 3}
-        self.factor_speed   = 1.0
         #self.tx_sequenceno = 0
         self.simulate_print = False
         self.babysteps = 0.0 # Effect to Z only
@@ -134,10 +144,10 @@ class GCodeParser:
         out.append(
             "gcode state: absolutecoord=%s absoluteextrude=%s"
             " base_position=%s last_position=%s homing_add=%s"
-            " speed=%s" % (
+            " speed_factor=%s extrude_factor=%s speed=%s" % (
                 self.absolutecoord, self.absoluteextrude,
                 self.base_position, self.last_position, self.homing_add,
-                self.speed))
+                self.speed_factor, self.extruder.extrude_factor, self.speed))
         self.logger.info("\n".join(out))
     # Parse input into commands
     args_r = re.compile('([A-Z_]+|[A-Z*])')
@@ -320,7 +330,7 @@ class GCodeParser:
             heater.set_temp(print_time, temp)
         except heater.error as e:
             raise error(str(e))
-        if wait and self.simulate_print is False:
+        if wait and temp and self.simulate_print is False:
             self.bg_temp(heater)
     def set_fan_speed(self, speed, index):
         fan = self.printer.objects.get('fan%d'%(index))
@@ -366,6 +376,11 @@ class GCodeParser:
             raise error(str(e))
         self.extruder = e
         self.reset_last_position()
+        '''
+        Reset extruder base position if G92 E0 is not called after tool change
+        or some movement is done in activate code set by user.
+        '''
+        self.base_position[3] = self.last_position[3]
         activate_gcode = self.extruder.get_activate_gcode(True)
         self.process_commands(activate_gcode.split('\n'), need_ack=False)
 
@@ -378,24 +393,29 @@ class GCodeParser:
             self.absolutecoord = False; # change to relative
 
         try:
-            for a, p in self.axis2pos.items():
-                if a in params:
-                    v = float(params[a])
-                    if (a is 'E'):
-                        v = ( (v * self.extruder.factor_extrude) if (self.simulate_print is False) else 0.0 )
-                    if (not self.absolutecoord
-                        or (p>2 and not self.absoluteextrude)):
+            for axis in 'XYZ':
+                if axis in params:
+                    v = float(params[axis])
+                    pos = self.axis2pos[axis]
+                    if not self.absolutecoord:
                         # value relative to position of last move
-                        self.last_position[p] += v
+                        self.last_position[pos] += v
                     else:
                         # value relative to base coordinate position
-                        self.last_position[p] = v + self.base_position[p]
-
+                        self.last_position[pos] = v + self.base_position[pos]
+            if 'E' in params:
+                v = ( (float(params['E']) * self.extruder.extrude_factor) if (self.simulate_print is False) else 0.0 )
+                if not self.absolutecoord or not self.absoluteextrude: # TODO: Only extruder????
+                    # value relative to position of last move
+                    self.last_position[3] += v
+                else:
+                    # value relative to base coordinate position
+                    self.last_position[3] = v + self.base_position[3]
             if 'F' in params:
-                speed = float(params['F']) / 60.
+                speed = float(params['F']) * self.speed_factor
                 if speed <= 0.:
                     raise error("Invalid speed in '%s'" % (params['#original'],))
-                self.speed = speed * self.factor_speed
+                self.speed = speed
             if is_arch:
                 self.arch_I = 0.0
                 self.arch_J = 0.0
@@ -657,11 +677,17 @@ class GCodeParser:
             homing_state.home_axes(axes)
         except homing.EndstopError as e:
             raise error(str(e))
+        '''
         newpos = self.toolhead.get_position()
         for axis in homing_state.get_axes():
             self.last_position[axis] = newpos[axis]
-            # todo check : is this ok for delta?? ( !!delta is homing to max!! )
             self.base_position[axis] = -self.homing_add[axis]
+        '''
+        # Reset current position
+        self.reset_last_position()
+        for axis in homing_state.get_axes():
+            self.base_position[axis] = -self.homing_add[axis]
+
     def cmd_G29(self, params):
         self.respond_info("Bed levelling is not supported yet!")
         #self.cmd_default(params)
@@ -680,6 +706,8 @@ class GCodeParser:
         offsets = { p: self.get_float(a, params)
                     for a, p in self.axis2pos.items() if a in params }
         for p, offset in offsets.items():
+            if p == 3:
+                offset *= self.extruder.extrude_factor
             self.base_position[p] = self.last_position[p] - offset
         if not offsets:
             self.base_position = list(self.last_position)
@@ -765,18 +793,24 @@ class GCodeParser:
         self.set_temp(params, is_bed=True, wait=True)
     def cmd_M206(self, params):
         # Set home offset
-        offsets = { p: self.get_float(a, params)
-                    for a, p in self.axis2pos.items() if a in params }
+        offsets = { self.axis2pos[a]: self.get_float(a, params)
+                    for a in 'XYZ' if a in params }
         for p, offset in offsets.items():
             self.base_position[p] += self.homing_add[p] - offset
             self.homing_add[p] = offset
 
     def cmd_M220(self, params):
         # M220: Set speed factor override percentage
-        self.factor_speed = self.get_float('S', params, 100.0) / 100.0
+        value = self.get_float('S', params, 100.) / (60. * 100.)
+        if value <= 0.:
+            raise error("Invalid factor in '%s'" % (params['#original'],))
+        self.speed_factor = value
     def cmd_M221(self, params):
         # M221: Set extrude factor override percentage
-        index = None
+        new_extrude_factor = self.get_float('S', params, 100.) / 100.
+        if new_extrude_factor <= 0.:
+            raise error("Invalid factor in '%s'" % (params['#original'],))
+        index = extr = None
         # extruder number
         if 'D' in params:
             index = self.get_int('D', params)
@@ -786,7 +820,11 @@ class GCodeParser:
             extr = self.extruder
         else:
             extr = extruder.get_printer_extruder(self.printer, index)
-        extr.factor_extrude = self.get_float('S', params, 100.0) / 100.0
+        if extr is not None:
+            last_e_pos = self.last_position[3]
+            e_value = (last_e_pos - self.base_position[3]) / extr.extrude_factor
+            self.base_position[3] = last_e_pos - e_value * new_extrude_factor
+            extr.extrude_factor = new_extrude_factor
 
     def cmd_M290(self, params):
         # Babystepping
