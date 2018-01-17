@@ -132,7 +132,8 @@ class GCodeParser:
         print_time = self.toolhead.get_last_move_time()
         for k,h in heater.get_printer_heaters(self.printer).items():
             h.set_temp(print_time, 0.0)
-        # todo fixme : is it ok to switch off all fans???
+        # TODO FIXME : is it ok to switch off all fans???
+        #              Should switch off only fan without temp ctrl
         for fan in self.printer.get_objects_with_prefix('fan'):
             fan.set_speed(print_time, 0.0)
     def dump_debug(self):
@@ -716,6 +717,8 @@ class GCodeParser:
         heaters_on = self.get_int('H', params, 0)
         if (heaters_on is 0):
             self.motor_heater_off()
+        elif self.toolhead is not None:
+            self.toolhead.motor_off()
             # self.respond("Printer reset invoked")
             # self.printer.request_exit('firmware_restart')
     def cmd_M1(self, params):
@@ -742,6 +745,8 @@ class GCodeParser:
     cmd_M18_aliases = ["M84"]
     def cmd_M18(self, params):
         # Turn off motors
+        # Should wait queued moves to prevent unwanted error!
+        self.toolhead.wait_moves()
         self.toolhead.motor_off()
     def cmd_M104(self, params):
         # Set Extruder Temperature

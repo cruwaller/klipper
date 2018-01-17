@@ -505,14 +505,18 @@ class PrinterHeater:
             target_temp = self.target_temp
 
         if (self.protection_last_temp is None):
-            self.is_heating = False;
-            self.is_runaway = False;
+            self.is_heating = False
+            self.is_runaway = False
+            self.is_cooling = False
             # Set init value
             self.protection_last_temp = current_temp
 
             if (current_temp <= (target_temp - self.protect_hyst_runaway)):
                 self.is_heating = True
                 next_time = self.protection_period_heat
+            elif (target_temp < current_temp and 0 < target_temp):
+                self.is_cooling = True
+                next_time = self.protection_period
             else:
                 self.is_runaway = True
                 next_time = self.protection_period
@@ -527,6 +531,11 @@ class PrinterHeater:
                 self._printer.request_exit('shutdown')
             self.protection_last_temp = current_temp
             next_time = self.protection_period
+        elif (self.is_cooling):
+            next_time = self.protection_period_heat
+            if ((current_temp - self.protect_hyst_runaway) < target_temp):
+                self.is_cooling = False
+                self.is_heating = True
         elif (self.is_heating):
             # Check hysteresis during the preheating
             if ((target_temp - self.protect_hyst_runaway) \
