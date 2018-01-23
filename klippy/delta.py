@@ -117,6 +117,9 @@ class DeltaKinematics:
             self.steppers[i].set_position(pos[i])
         self.limit_xy2 = -1.
     def home(self, homing_state):
+        for s in self.steppers:
+            if hasattr(s.driver, 'set_sensor_less_homing'):
+                s.driver.set_sensor_less_homing(enable=True)
         # All axes are homed simultaneously
         homing_state.set_axes([0, 1, 2])
         endstops = [es for s in self.steppers for es in s.get_endstops()]
@@ -147,6 +150,9 @@ class DeltaKinematics:
         cart_pos[0] = 0
         cart_pos[1] = 0
         homing_state.set_homed_position(cart_pos)
+        for s in self.steppers:
+            if hasattr(s.driver, 'set_sensor_less_homing'):
+                s.driver.set_sensor_less_homing(enable=False)
     def motor_off(self, print_time):
         self.limit_xy2 = -1.
         for stepper in self.steppers:

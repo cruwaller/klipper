@@ -53,6 +53,8 @@ class CoreXYKinematics:
         # Each axis is homed independently and in order
         for axis in homing_state.get_axes():
             s = self.steppers[axis]
+            if hasattr(s.driver, 'set_sensor_less_homing'):
+                s.driver.set_sensor_less_homing(enable=True)
             self.limits[axis] = (s.position_min, s.position_max)
             # Determine moves
             if s.homing_positive_dir:
@@ -94,6 +96,8 @@ class CoreXYKinematics:
                     # Retract
                     coord[axis] = rpos
                     homing_state.retract(list(coord), homing_speed)
+            if hasattr(s.driver, 'set_sensor_less_homing'):
+                s.driver.set_sensor_less_homing(enable=False)
     def motor_off(self, print_time):
         if self.require_home_after_motor_off is True:
             self.limits = [(1.0, -1.0)] * 3

@@ -21,10 +21,10 @@ void
 spi_init(void)
 {
     /* Configure SCK, MISO and MOSI */
-    gpio_peripheral('A', PIO_PA27A_SPI0_SPCK, 'A', 0);
-    gpio_peripheral('A', PIO_PA26A_SPI0_MOSI, 'A', 0);
     gpio_peripheral('A', PIO_PA25A_SPI0_MISO, 'A', 0);
-    //gpio_in_setup(MISO, 0);
+    gpio_peripheral('A', PIO_PA26A_SPI0_MOSI, 'A', 0);
+    gpio_peripheral('A', PIO_PA27A_SPI0_SPCK, 'A', 0);
+    //gpio_in_setup(MISO, 0); // needed?
 
     // Power ON SPI
     if (!(PMC->PMC_PCSR0 & (1u << PERIPH_ID))) {
@@ -86,7 +86,7 @@ spi_get_config(uint8_t const mode, uint32_t const clock)
             break;
     };
 
-    config &= ~(SPI_CSR_SCBR_Msk); // Clear current
+    //config &= ~(SPI_CSR_SCBR_Msk); // Clear current
     config |= SPI_CSR_SCBR(clockDiv);
 
     return config;

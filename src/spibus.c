@@ -110,7 +110,10 @@ void command_spibus_read(uint32_t *args) {
 #if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
         printf("spibus_read - cmd: 0x%X\n", cmd);
 #endif
-        resp[iter++] = spi_transfer(cmd, 0);
+        resp[0] = spi_transfer(cmd, 0);
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+            printf("spibus_read - recv: 0x%X\n", resp[0]);
+#endif
         for (iter = 1; iter < len; iter++) {
             data = spi_transfer(SPI_READ_CMD, 0);
 #if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)

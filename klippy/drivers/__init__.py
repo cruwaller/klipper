@@ -14,6 +14,7 @@ def get_driver(printer, config, name=None, logger=None):
     mapping = { 'DEFAULT' : DriverBase,
                 'A4988'   : DriverBase,
                 'DRV8825' : DriverBase,
+                'TMC2100' : DriverBase,
                 'TMC2130' : TMC2130 }
     return mapping[config.get('type', 'default').upper()](printer,
                                                           config,

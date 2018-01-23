@@ -142,13 +142,16 @@ class GCodeParser:
             len(self.input_log),))
         for eventtime, data in self.input_log:
             out.append("Read %f: %s" % (eventtime, repr(data)))
+        extrude_factor = 0.
+        if self.extruder is not None:
+            extrude_factor = self.extruder.extrude_factor
         out.append(
             "gcode state: absolutecoord=%s absoluteextrude=%s"
             " base_position=%s last_position=%s homing_add=%s"
             " speed_factor=%s extrude_factor=%s speed=%s" % (
                 self.absolutecoord, self.absoluteextrude,
                 self.base_position, self.last_position, self.homing_add,
-                self.speed_factor, self.extruder.extrude_factor, self.speed))
+                self.speed_factor, extrude_factor, self.speed))
         self.logger.info("\n".join(out))
     # Parse input into commands
     args_r = re.compile('([A-Z_]+|[A-Z*])')
@@ -619,6 +622,7 @@ class GCodeParser:
         'M400',
         'M550',
         'M851',
+        'M900', 'M906',
         'IGNORE', 'QUERY_ENDSTOPS', 'PID_TUNE',
         'RESTART', 'FIRMWARE_RESTART', 'ECHO', 'STATUS', 'HELP']
 
@@ -903,6 +907,25 @@ class GCodeParser:
                               (self.toolhead.kin.steppers[0].homing_offset,
                                self.toolhead.kin.steppers[1].homing_offset,
                                self.toolhead.kin.steppers[2].homing_offset))
+
+    def cmd_M900(self, params):
+        # driver status if exists
+        for stepper in self.toolhead.kin.steppers:
+            if hasattr(stepper.driver, 'print_status'):
+                stepper.driver.print_status()
+    def cmd_M906(self, params):
+        # TMC current
+        if 'X' in params:
+            if hasattr(self.toolhead.kin.steppers[0].driver, 'set_current'):
+                stepper.driver.set_current(self.get_float('X', params))
+        if 'Y' in params:
+            if hasattr(self.toolhead.kin.steppers[1].driver, 'set_current'):
+                stepper.driver.set_current(self.get_float('Y', params))
+        if 'Z' in params:
+            if hasattr(self.toolhead.kin.steppers[2].driver, 'set_current'):
+                stepper.driver.set_current(self.get_float('Z', params))
+
+
 
     cmd_IGNORE_when_not_ready = True
     cmd_IGNORE_aliases = [
