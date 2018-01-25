@@ -98,7 +98,7 @@ class PrinterHomingStepper(PrinterStepper):
         # Homing mechanics
         self.homing_speed = config.getfloat('homing_speed', 5.0, above=0.)
         self.homing_retract_dist = config.getfloat(
-            'homing_retract_dist', 5., above=0.)
+            'homing_retract_dist', 5., minval=0.)
         homing_dirs = { 'min' : False, 'max' : True, 'NA' : None}
         homing_dir  = config.getchoice('homing_direction',
                                        homing_dirs, 'NA')

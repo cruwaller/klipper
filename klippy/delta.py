@@ -117,9 +117,9 @@ class DeltaKinematics:
             self.steppers[i].set_position(pos[i])
         self.limit_xy2 = -1.
     def home(self, homing_state):
-        for s in self.steppers:
-            if hasattr(s.driver, 'set_sensor_less_homing'):
-                s.driver.set_sensor_less_homing(enable=True)
+        sensor_funcs = [ s.driver.set_sensor_less_homing
+                         if hasattr(s.driver, 'set_sensor_less_homing') else None
+                         for s in self.steppers ]
         # All axes are homed simultaneously
         homing_state.set_axes([0, 1, 2])
         endstops = [es for s in self.steppers for es in s.get_endstops()]
@@ -130,14 +130,17 @@ class DeltaKinematics:
         homepos = [0., 0., self.max_z, None]
         coord = list(homepos)
         coord[2] = -1.5 * math.sqrt(max(self.arm2)-self.max_xy2)
-        homing_state.home(coord, homepos, endstops, homing_speed)
-        # Retract
-        coord[2] = homepos[2] - s.homing_retract_dist
-        homing_state.retract(coord, homing_speed)
-        # Home again
-        coord[2] -= s.homing_retract_dist
-        homing_state.home(coord, homepos, endstops,
-                          homing_speed/2.0, second_home=True)
+        homing_state.home(coord, homepos, endstops, homing_speed,
+                          init_sensor=sensor_funcs)
+        if 0 < s.homing_retract_dist:
+            # Retract
+            coord[2] = homepos[2] - s.homing_retract_dist
+            homing_state.retract(coord, homing_speed)
+            # Home again
+            coord[2] -= s.homing_retract_dist
+            homing_state.home(coord, homepos, endstops,
+                              homing_speed/2.0, second_home=True,
+                              init_sensor=sensor_funcs)
         # Set final homed position
         spos = [ep + s.get_homed_offset()
                 for ep, s in zip(self.endstops, self.steppers)]
@@ -150,9 +153,6 @@ class DeltaKinematics:
         cart_pos[0] = 0
         cart_pos[1] = 0
         homing_state.set_homed_position(cart_pos)
-        for s in self.steppers:
-            if hasattr(s.driver, 'set_sensor_less_homing'):
-                s.driver.set_sensor_less_homing(enable=False)
     def motor_off(self, print_time):
         self.limit_xy2 = -1.
         for stepper in self.steppers:

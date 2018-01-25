@@ -53,8 +53,9 @@ class CoreXYKinematics:
         # Each axis is homed independently and in order
         for axis in homing_state.get_axes():
             s = self.steppers[axis]
+            sensor_funcs = []
             if hasattr(s.driver, 'set_sensor_less_homing'):
-                s.driver.set_sensor_less_homing(enable=True)
+                sensor_funcs = [s.driver.set_sensor_less_homing]
             self.limits[axis] = (s.position_min, s.position_max)
             # Determine moves
             if s.homing_positive_dir:
@@ -80,14 +81,17 @@ class CoreXYKinematics:
             homepos[axis] = s.position_endstop
             coord = [None, None, None, None]
             coord[axis] = pos
-            homing_state.home(coord, homepos, s.get_endstops(), homing_speed)
-            # Retract
-            coord[axis] = rpos
-            homing_state.retract(coord, homing_speed)
-            # Home again
-            coord[axis] = r2pos
-            homing_state.home(coord, homepos, s.get_endstops(),
-                              homing_speed/2.0, second_home=True)
+            homing_state.home(coord, homepos, s.get_endstops(), homing_speed,
+                              init_sensor=sensor_funcs)
+            if 0 < s.homing_retract_dist:
+                # Retract
+                coord[axis] = rpos
+                homing_state.retract(coord, homing_speed)
+                # Home again
+                coord[axis] = r2pos
+                homing_state.home(coord, homepos, s.get_endstops(),
+                                  homing_speed/2.0, second_home=True,
+                                  init_sensor=sensor_funcs)
             if axis == 2:
                 # Support endstop phase detection on Z axis
                 coord[axis] = s.position_endstop + s.get_homed_offset()
@@ -96,8 +100,6 @@ class CoreXYKinematics:
                     # Retract
                     coord[axis] = rpos
                     homing_state.retract(list(coord), homing_speed)
-            if hasattr(s.driver, 'set_sensor_less_homing'):
-                s.driver.set_sensor_less_homing(enable=False)
     def motor_off(self, print_time):
         if self.require_home_after_motor_off is True:
             self.limits = [(1.0, -1.0)] * 3

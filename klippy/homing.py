@@ -66,9 +66,12 @@ class Homing:
                     error = "Failed to home %s: %s" % (name, str(e))
         if error is not None:
             raise EndstopError(error)
-    def home(self, forcepos, movepos, endstops, speed, second_home=False):
+    def home(self, forcepos, movepos, endstops, speed, second_home=False, init_sensor=[]):
         # Alter kinematics class to think printer is at forcepos
         self.toolhead.set_position(self._fill_coord(forcepos))
+        for sensor_func in init_sensor:
+            if sensor_func is not None:
+                sensor_func(enable=True)
         # Add a CPU delay when homing a large axis
         if not second_home:
             est_move_d = sum([abs(forcepos[i]-movepos[i])
@@ -83,6 +86,9 @@ class Homing:
                          for es, name in endstops for s in es.get_steppers()]
         # Issue homing move
         self.homing_move(movepos, endstops, speed)
+        for sensor_func in init_sensor:
+            if sensor_func is not None:
+                sensor_func(enable=False)
         # Verify retract led to some movement on second home
         if second_home and self.verify_retract:
             for s, name, pos in start_mcu_pos:

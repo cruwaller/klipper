@@ -1,5 +1,5 @@
 # system
-import logging, types, struct
+import logging, types, struct, ctypes
 import binascii
 from operator import xor
 # project
@@ -66,7 +66,7 @@ class TMC2130(DriverBase):
         self.hold_multip = config.getfloat('hold_multiplier', 0.5, above=0., maxval=1.0)
         self.interpolate = config.getboolean('interpolate', True)
         self.sensor_less_homing = config.getboolean('sensor_less_homing', False)
-        self.hybrid_threshold = config.getint('hybrid_threshold', None, minval=0, maxval=1048575)
+        #self.hybrid_threshold = config.getint('hybrid_threshold', None, minval=0, maxval=1048575)
         self.stealth_max_speed = config.getint('stealth_max_speed', None, minval=10) # hybrid threshold
 
         # +1...+63 = less sensitivity, -64...-1 = higher sensitivity
@@ -99,11 +99,6 @@ class TMC2130(DriverBase):
         mode = { "spreadCycle" : False,
                  "stealthChop" : True }
         self.silent_mode = config.getchoice('mode', mode, default='stealthChop')
-
-        # Sensorless homing is not working in silent mode!
-        #if self.sensor_less_homing:
-        #    self.logger.warning("Sensorless homing enabled - mode to 'spreadCycle'")
-        #    self.silent_mode = mode['spreadCycle']
 
         # ========== SPI config ==========
         spipin     = config.get('ss_pin')
@@ -173,7 +168,6 @@ class TMC2130(DriverBase):
     |  ADDR  |   D    |   D    |   D    |   D    |
     '''
     def __command_write(self, cmd, val=None): # 40bits always = 5 x 8bit!
-        #cmd &= 0xFF;
         if val is not None:
             if type(val) is not types.ListType:
                 #if val > 0xFFFFFFFF:
@@ -187,31 +181,49 @@ class TMC2130(DriverBase):
                 #        val[idx] = int(val[idx])
                 #    except:
                 #        val[idx] = 0
-            cmd |= 0x80 # Make sure command has write bit set
             if len(val) != 4:
                 raise Exception("TMC2130 internal error! len(val) != 4")
             self.logger.debug("==>> cmd 0x%02X : 0x%s" % (cmd, binascii.hexlify(bytearray(val))))
+            cmd |= 0x80 # Make sure command has write bit set
             self.mcu_driver.write(cmd, val)
 
     def __reset_driver(self):
         ## Read reset values:
-        #self.val_GCONF      = self.__command_read(REG_GCONF);
-        #self.val_CHOPCONF   = self.__command_read(REG_CHOPCONF);
-        #self.val_COOLCONF   = self.__command_read(REG_COOLCONF);
-        #self.val_PWMCONF    = self.__command_read(REG_PWMCONF);
+        # Init internal values
+        self.val_GCONF      = 0 #self.__command_read(REG_GCONF);
+        self.val_CHOPCONF   = 0 #self.__command_read(REG_CHOPCONF);
+        self.val_COOLCONF   = 0 #self.__command_read(REG_COOLCONF);
+        self.val_PWMCONF    = 0 #self.__command_read(REG_PWMCONF);
         self.val_IHOLD_IRUN = self.__command_read(REG_IHOLD_IRUN);
         ## reset registers:
-        self.__command_write(REG_GCONF, 0);
-        self.__command_write(REG_CHOPCONF, 0);
-        self.__command_write(REG_COOLCONF, 0);
-        self.__command_write(REG_PWMCONF, 0);
+        self.__command_write(REG_GCONF,    self.val_GCONF);
+        self.__command_write(REG_CHOPCONF, self.val_CHOPCONF);
+        self.__command_write(REG_COOLCONF, self.val_COOLCONF);
+        self.__command_write(REG_PWMCONF,  self.val_PWMCONF);
         self.set_REG_TCOOLTHRS(0)
-        #self.__command_write(REG_IHOLD_IRUN, 0);
-        self.val_GCONF      = 0
-        self.val_CHOPCONF   = 0
-        self.val_COOLCONF   = 0
-        self.val_PWMCONF    = 0
-        #self.val_IHOLD_IRUN = 0
+
+    def __validate_cfg(self):
+        GCONF      = self.__command_read(REG_GCONF);
+        CHOPCONF   = self.__command_read(REG_CHOPCONF);
+        COOLCONF   = self.__command_read(REG_COOLCONF);
+        PWMCONF    = self.__command_read(REG_PWMCONF);
+        IHOLD_IRUN = self.__command_read(REG_IHOLD_IRUN);
+
+        if (GCONF != self.val_GCONF):
+            self.logger.error("GCONF Configuration error! [was 0x%08X expected 0x%08X]" %
+                              (GCONF, self.val_GCONF))
+        if (CHOPCONF != self.val_CHOPCONF):
+            self.logger.error("CHOPCONF Configuration error! [was 0x%08X expected 0x%08X]" %
+                              (CHOPCONF, self.val_CHOPCONF))
+        if (COOLCONF != self.val_COOLCONF):
+            self.logger.error("COOLCONF Configuration error! [was 0x%08X expected 0x%08X]" %
+                              (COOLCONF, self.val_COOLCONF))
+        if (PWMCONF != self.val_PWMCONF):
+            self.logger.error("PWMCONF Configuration error! [was 0x%08X expected 0x%08X]" %
+                              (PWMCONF, self.val_PWMCONF))
+        if (IHOLD_IRUN != self.val_IHOLD_IRUN):
+            self.logger.error("IHOLD_IRUN Configuration error! [was 0x%08X expected 0x%08X]" %
+                              (IHOLD_IRUN, self.val_IHOLD_IRUN))
 
     def __init_callback(self):
         val_clear = [0, 0, 0, 0]
@@ -224,12 +236,12 @@ class TMC2130(DriverBase):
         self.set_REG_TPOWERDOWN(128)
 
         self.modify_REG_CHOPCONF('microsteps', self.microsteps)
-        self.modify_REG_CHOPCONF('blank_time', 36) # 24
+        self.modify_REG_CHOPCONF('blank_time', 24)
         self.modify_REG_CHOPCONF('off_time', 5) # 8
         self.modify_REG_CHOPCONF('interpolate', self.interpolate)
         self.modify_REG_CHOPCONF('chopper_mode', 0)
-        self.modify_REG_CHOPCONF('hysterisis_start', 0)
-        self.modify_REG_CHOPCONF('hysterisis_end', 1)
+        self.modify_REG_CHOPCONF('hysterisis_start', 3)
+        self.modify_REG_CHOPCONF('hysterisis_end', 2)
 
         #self.modify_REG_GCONF('stop_enable', 0)
         #self.modify_REG_GCONF('external_ref', 0)
@@ -255,9 +267,9 @@ class TMC2130(DriverBase):
             #self.modify_REG_CHOPCONF('hysterisis_end', 0)
 
             if (self.stealth_max_speed is not None):
-                speed = (12650000 * self.microsteps /
-                         (self.stealth_max_speed * self.inv_step_dist * 256))
-                self.set_REG_TPWMTHRS(int(speed))
+                speed = int(12650000 * self.microsteps /
+                            (self.stealth_max_speed * self.inv_step_dist * 256))
+                self.set_REG_TPWMTHRS(speed)
                 self.logger.info("Stealth max speed: {} ({})".
                                  format(self.stealth_max_speed, speed))
             elif self.hybrid_threshold is not None:
@@ -292,6 +304,8 @@ class TMC2130(DriverBase):
 
         self.get_REG_DRV_STATUS()
 
+        self.__validate_cfg()
+
         self.logger.info(" init done!")
 
     #def build_config(self):
@@ -311,14 +325,15 @@ class TMC2130(DriverBase):
 
     def set_sensor_less_homing(self, enable=True, sg=None):
         if self.sensor_less_homing:
+            self.logger.debug("Set sensor_less_homing = {}".format(enable))
             if enable is True:
                 if sg is not None:
                     self.modify_REG_COOLCONF('sg_stall_value', sg)
-                self.modify_REG_GCONF('stealthChop', 0)
+                self.modify_REG_GCONF('stealthChop', 0) # TODO FIXME : Tarviiko????
                 self.set_REG_TCOOLTHRS(0xFFFFF)
             else:
                 if self.silent_mode is True:
-                    self.modify_REG_GCONF('stealthChop', 1)
+                    self.modify_REG_GCONF('stealthChop', 1) # TODO FIXME : Tarviiko????
                 self.set_REG_TCOOLTHRS(0)
 
     def set_dir(self, _dir=0):
@@ -541,8 +556,11 @@ class TMC2130(DriverBase):
         to motor current power down. Time range is about 0 to 4 seconds.
         delay: 0...((2^8)-1) * 2^18 tCLK
         '''
-        val = power_down_delay & 0xFF
-        self.__command_write(REG_TPOWERDOWN, val)
+        if (power_down_delay < 0):
+            power_down_delay = 0
+        elif (0xFFFFF < power_down_delay):
+            power_down_delay = 0xFF
+        self.__command_write(REG_TPOWERDOWN, power_down_delay)
 
     #========================================
     def get_REG_TSTEP(self, microstep_time):
@@ -563,8 +581,11 @@ class TMC2130(DriverBase):
               - stealthChop PWM mode is enabled if configured
               - dcStep is disabled
         '''
-        val = stealthChop_max_speed & 0xFFFFF
-        self.__command_write(REG_TPWMTHRS, val)
+        if (stealthChop_max_speed < 0):
+            stealthChop_max_speed = 0
+        elif (0xFFFFF < stealthChop_max_speed):
+            stealthChop_max_speed = 0xFFFFF
+        self.__command_write(REG_TPWMTHRS, stealthChop_max_speed)
 
     #========================================
     def set_REG_TCOOLTHRS(self, coolstep_min_speed):
@@ -585,8 +606,11 @@ class TMC2130(DriverBase):
         TCOOLTHRS >= TSTEP
           - Stop on stall and stall output signal is enabled, if configured
         '''
-        val = coolstep_min_speed & 0xFFFFF
-        self.__command_write(REG_TCOOLTHRS, val)
+        if (coolstep_min_speed < 0):
+            coolstep_min_speed = 0
+        elif (0xFFFFF < coolstep_min_speed):
+            coolstep_min_speed = 0xFFFFF
+        self.__command_write(REG_TCOOLTHRS, coolstep_min_speed)
 
     #========================================
     def set_REG_THIGH(self, mode_sw_speed):
@@ -609,8 +633,11 @@ class TMC2130(DriverBase):
             and the stall detection becomes switched over to
             dcStep stall detection.
         '''
-        val = mode_sw_speed & 0xFFFFF
-        self.__command_write(REG_THIGH, val)
+        if (mode_sw_speed < 0):
+            mode_sw_speed = 0
+        elif (0xFFFFF < mode_sw_speed):
+            mode_sw_speed = 0xFFFFF
+        self.__command_write(REG_THIGH, mode_sw_speed)
 
 
     #**************************************************************************
@@ -623,9 +650,25 @@ class TMC2130(DriverBase):
         programmed via the serial interface. In this mode,
         the current is scaled by IHOLD setting.
         '''
-        reg = REG_XDIRECT
-        # SKIP!
-        pass
+        if (coil_A_current < -255):
+            coil_A_current = -255
+        elif (255 < coil_A_current):
+            coil_A_current = 255;
+        if (coil_B_current < -255):
+            coil_B_current = -255
+        elif (255 < coil_B_current):
+            coil_B_current = 255;
+        val = 0
+        if coil_B_current < 0:
+            val |= 1 << 8
+            coil_B_current = -coil_B_current
+        val |= -coil_B_current
+        val <<= 16
+        if coil_A_current < 0:
+            val |= 1 << 8
+            coil_A_current = -coil_A_current
+        val |= coil_A_current
+        self.__command_write(REG_XDIRECT, val)
 
     #**************************************************************************
     # dcStep Minimum Velocity Register
@@ -639,8 +682,11 @@ class TMC2130(DriverBase):
 
         time reference t for VDCMIN: t = 2^24 / fCLK
         '''
-        reg = REG_VDCMIN
-        pass
+        if (dcStep_min_speed < 0):
+            dcStep_min_speed = 0;
+        elif (0x7FFFFF < dcStep_min_speed):
+            dcStep_min_speed = 0x7FFFFF
+        self.__command_write(REG_VDCMIN, dcStep_min_speed)
 
     #**************************************************************************
     # MICROSTEPPING CONTROL REGISTER SET (0x60..0x6B)
@@ -960,20 +1006,6 @@ class TMC2130(DriverBase):
             return None
 
 
-    #========================================
-    """
-    def set_REG_ENCM_CTRL(self,
-                          invert_encoder = 0,
-                          maxspeed       = 0):
-        '''
-        invert_encoder     0/1    Invert encoder inputs
-        maxspeed           0/1    Ignore Step input. If set, the hold current IHOLD determines
-                                  the motor current, unless a step source is activated
-        '''
-        val  = (maxspeed       & 1) << 1
-        val |= (invert_encoder & 1)
-        self.__command_write(REG_ENCM_CTRL, val)
-    """
     #========================================
     def get_LOST_STEPS(self):
         val = self.__command_read(REG_LOST_STEPS)
