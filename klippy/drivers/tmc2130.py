@@ -1,5 +1,5 @@
 # system
-import logging, types, struct, ctypes
+import logging, types, struct, ctypes, time
 import binascii
 from operator import xor
 # project
@@ -44,6 +44,7 @@ REG_ENCM_CTRL  = 0x72
 REG_LOST_STEPS = 0x73
 
 
+MAX_CURRENT = 1400.
 
 class TMC2130(DriverBase):
     # Error flags
@@ -52,8 +53,13 @@ class TMC2130(DriverBase):
     isStallguard = False
     isStandstill = False
 
-    def __init__(self, printer, config, logger):
-        super(TMC2130, self).__init__(printer, config, None)
+    micro_steps_map = \
+        { "256": 256, "128": 128, "64": 64, "32": 32,
+           "16":  16,   "8":   8,  "4":  4,  "2":  2,
+            "1":   1 }
+
+    def __init__(self, printer, config, config_parent, logger):
+        super(TMC2130, self).__init__(printer, config, config_parent, logger)
         self.name = config.section[7:]
 
         if logger is not None:
@@ -61,7 +67,7 @@ class TMC2130(DriverBase):
         else:
             self.logger = logging.getLogger("driver.%s"%(self.name,))
 
-        self.current = config.getfloat('current', 1000.0, above=100., maxval=1200.0)
+        self.current = config.getfloat('current', 1000.0, above=100., maxval=MAX_CURRENT)
         self.Rsense = config.getfloat('sense_R', 0.11, above=0.09)
         self.hold_multip = config.getfloat('hold_multiplier', 0.5, above=0., maxval=1.0)
         self.interpolate = config.getboolean('interpolate', True)
@@ -89,12 +95,6 @@ class TMC2130(DriverBase):
         }
         self.diag1purpose = config.getchoice('diag1_out', diag1types, default='NA')
         self.diag1act_high = config.getboolean('diag1_active_high', default=True)
-
-        mSteps = { "256": 256, "128": 128, "64": 64, "32": 32,
-                    "16":  16,   "8":   8,  "4":  4,  "2":  2,
-                     "1":   1
-        }
-        self.microsteps = config.getchoice('microsteps', mSteps)
 
         mode = { "spreadCycle" : False,
                  "stealthChop" : True }
@@ -311,44 +311,10 @@ class TMC2130(DriverBase):
     #def build_config(self):
     #    self.logger.info("build_config()")
 
-
-    #**************************************************************************
-    # WRAPPER METHODS
-    #**************************************************************************
-
-    def print_status(self):
-        self.print_current()
-        self.get_REG_DRV_STATUS()
-        self.get_GSTAT()
-        self.get_IOIN()
-        self.get_LOST_STEPS()
-
-    def set_sensor_less_homing(self, enable=True, sg=None):
-        if self.sensor_less_homing:
-            self.logger.debug("Set sensor_less_homing = {}".format(enable))
-            if enable is True:
-                if sg is not None:
-                    self.modify_REG_COOLCONF('sg_stall_value', sg)
-                self.modify_REG_GCONF('stealthChop', 0) # TODO FIXME : Tarviiko????
-                self.set_REG_TCOOLTHRS(0xFFFFF)
-            else:
-                if self.silent_mode is True:
-                    self.modify_REG_GCONF('stealthChop', 1) # TODO FIXME : Tarviiko????
-                self.set_REG_TCOOLTHRS(0)
-
-    def set_dir(self, _dir=0):
-        self.modify_REG_GCONF('shaft_dir', _dir)
-
-    def clear_faults(self):
-        self.isReset      = False
-        self.isError      = False
-        self.isStallguard = False
-        self.isStandstill = False
-
-    def calc_rms_current(self,
-                         current_in_mA  = 1000,
-                         sense_R        = 0.11,
-                         multip_for_holding_current = 0.5):
+    def __calc_rms_current(self,
+                           current_in_mA  = 1000,
+                           sense_R        = 0.11,
+                           multip_for_holding_current = 0.5):
         self.logger.debug("Setting RMS current to {}".format(current_in_mA))
         CS = 32.0 * 1.41421 * current_in_mA / 1000.0 * (sense_R + 0.02) / 0.325 - 1.
 
@@ -370,7 +336,7 @@ class TMC2130(DriverBase):
         self.modify_REG_IHOLD_IRUN('IHOLD', iHold)
         self.logger.debug("IHold={}, IRun={}".format(iHold, iRun))
 
-    def get_rms_current(self):
+    def __get_rms_current(self):
         vsense = self.read_REG_CHOPCONF('vsense')
         CS     = self.read_REG_IHOLD_IRUN('IRUN')
         V_fs   = 0.325
@@ -378,13 +344,59 @@ class TMC2130(DriverBase):
             V_fs = 0.180
         return ( CS + 1. ) / 32.0 * V_fs / (self.Rsense + 0.02) / 1.41421 * 1000.;
 
-    def print_current(self):
-        self.logger.info("Current: {} ({})".format(self.get_rms_current(), self.current))
+
+    #**************************************************************************
+    # WRAPPER METHODS
+    #**************************************************************************
+
+    def status(self, log):
+        if log is not None: log("name: %s" % self.name)
+        current = self.get_current()
+        self.logger.info("Current, mA: %d" % (current,))
+        if log is not None: log("Current, mA: %d" % (current,))
+        self.get_GSTAT(log)
+        self.get_REG_DRV_STATUS(log)
+        self.get_IOIN(log)
+        self.get_LOST_STEPS(log)
+
+    def init_home(self, enable=True):
+        if self.sensor_less_homing:
+            if enable is True:
+                #self.modify_REG_GCONF('stealthChop', 0) # TODO FIXME : required????
+                self.set_REG_TCOOLTHRS(0xFFFFF)
+            else:
+                #if self.silent_mode is True:
+                #    self.modify_REG_GCONF('stealthChop', 1) # TODO FIXME : required????
+                self.set_REG_TCOOLTHRS(0)
+
+    def set_dir(self, direction=0):
+        self.modify_REG_GCONF('shaft_dir', direction)
+
+    def clear_faults(self):
+        self.isReset      = False
+        self.isError      = False
+        self.isStallguard = False
+        self.isStandstill = False
 
     def set_current(self, current=None):
-        if current is not None and 100. < current :
-            self.calc_rms_current(self.current, self.Rsense, self.hold_multip)
+        if current is not None and 100. <= current <= MAX_CURRENT :
+            self.__calc_rms_current(current, self.Rsense, self.hold_multip)
+    def get_current(self):
+        return self.__get_rms_current()
 
+    def set_stallguard(self, sg):
+        if (sg is not None and -64 <= sg <= 63):
+            self.sg_stall_value = sg
+            self.modify_REG_COOLCONF('sg_stall_value',
+                                     self.sg_stall_value)
+
+    def is_stall(self, *args, **kwargs):
+        val = self.get_REG_DRV_STATUS(check=False)
+        if (val & 0b00000001000000000000000000000000):
+            return True
+        return False
+    def lost_steps(self, *args, **kwargs):
+        return self.__command_read(REG_LOST_STEPS)
 
     #**************************************************************************
     # GENERAL CONFIGURATION REGISTERS (0x00..0x0F)
@@ -466,27 +478,29 @@ class TMC2130(DriverBase):
             return None
 
     #==================== GSTAT ====================
-    def get_GSTAT(self):
+    def get_GSTAT(self, log=None):
         # R+C
         status = self.__command_read(REG_GSTAT)
-        ##self.logger.debug("GSTAT ( reg value = {} )".format(hex(status)))
         if (status):
             if (status & 0b001):
-                self.logger.error("GSTAT: Reset has occurred!")
-                ## TODO FIXME: Call init again?? All values in reset state!
+                dump = "GSTAT: Reset has occurred!"
+                self.logger.error(dump)
+                if log is not None: log(dump)
             if (status & 0b010):
-                self.logger.error("GSTAT: Shut down due to overtemperature or short circuit!")
-                self.get_REG_DRV_STATUS()
+                dump = "GSTAT: Shut down due to overtemperature or short circuit!"
+                self.logger.error(dump)
+                if log is not None: log(dump)
+                #self.get_REG_DRV_STATUS(log)
             if (status & 0b100):
-                self.logger.error("GSTAT: Undervoltage occured - driver is disabled!")
-
+                dump = "GSTAT: Undervoltage occured - driver is disabled!"
+                self.logger.error(dump)
+                if log is not None: log(dump)
         return status
 
     #==================== IOIN ====================
-    def get_IOIN(self):
+    def get_IOIN(self, log=None):
         # R
         status = self.__command_read(REG_IOIN)
-        self.logger.debug("IOIN ( reg value = {} )".format(hex(status)))
 
         STEP    = 'HIGH' if (status & 0b000001) else 'LOW'
         DIR     = 'HIGH' if (status & 0b000010) else 'LOW'
@@ -501,7 +515,13 @@ class TMC2130(DriverBase):
         self.logger.info("DCEN_CFG4 pin %s" % DCEN)
         self.logger.info("DCIN_CFG5 pin %s" % DCIN)
         self.logger.info("DCO pin %s" % DCO)
-
+        if (log is not None):
+            log("DRV_ENN_CFG6 pin %s" % DRV_ENN)
+            log("STEP pin %s" % STEP)
+            log("DIR pin %s" % DIR)
+            log("DCEN_CFG4 pin %s" % DCEN)
+            log("DCIN_CFG5 pin %s" % DCIN)
+            log("DCO pin %s" % DCO)
         return status
 
 
@@ -881,41 +901,58 @@ class TMC2130(DriverBase):
 
 
     #==================== DRV_STATUS ====================
-    def get_REG_DRV_STATUS(self):
+    def get_REG_DRV_STATUS(self, log=None, check=True):
         val = self.__command_read(REG_DRV_STATUS)
-        #self.logger.debug("status ( reg value = {} )".format(hex(val)))
 
-        if (val & 0b10000000000000000000000000000000):
-            # 31: standstill indicator
-            self.logger.info("Stand still")
-        if (val & 0b00010000000000000000000000000000):
-            # 28: short to ground indicator phase B
-            self.logger.error("Phase B short to ground")
-        if (val & 0b00001000000000000000000000000000):
-            # 27: short to ground indicator phase A
-            self.logger.error("Phase A short to ground")
-        if (val & 0b00000100000000000000000000000000):
-            # 26: overtemperature prewarning
-            self.logger.warning("Over temperature prewarning!")
-        if (val & 0b00000010000000000000000000000000):
-            # 25: overtemperature
-            self.logger.error("Over temperature!")
-        if (val & 0b00000001000000000000000000000000):
-            # 24: stallGuard2 status
-            self.logger.error("motor stall")
+        if check:
+            if (val & 0b10000000000000000000000000000000):
+                # 31: standstill indicator
+                dump = "Stand still"
+                self.logger.info(dump)
+                if log is not None: log(dump)
+            if (val & 0b00010000000000000000000000000000):
+                # 28: short to ground indicator phase B
+                dump = "Phase B short to ground"
+                self.logger.error(dump)
+                if log is not None: log(dump)
+            if (val & 0b00001000000000000000000000000000):
+                # 27: short to ground indicator phase A
+                dump = "Phase A short to ground"
+                self.logger.error(dump)
+                if log is not None: log(dump)
+            if (val & 0b00000100000000000000000000000000):
+                # 26: overtemperature prewarning
+                dump = "Over temperature prewarning!"
+                self.logger.warning(dump)
+                if log is not None: log(dump)
+            if (val & 0b00000010000000000000000000000000):
+                # 25: overtemperature
+                dump = "Over temperature!"
+                self.logger.error(dump)
+                if log is not None: log(dump)
+            if (val & 0b00000001000000000000000000000000):
+                # 24: stallGuard2 status
+                dump = "motor stall"
+                self.logger.error(dump)
+                if log is not None: log(dump)
 
-        # 20-16: actual motor current / smart energy current
-        CS_ACTUAL = (val & 0b00000000000111110000000000000000) >> 16
+            # 20-16: actual motor current / smart energy current
+            CS_ACTUAL = (val & 0b00000000000111110000000000000000) >> 16
 
-        if (val & 0b00000000000000001000000000000000):
-            # 15: full step active indicator
-            self.logger.warning("driver has switched to fullstep")
+            if (val & 0b00000000000000001000000000000000):
+                # 15: full step active indicator
+                dump = "driver has switched to fullstep"
+                self.logger.warning(dump)
+                if log is not None: log(dump)
 
-        # Stall Guard status
-        SG_RESULT = (val & 0b00000000000000000000001111111111)
+            # Stall Guard status
+            SG_RESULT = (val & 0b00000000000000000000001111111111)
 
-        self.logger.info("DRV_STATUS : actual motor current (CS) = %d, stallGuard2 result (SG) = %d" %
-                         (CS_ACTUAL, SG_RESULT))
+            dump = "DRV_STATUS : Current (CS) = %d, stallGuard2 result (SG) = %d" % \
+                   (CS_ACTUAL, SG_RESULT)
+            self.logger.info(dump)
+            if log is not None: log(dump)
+
         return val
 
 
@@ -1007,8 +1044,10 @@ class TMC2130(DriverBase):
 
 
     #========================================
-    def get_LOST_STEPS(self):
+    def get_LOST_STEPS(self, log=None):
         val = self.__command_read(REG_LOST_STEPS)
         if val:
-            self.logger.error("Lost steps: {}".format(val))
+            dump = "Lost steps: {}".format(val)
+            self.logger.error(dump)
+            if log is not None: log(dump)
         return val

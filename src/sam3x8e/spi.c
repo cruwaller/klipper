@@ -42,7 +42,7 @@ spi_init(void)
     // set master mode, peripheral select, fault detection
     REGPTR->SPI_MR  = (SPI_MR_MSTR |      // Set Master mode
                        SPI_MR_MODFDIS |   // Fault detection
-                       SPI_MR_PS |        // Variable Peripheral Select
+                       SPI_MR_PS          // Variable Peripheral Select
                       );
 
     REGPTR->SPI_IDR = 0xffffffff; // Disable ISRs

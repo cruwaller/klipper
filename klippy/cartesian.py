@@ -44,9 +44,7 @@ class CartKinematics:
         # Each axis is homed independently and in order
         for axis in homing_state.get_axes():
             s = self.steppers[axis]
-            sensor_funcs = None
-            if hasattr(s.driver, 'set_sensor_less_homing'):
-                sensor_funcs = [s.driver.set_sensor_less_homing]
+            sensor_funcs = [s.driver.init_home]
             self.limits[axis] = (s.position_min, s.position_max)
             # Determine moves
             if s.homing_positive_dir:

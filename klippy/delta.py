@@ -117,9 +117,7 @@ class DeltaKinematics:
             self.steppers[i].set_position(pos[i])
         self.limit_xy2 = -1.
     def home(self, homing_state):
-        sensor_funcs = [ s.driver.set_sensor_less_homing
-                         if hasattr(s.driver, 'set_sensor_less_homing') else None
-                         for s in self.steppers ]
+        sensor_funcs = [ s.driver.init_home for s in self.steppers ]
         # All axes are homed simultaneously
         homing_state.set_axes([0, 1, 2])
         endstops = [es for s in self.steppers for es in s.get_endstops()]

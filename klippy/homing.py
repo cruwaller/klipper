@@ -3,7 +3,7 @@
 # Copyright (C) 2016,2017  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import math
+import math, time
 
 HOMING_STEP_DELAY = 0.00000025
 ENDSTOP_SAMPLE_TIME = .000015
@@ -89,6 +89,8 @@ class Homing:
         for sensor_func in init_sensor:
             if sensor_func is not None:
                 sensor_func(enable=False)
+                if second_home is False:
+                    time.sleep(3) # Wait some time to release endstop pin
         # Verify retract led to some movement on second home
         if second_home and self.verify_retract:
             for s, name, pos in start_mcu_pos:

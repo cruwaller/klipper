@@ -622,9 +622,12 @@ class GCodeParser:
         'M400',
         'M550',
         'M851',
-        'M900', 'M906',
         'IGNORE', 'QUERY_ENDSTOPS', 'PID_TUNE',
-        'RESTART', 'FIRMWARE_RESTART', 'ECHO', 'STATUS', 'HELP']
+        'RESTART', 'FIRMWARE_RESTART', 'ECHO', 'STATUS', 'HELP',
+
+        # Stepper driver commands:
+        'DRV_STATUS', 'DRV_CURRENT', 'DRV_SG',
+    ]
 
     # Basic movement
     cmd_G1_aliases = ['G0']
@@ -908,24 +911,42 @@ class GCodeParser:
                                self.toolhead.kin.steppers[1].homing_offset,
                                self.toolhead.kin.steppers[2].homing_offset))
 
-    def cmd_M900(self, params):
-        # driver status if exists
-        for stepper in self.toolhead.kin.steppers:
-            if hasattr(stepper.driver, 'print_status'):
-                stepper.driver.print_status()
-    def cmd_M906(self, params):
-        # TMC current
-        if 'X' in params:
-            if hasattr(self.toolhead.kin.steppers[0].driver, 'set_current'):
-                stepper.driver.set_current(self.get_float('X', params))
-        if 'Y' in params:
-            if hasattr(self.toolhead.kin.steppers[1].driver, 'set_current'):
-                stepper.driver.set_current(self.get_float('Y', params))
-        if 'Z' in params:
-            if hasattr(self.toolhead.kin.steppers[2].driver, 'set_current'):
-                stepper.driver.set_current(self.get_float('Z', params))
+    def cmd_DRV_STATUS(self, params):
+        # Driver status if exists
+        steppers = self.toolhead.kin.steppers
+        steppers.extend([ extr.stepper for extr in extruder.get_printer_extruders(self.printer) ])
+        for stepper in steppers:
+            stepper.driver.status(log=self.respond_info)
+    def cmd_DRV_CURRENT(self, params):
+        # Driver current
+        drivers = { self.axis2pos[a]: self.get_float(a, params)
+                    for a in 'XYZ' if a in params }
+        for drv, current in drivers.items():
+            self.toolhead.kin.steppers[drv].driver.set_current(current)
 
-
+        extrs = { int(a[1:]) : self.get_float(a, params) for a in params if "E" in a  }
+        for index, current in extrs.items():
+            extr = extruder.get_printer_extruder(self.printer, index)
+            if extr is None:
+                self.respond_error("Extruder %d not configured" % (index,))
+                return
+            extr.stepper.driver.set_current(current)
+    def cmd_DRV_SG(self, params):
+        # Driver StallGuard value
+        drivers = { self.axis2pos[a]: self.get_float(a, params)
+                    for a in 'XYZ' if a in params }
+        for drv, sg in drivers.items():
+            driver = self.toolhead.kin.steppers[drv].driver
+            if hasattr(driver, 'set_stallguard'):
+                driver.set_stallguard(sg)
+        extrs = { int(a[1:]) : self.get_float(a, params) for a in params if "E" in a }
+        for index, current in extrs.items():
+            extr = extruder.get_printer_extruder(self.printer, index)
+            if extr is None:
+                self.respond_error("Extruder %d not configured" % (index,))
+                return
+            if hasattr(extr.stepper.driver, 'set_stallguard'):
+                extr.stepper.driver.set_stallguard(current)
 
     cmd_IGNORE_when_not_ready = True
     cmd_IGNORE_aliases = [
