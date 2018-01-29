@@ -550,10 +550,10 @@ class MCU:
             printer.reactor, self._serialport, baud,
             logger=self.logger.getChild('serial'))
         # Restarts
-        rmethods = {m: m for m in ['arduino', 'command', 'rpi_usb']}
+        rmethods = {m: m for m in [None, 'arduino', 'command', 'rpi_usb']}
         self._restart_method = config.getchoice('restart_method',
                                                 rmethods,
-                                                'arduino')
+                                                None)
         if baud == 0:
             self._restart_method = 'command'
         self._reset_cmd = self._config_reset_cmd = None
@@ -732,6 +732,12 @@ class MCU:
         self._emergency_stop_cmd = self.lookup_command("emergency_stop")
         self._reset_cmd = self.try_lookup_command("reset")
         self._config_reset_cmd = self.try_lookup_command("config_reset")
+        if (self._restart_method is None
+            and (self._reset_cmd is not None
+                 or self.config_reset_cmd is not None)
+            and self._serial.msgparser.get_constant(
+                'SERIAL_BAUD', None) is None):
+            self._restart_method = 'command'
         self.register_msg(self.handle_shutdown, 'shutdown')
         self.register_msg(self.handle_shutdown, 'is_shutdown')
         self.register_msg(self.handle_mcu_stats, 'stats')
