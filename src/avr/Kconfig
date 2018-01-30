@@ -82,6 +82,7 @@ config AVRDUDE_UPLOADSPEED
 config AVRDUDE_UPLOADPROTOCOL
     string
     default "wiring" if MACH_atmega2560
+    default "avr109" if MACH_at90usb1286
     default "arduino"
 
 config CLEAR_PRESCALER

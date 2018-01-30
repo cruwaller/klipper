@@ -29,7 +29,14 @@ class CoreXYKinematics:
         self.require_home_after_motor_off = config.getboolean(
             'require_home_after_motor_off', True)
         self.need_motor_enable = True
-        self.limits = [(1.0, -1.0)] * 3
+        self.allow_move_wo_homing = config.getboolean(
+            'allow_move_without_home', False)
+        if self.allow_move_wo_homing is False:
+            self.limits = [(1.0, -1.0)] * 3
+        else:
+            # Just set min and max values for SW limit
+            self.limits = [ (s.position_min, s.position_max)
+                            for s in self.steppers ]
         # Setup stepper max halt velocity
         max_halt_velocity = toolhead.get_max_axis_halt()
         max_xy_halt_velocity = max_halt_velocity * math.sqrt(2.)

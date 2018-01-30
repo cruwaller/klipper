@@ -89,6 +89,12 @@ class GCodeParser:
         self.simulate_print = False
         self.babysteps = 0.0 # Effect to Z only
     def register_command(self, cmd, func, when_not_ready=False, desc=None):
+        if func is None:
+            if cmd in self.ready_gcode_handlers:
+                del self.ready_gcode_handlers[cmd]
+            if cmd in self.base_gcode_handlers:
+                del self.base_gcode_handlers[cmd]
+            return
         if not (len(cmd) >= 2 and not cmd[0].isupper() and cmd[1].isdigit()):
             origfunc = func
             func = lambda params: origfunc(self.get_extended_params(params))
@@ -220,6 +226,8 @@ class GCodeParser:
                 self.toolhead.wait_moves()
             self.printer.request_exit()
         self.is_processing_data = False
+    def run_script(self, script):
+        self.process_commands(script.split('\n'), need_ack=False)
     # Response handling
     def __write_resp(self, msg):
         global tx_sequenceno
@@ -372,8 +380,7 @@ class GCodeParser:
             return
         if self.extruder is e:
             return
-        deactivate_gcode = self.extruder.get_activate_gcode(False)
-        self.process_commands(deactivate_gcode.split('\n'), need_ack=False)
+        self.run_script(self.extruder.get_activate_gcode(False))
         try:
             self.toolhead.set_extruder(e)
         except homing.EndstopError as e:
@@ -385,8 +392,7 @@ class GCodeParser:
         or some movement is done in activate code set by user.
         '''
         self.base_position[3] = self.last_position[3]
-        activate_gcode = self.extruder.get_activate_gcode(True)
-        self.process_commands(activate_gcode.split('\n'), need_ack=False)
+        self.run_script(self.extruder.get_activate_gcode(True))
 
     def _parse_movement(self, params, is_arch=False):
         # parse move command
