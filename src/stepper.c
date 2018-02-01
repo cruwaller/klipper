@@ -58,7 +58,7 @@ stepper_load_next(struct stepper *s, uint32_t min_next_time)
 {
     struct stepper_move *m = s->first;
     if (!m) {
-        if (s->interval - s->add < s->min_stop_interval
+        if ((s->interval - s->add) < s->min_stop_interval
             && !(s->flags & SF_NO_NEXT_CHECK))
             shutdown("No next step");
         s->count = 0;
@@ -68,11 +68,12 @@ stepper_load_next(struct stepper *s, uint32_t min_next_time)
     s->next_step_time += m->interval;
     s->add = m->add;
     s->interval = m->interval + m->add;
-    if (CONFIG_NO_UNSTEP_DELAY) {
+#if CONFIG_NO_UNSTEP_DELAY
+    (void)min_next_time;
         // On slow mcus see if the add can be optimized away
         s->flags = m->add ? s->flags | SF_HAVE_ADD : s->flags & ~SF_HAVE_ADD;
         s->count = m->count;
-    } else {
+#else
         // On faster mcus, it is necessary to schedule unstep events
         // and so there are twice as many events.  Also check that the
         // next step event isn't too close to the last unstep.
@@ -85,7 +86,7 @@ stepper_load_next(struct stepper *s, uint32_t min_next_time)
             s->time.waketime = s->next_step_time;
         }
         s->count = m->count * 2;
-    }
+#endif
     if (m->flags & MF_DIR) {
         s->position = -s->position + m->count;
         gpio_out_toggle(s->dir_pin);
@@ -105,7 +106,7 @@ uint_fast8_t
 stepper_event(struct timer *t)
 {
     struct stepper *s = container_of(t, struct stepper, time);
-    if (CONFIG_NO_UNSTEP_DELAY) {
+#if CONFIG_NO_UNSTEP_DELAY
         // On slower mcus it is possible to simply step and unstep in
         // the same timer event.
         gpio_out_toggle(s->step_pin);
@@ -121,7 +122,7 @@ stepper_event(struct timer *t)
         uint_fast8_t ret = stepper_load_next(s, 0);
         gpio_out_toggle(s->step_pin);
         return ret;
-    }
+#else
 
     // On faster mcus, it is necessary to schedule the unstep event
     uint32_t min_next_time = timer_read_time() + UNSTEP_TIME;
@@ -143,6 +144,7 @@ stepper_event(struct timer *t)
 reschedule_min:
     s->time.waketime = min_next_time;
     return SF_RESCHEDULE;
+#endif
 }
 
 void
@@ -242,10 +244,11 @@ static uint32_t
 stepper_get_position(struct stepper *s)
 {
     uint32_t position = s->position;
-    if (CONFIG_NO_UNSTEP_DELAY)
+#if CONFIG_NO_UNSTEP_DELAY
         position -= s->count;
-    else
+#else
         position -= s->count / 2;
+#endif
     if (position & 0x80000000)
         return -position;
     return position;

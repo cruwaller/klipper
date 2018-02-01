@@ -22,6 +22,8 @@ class CartKinematics:
         self.require_home_after_motor_off = config.getboolean(
             'require_home_after_motor_off', True)
         self.need_motor_enable = True
+        self.sw_limit_check_enabled = config.getboolean(
+            'sw_limit_check_enabled', True)
         self.allow_move_wo_homing = config.getboolean(
             'allow_move_without_home', False)
         if self.allow_move_wo_homing is False:
@@ -96,7 +98,8 @@ class CartKinematics:
                 coord[axis] = rpos
                 homing_state.retract(list(coord), homing_speed)
     def motor_off(self, print_time):
-        if self.require_home_after_motor_off is True:
+        if self.require_home_after_motor_off is True \
+           and self.sw_limit_check_enabled is True:
             self.limits = [(1.0, -1.0)] * 3
         for stepper in self.steppers:
             stepper.motor_enable(print_time, 0)
@@ -118,21 +121,24 @@ class CartKinematics:
                 raise homing.EndstopMoveError(end_pos)
     def is_homed(self):
         ret = [1, 1, 1]
-        for i in StepList:
-            if self.limits[i][0] > self.limits[i][1]:
-                ret[i] = 0
+        if self.sw_limit_check_enabled is True:
+            for i in StepList:
+                if self.limits[i][0] > self.limits[i][1]:
+                    ret[i] = 0
         return ret
     def check_move(self, move):
-        limits = self.limits
         xpos, ypos = move.end_pos[:2]
-        if (xpos < limits[0][0] or xpos > limits[0][1]
-            or ypos < limits[1][0] or ypos > limits[1][1]):
-            self._check_endstops(move)
+        if self.sw_limit_check_enabled is True:
+            limits = self.limits
+            if (xpos < limits[0][0] or xpos > limits[0][1]
+                or ypos < limits[1][0] or ypos > limits[1][1]):
+                self._check_endstops(move)
         if not move.axes_d[2]:
             # Normal XY move - use defaults
             return
         # Move with Z - update velocity and accel for slower Z axis
-        self._check_endstops(move)
+        if self.sw_limit_check_enabled is True:
+            self._check_endstops(move)
         z_ratio = move.move_d / abs(move.axes_d[2])
         move.limit_speed(
             self.max_z_velocity * z_ratio, self.max_z_accel * z_ratio)

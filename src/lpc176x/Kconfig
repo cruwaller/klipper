@@ -23,8 +23,8 @@ endchoice
 
 config CLOCK_FREQ
     int
-    default 25000000 if MACH_LPC1768 # 100000000 / 4
-    default 30000000 if MACH_LPC1769 # 120000000 / 4
+    default 50000000 if MACH_LPC1768 # 100000000 / 2
+    default 60000000 if MACH_LPC1769 # 120000000 / 2
 
 config SERIAL
     bool

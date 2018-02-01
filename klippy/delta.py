@@ -50,6 +50,10 @@ class DeltaKinematics:
             s.set_max_jerk(max_halt_velocity, self.max_accel)
         self.require_home_after_motor_off = config.getboolean(
             'require_home_after_motor_off', True)
+        self.allow_move_wo_homing = config.getboolean(
+            'allow_move_without_home', False)
+        if self.allow_move_wo_homing is True:
+            self.need_home = False
         # Determine tower locations in cartesian space
         angles = [sconfig.getfloat('angle', angle)
                   for sconfig, angle in zip(stepper_configs, [210., 330., 90.])]

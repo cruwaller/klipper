@@ -25,7 +25,7 @@ DECL_CONSTANT(SERIAL_BAUD, CONFIG_SERIAL_BAUD);
 /****************************************************************
  * RX and TX FIFOs
  ****************************************************************/
-#define SERIAL_BUFFER_SIZE 1024
+#define SERIAL_BUFFER_SIZE 2048
 static char receive_buf[SERIAL_BUFFER_SIZE];
 static uint32_t receive_pos = 0;
 static char transmit_buf[SERIAL_BUFFER_SIZE];
@@ -306,7 +306,7 @@ void init_usb_cdc(void) {
     USBHwNakIntEnable(0); // Disable TX ISR by default
 
     // CodeRed - add in interrupt setup code for RDB1768
-    //NVIC_SetPriority(USB_IRQn, 1);
+    NVIC_SetPriority(USB_IRQn, 2);
     NVIC_ClearPendingIRQ(USB_IRQn); // Clear existings
     NVIC_EnableIRQ(USB_IRQn);
 
