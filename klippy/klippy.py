@@ -334,7 +334,10 @@ class Printer:
         }
 
         toolhead = self.objects.get('toolhead')
-        curr_pos = toolhead.get_position()
+        if toolhead is not None:
+            curr_pos = toolhead.get_position()
+        else:
+            curr_pos = [0] * 4
         fans     = [ fan.last_fan_value * 100.0 for fan in self.get_objects_with_prefix("fan") ]
         heatbed  = self.objects.get('heater_bed')
         _heaters = heater.get_printer_heaters(self)
@@ -356,8 +359,8 @@ class Printer:
             "params": {
                 "atxPower"    : 0,
                 "fanPercent"  : fans,
-                "speedFactor" : self.gcode.factor_speed * 100.0,
-                "extrFactors" : [ e.factor_extrude * 100.0 for i,e in _extrs.items() ],
+                "speedFactor" : self.gcode.speed_factor * 60. * 100.0,
+                "extrFactors" : [ e.extrude_factor * 100.0 for i,e in _extrs.items() ],
                 "babystep"    : float("%.3f" % self.gcode.babysteps),
             },
             # This must be included....
@@ -372,7 +375,7 @@ class Printer:
         #status_block["status"] = '';
         status_block["temps"] = {}
 
-        if (heatbed):
+        if (heatbed is not None):
             status_block["temps"].update( {
                 "bed": {
                     "current" : float("%.2f" % heatbed.last_temp),
