@@ -224,6 +224,7 @@ class ToolHead:
         self.move_queue.set_extruder(self.extruder)
         kintypes = {'cartesian': cartesian.CartKinematics,
                     'corexy': corexy.CoreXYKinematics,
+                    'coreyx': corexy.CoreYXKinematics,
                     'delta': delta.DeltaKinematics}
         self.kin = config.getchoice('kinematics', kintypes)(
             self, printer, config)

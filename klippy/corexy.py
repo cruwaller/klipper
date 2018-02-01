@@ -10,7 +10,7 @@ StepList = (0, 1, 2)
 
 class CoreXYKinematics:
     name = "coreXY"
-    def __init__(self, toolhead, printer, config):
+    def __init__(self, toolhead, printer, config, coresign=1.):
         self.logger = printer.logger.getChild(self.name)
         self.steppers = [
             stepper.PrinterHomingStepper(
@@ -46,6 +46,10 @@ class CoreXYKinematics:
         self.steppers[1].set_max_jerk(max_xy_halt_velocity, max_accel)
         self.steppers[2].set_max_jerk(
             min(max_halt_velocity, self.max_z_velocity), self.max_z_accel)
+        self.coresign = coresign
+
+        self.logger.info("Kinematic created: %s" % self.name)
+
     def set_homing_offset(self, offsets):
         for s in self.steppers:
             try:
@@ -162,11 +166,14 @@ class CoreXYKinematics:
             self._check_motor_enable(print_time, move)
         sxp = move.start_pos[0]
         syp = move.start_pos[1]
-        move_start_pos = (sxp + syp, sxp - syp, move.start_pos[2])
+        move_start_pos = ((sxp + syp),
+                          (sxp - syp) * self.coresign,
+                          move.start_pos[2])
         exp = move.end_pos[0]
         eyp = move.end_pos[1]
         axes_d = ((exp + eyp) - move_start_pos[0],
-                  (exp - eyp) - move_start_pos[1], move.axes_d[2])
+                  ((exp - eyp) * self.coresign) - move_start_pos[1],
+                  move.axes_d[2])
         for i in StepList:
             axis_d = axes_d[i]
             if not axis_d:
@@ -195,3 +202,8 @@ class CoreXYKinematics:
             if move.decel_r:
                 decel_d = move.decel_r * axis_d
                 step_const(move_time, start_pos, decel_d, cruise_v, -accel)
+
+class CoreYXKinematics(CoreXYKinematics):
+    name = "coreYX"
+    def __init__(self, toolhead, printer, config):
+        CoreXYKinematics.__init__(self, toolhead, printer, config, coresign=-1.)
