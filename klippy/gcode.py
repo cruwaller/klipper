@@ -198,10 +198,6 @@ class GCodeParser:
                 if not need_ack:
                     raise
             self.ack()
-    def split_string(text, splitlist):
-        for sep in splitlist:
-            text = text.replace(sep, splitlist[0])
-        return filter(None, text.split(splitlist[0])) if splitlist else [text]
     def process_data(self, eventtime):
         data = os.read(self.fd_r, 4096)
         self.input_log.append((eventtime, data))
@@ -249,11 +245,12 @@ class GCodeParser:
         try:
             self.process_commands(script.split('\n'), need_ack=False)
         finally:
-            self.need_ack = prev_need_ack    # Response handling
+            self.need_ack = prev_need_ack
     def __write_resp(self, msg):
         global tx_sequenceno
         tx_sequenceno += 1
         os.write(self.fd_w, msg)
+    # Response handling
     def ack(self, msg=None):
         if not self.need_ack or self.is_fileinput:
             return
