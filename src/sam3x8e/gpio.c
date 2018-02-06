@@ -127,8 +127,8 @@ static const uint8_t adc_pins[] = {
     GPIO('B', 19), GPIO('B', 20)
 };
 
-#define ADC_FREQ_MAX 20000000u
-//#define ADC_FREQ_MAX 1000000UUL
+#define ADC_FREQ_MAX 20000000 // 20MHz
+
 DECL_CONSTANT(ADC_MAX, 4095);
 
 struct gpio_adc
@@ -176,8 +176,7 @@ gpio_adc_sample(struct gpio_adc g)
     // Conversion ready
     return 0;
 need_delay:
-    //return ADC_FREQ_MAX * 1000ULL / CONFIG_CLOCK_FREQ;
-    return (CONFIG_CLOCK_FREQ / (ADC_FREQ_MAX * 2)); // Half of the ADC time
+    return ADC_FREQ_MAX * 1000ULL / CONFIG_CLOCK_FREQ; // =476
 }
 
 // Read a value; use only after gpio_adc_sample() returns zero
@@ -192,9 +191,12 @@ gpio_adc_read(struct gpio_adc g)
 void
 gpio_adc_cancel_sample(struct gpio_adc g)
 {
-    //irqstatus_t flag = irq_save();
-    //if ((ADC->ADC_CHSR & 0xffff) == g.bit)
-    //    gpio_adc_read(g);
-    //irq_restore(flag);
+#if 0
+    irqstatus_t flag = irq_save();
+    if ((ADC->ADC_CHSR & 0xffff) == g.bit)
+        gpio_adc_read(g);
+    irq_restore(flag);
+#else
     ADC->ADC_CHDR = g.bit;
+#endif
 }
