@@ -60,14 +60,21 @@ src-y += generic/crc16_ccitt.c generic/alloc.c generic/timer_irq.c generic/armcm
 # Build the additional hex output file
 target-y += $(OUT)klipper.bin
 target-y += $(OUT)klipper.disasm
+target-y += $(OUT)klipper.hex
 
 $(OUT)klipper.bin: $(OUT)klipper.elf
-	@echo "  Creating hex file $@"
+	@echo "  Creating bin file $@"
 	$(Q)$(OBJCOPY) -O binary $< $@
+
+$(OUT)klipper.hex: $(OUT)klipper.elf
+	@echo "  Creating hex file $@"
+	$(Q)$(OBJCOPY) -R .stack -O ihex $< $@
 
 $(OUT)klipper.disasm: $(OUT)klipper.elf
 	@echo "  Creating disasm file $@"
 	$(Q)$(OBJDUMP)  -d -f -M reg-names-std --demangle $< > $@
 
-flash: $(OUT)klipper.bin
-	@echo " [LPC176x] Sorry! Flashing is not supported"
+flash: $(OUT)klipper.hex
+	@echo "  Flashing $^ to $(FLASH_DEVICE) via lpc21isp"
+	$(Q)if [ -z $(FLASH_DEVICE) ]; then echo "Please specify FLASH_DEVICE"; exit 1; fi
+	$(Q)lpc21isp $(OUT)klipper.hex $(FLASH_DEVICE) 57600 12000
