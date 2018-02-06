@@ -64,9 +64,9 @@ class CoreXYKinematics:
             self.steppers[i].set_position(pos[i])
     def home(self, homing_state):
         # Each axis is homed independently and in order
+        sensor_funcs = [ s.driver.init_home for s in self.steppers ]
         for axis in homing_state.get_axes():
             s = self.steppers[axis]
-            sensor_funcs = [s.driver.init_home]
             self.limits[axis] = (s.position_min, s.position_max)
             # Determine moves
             if s.homing_positive_dir:

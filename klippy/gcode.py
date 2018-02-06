@@ -162,7 +162,6 @@ class GCodeParser:
     # Parse input into commands
     args_r = re.compile('([A-Z_]+|[A-Z*])')
     def process_commands(self, commands, need_ack=True):
-        prev_need_ack = self.need_ack
         for line in commands:
             # Ignore comments and leading/trailing spaces
             line = origline = line.strip()
@@ -186,17 +185,19 @@ class GCodeParser:
             handler = self.gcode_handlers.get(cmd, self.cmd_default)
             try:
                 handler(params)
-                self.ack()
             except error as e:
                 self.respond_error(str(e))
                 self.reset_last_position()
+                if not need_ack:
+                    raise
             except:
                 msg = 'Internal error on command:"%s"' % (cmd,)
                 self.logger.exception(msg)
                 self.printer.invoke_shutdown(msg)
                 self.respond_error(msg)
-            # self.ack()
-        self.need_ack = prev_need_ack
+                if not need_ack:
+                    raise
+            self.ack()
     def split_string(text, splitlist):
         for sep in splitlist:
             text = text.replace(sep, splitlist[0])
@@ -227,8 +228,11 @@ class GCodeParser:
             self.printer.request_exit()
         self.is_processing_data = False
     def run_script(self, script):
-        self.process_commands(script.split('\n'), need_ack=False)
-    # Response handling
+        prev_need_ack = self.need_ack
+        try:
+            self.process_commands(script.split('\n'), need_ack=False)
+        finally:
+            self.need_ack = prev_need_ack    # Response handling
     def __write_resp(self, msg):
         global tx_sequenceno
         tx_sequenceno += 1
