@@ -12,7 +12,6 @@ class QueueHandler(logging.Handler):
     def __init__(self, queue):
         logging.Handler.__init__(self)
         self.queue = queue
-        self.setFormatter(logging.Formatter(fmt=LOGFORMAT))
     def emit(self, record):
         try:
             # self.format(record)
@@ -60,4 +59,8 @@ def setup_bg_logging(filename, debuglevel):
     root = logging.getLogger()
     root.addHandler(qh)
     root.setLevel(debuglevel)
+    # Set formatter only once if not set
+    if len(root.handlers) == 0 or \
+       root.handlers[0].formatter is None:
+        qh.setFormatter(logging.Formatter(fmt=LOGFORMAT))
     return ql
