@@ -164,16 +164,31 @@ class CoreXYKinematics:
     def move(self, print_time, move):
         if self.need_motor_enable:
             self._check_motor_enable(print_time, move)
+
+        self.logger.debug("IN:   move.start_pos {}, move.end_pos {}, move.cruise_v {}".format(
+            move.start_pos, move.end_pos, move.cruise_v))
+
         sxp = move.start_pos[0]
         syp = move.start_pos[1]
         move_start_pos = ((sxp + syp),
-                          (sxp - syp) * self.coresign,
+                          (sxp - syp),
                           move.start_pos[2])
-        exp = move.end_pos[0]
-        eyp = move.end_pos[1]
-        axes_d = ((exp + eyp) - move_start_pos[0],
-                  ((exp - eyp) * self.coresign) - move_start_pos[1],
-                  move.axes_d[2])
+
+        exp = (sxp - move.end_pos[0])
+        eyp = (syp - move.end_pos[1]) * self.coresign
+        axes_d = ((exp + eyp),
+                  (exp - eyp),
+                  move.start_pos[2])
+
+        #exp = move.end_pos[0]
+        #eyp = move.end_pos[1]
+        #axes_d = ((exp + eyp) - move_start_pos[0],
+        #          ((exp - eyp) * self.coresign) - move_start_pos[1],
+        #          move.axes_d[2])
+
+        self.logger.debug("CALC: move_start_pos {}, axes_d {}, move.move_d {}".format(
+            move_start_pos, axes_d, move.move_d));
+
         for i in StepList:
             axis_d = axes_d[i]
             if not axis_d:
