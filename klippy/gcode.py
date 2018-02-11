@@ -209,24 +209,44 @@ class GCodeParser:
         lines = data.split('\n')
         lines[0] = self.partial_input + lines[0]
         self.partial_input = lines.pop()
-        if self.is_processing_data:
-            if not self.is_fileinput and not lines:
-                return
-            self.reactor.unregister_fd(self.fd_handle)
-            self.fd_handle = None
-            if not self.is_fileinput and lines[0].strip().upper() == 'M112':
-                self.cmd_M112({})
-            while self.is_processing_data:
-                eventtime = self.reactor.pause(eventtime + 0.100)
-            self.fd_handle = self.reactor.register_fd(self.fd_r, self.process_data)
-        self.is_processing_data = True
-        self.process_commands(lines)
+        pending_commands = self.pending_commands
+        pending_commands.extend(lines)
+        # Special handling for debug file input EOF
         if not data and self.is_fileinput:
-            self.motor_heater_off()
-            if self.toolhead is not None:
-                self.toolhead.wait_moves()
-            self.printer.request_exit()
+            if not self.is_processing_data:
+                self.motor_heater_off()
+                if self.toolhead is not None:
+                    self.toolhead.wait_moves()
+                self.printer.request_exit()
+            pending_commands.append("")
+        # Handle case where multiple commands pending
+        if self.is_processing_data or len(pending_commands) > 1:
+            if len(pending_commands) < 20:
+                # Check for M112 out-of-order
+                for line in lines:
+                    if 'M112' in line.strip().upper():
+                        self.cmd_M112({})
+            if self.is_processing_data:
+                if len(pending_commands) >= 20:
+                    # Stop reading input
+                    self.reactor.unregister_fd(self.fd_handle)
+                    self.fd_handle = None
+                return
+        # Process commands
+        self.is_processing_data = True
+        self.pending_commands = []
+        self.process_commands(pending_commands)
+        if self.pending_commands:
+            self.process_pending()
         self.is_processing_data = False
+    def process_pending(self):
+        pending_commands = self.pending_commands
+        while pending_commands:
+            self.pending_commands = []
+            self.process_commands(pending_commands)
+            pending_commands = self.pending_commands
+        if self.fd_handle is None:
+            self.fd_handle = self.reactor.register_fd(self.fd, self.process_data)
     def run_script(self, script):
         prev_need_ack = self.need_ack
         try:
