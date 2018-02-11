@@ -214,10 +214,7 @@ class GCodeParser:
         # Special handling for debug file input EOF
         if not data and self.is_fileinput:
             if not self.is_processing_data:
-                self.motor_heater_off()
-                if self.toolhead is not None:
-                    self.toolhead.wait_moves()
-                self.printer.request_exit()
+                self.request_restart('exit')
             pending_commands.append("")
         # Handle case where multiple commands pending
         if self.is_processing_data or len(pending_commands) > 1:
@@ -1060,23 +1057,22 @@ class GCodeParser:
             #count = self.get_int('C', params, 12, 8)
             heater.start_auto_tune(temp)
             self.bg_temp(heater)
-    def prep_restart(self):
+    def request_restart(self, result):
         if self.is_printer_ready:
             self.respond_info("Preparing to restart...")
             self.motor_heater_off()
             self.toolhead.dwell(0.500)
             self.toolhead.wait_moves()
+        self.printer.request_exit(result)
     cmd_RESTART_when_not_ready = True
     cmd_RESTART_help = "Reload config file and restart host software"
     def cmd_RESTART(self, params):
-        self.prep_restart()
-        self.printer.request_exit('restart')
+        self.request_restart('restart')
     cmd_FIRMWARE_RESTART_when_not_ready = True
     cmd_FIRMWARE_RESTART_help = "Restart firmware, host, and reload config"
     cmd_FIRMWARE_RESTART_aliases = ["M999"]
     def cmd_FIRMWARE_RESTART(self, params):
-        self.prep_restart()
-        self.printer.request_exit('firmware_restart')
+        self.request_restart('firmware_restart')
     cmd_ECHO_when_not_ready = True
     def cmd_ECHO(self, params):
         self.respond_info(params['#original'])
