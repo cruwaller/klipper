@@ -69,8 +69,6 @@ class MCU_stepper:
         steppos = pos * self._inv_step_dist
         self._mcu_position_offset += self._commanded_pos - steppos
         self._commanded_pos = steppos
-    def get_commanded_position(self):
-        return self._commanded_pos * self._step_dist
     def get_mcu_position(self):
         mcu_pos = self._commanded_pos + self._mcu_position_offset
         if mcu_pos >= 0.:
@@ -109,7 +107,8 @@ class MCU_stepper:
         self._commanded_pos += count
     def step_const(self, print_time, start_pos, dist, start_v, accel):
         inv_step_dist = self._inv_step_dist
-        step_offset = self._commanded_pos - start_pos * inv_step_dist
+        #step_offset = self._commanded_pos - start_pos * inv_step_dist
+        step_offset = 0
         count = self._ffi_lib.stepcompress_push_const(
             self._stepqueue, print_time, step_offset, dist * inv_step_dist,
             start_v * inv_step_dist, accel * inv_step_dist)

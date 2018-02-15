@@ -573,6 +573,7 @@ stepcompress_push_const(
         double pos = (step_offset + .5)*accel_multiplier + accel_time*accel_time;
         while (count--) {
             double v = safe_sqrt(pos);
+            if (!v) return ERROR_RET;
             int ret = queue_append(&qa, accel_multiplier >= 0. ? v : -v);
             if (ret)
                 return ret;

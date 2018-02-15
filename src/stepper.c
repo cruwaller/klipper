@@ -13,6 +13,9 @@
 #include "sched.h" // struct timer
 #include "stepper.h" // command_config_stepper
 
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+#include <stdio.h>
+#endif
 
 /****************************************************************
  * Steppers
@@ -80,7 +83,9 @@ stepper_load_next(struct stepper *s, uint32_t min_next_time)
         if (unlikely(timer_is_before(s->next_step_time, min_next_time))) {
             if ((int32_t)(s->next_step_time - min_next_time)
                 < (int32_t)(-timer_from_us(1000)))
+#if (CONFIG_SIMULATOR == 0)
                 shutdown("Stepper too far in past");
+#endif
             s->time.waketime = min_next_time;
         } else {
             s->time.waketime = s->next_step_time;
@@ -123,6 +128,11 @@ stepper_event(struct timer *t)
         gpio_out_toggle(s->step_pin);
         return ret;
 #else
+
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    printf("stepper_event: interval %u, count %u add %d next_step_time %u\n",
+           s->interval, s->count, s->add, s->next_step_time);
+#endif
 
     // On faster mcus, it is necessary to schedule the unstep event
     uint32_t min_next_time = timer_read_time() + UNSTEP_TIME;
@@ -185,6 +195,11 @@ command_queue_step(uint32_t *args)
     m->next = NULL;
     m->flags = 0;
 
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    printf("queue_step: interval %u, count %u add %d \n",
+           m->interval, m->count, m->add);
+#endif
+
     irq_disable();
     uint8_t flags = s->flags;
     if (!!(flags & SF_LAST_DIR) != !!(flags & SF_NEXT_DIR)) {
@@ -221,6 +236,9 @@ command_set_next_step_dir(uint32_t *args)
     irq_disable();
     s->flags = (s->flags & ~SF_NEXT_DIR) | nextdir;
     irq_enable();
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    printf("Stepper dir: %u \n", nextdir);
+#endif
 }
 DECL_COMMAND(command_set_next_step_dir, "set_next_step_dir oid=%c dir=%c");
 
@@ -245,9 +263,12 @@ stepper_get_position(struct stepper *s)
 {
     uint32_t position = s->position;
 #if CONFIG_NO_UNSTEP_DELAY
-        position -= s->count;
+    position -= s->count;
 #else
-        position -= s->count / 2;
+    position -= s->count / 2;
+#endif
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    printf("Stepper get position: %d \n", (position & 0x80000000) ? -position : position);
 #endif
     if (position & 0x80000000)
         return -position;
