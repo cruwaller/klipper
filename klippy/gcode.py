@@ -627,7 +627,7 @@ class GCodeParser:
         'M104', 'M105', 'M106', 'M107', 'M109',
         'M112', 'M114', 'M115', 'M118',
         'M140', 'M190',
-        'M206', 'M220', 'M221', 'M290',
+        'M204', 'M205', 'M206', 'M220', 'M221', 'M290',
         'M302',
         'M400',
         'M550',
@@ -813,6 +813,25 @@ class GCodeParser:
     def cmd_M190(self, params):
         # Set Bed Temperature and Wait
         self.set_temp(params, is_bed=True, wait=True)
+
+    def cmd_M204(self, params):
+        # Set default acceleration
+        accel = self.get_int('A', params, None)
+        if accel is not None and 0. < accel:
+            self.toolhead.max_accel = accel
+        decel = self.get_int('D', params, None)
+        if decel is not None and 0. < decel:
+            self.toolhead.max_accel_to_decel = decel
+        elif accel is not None and 0. < accel:
+            self.toolhead.max_accel_to_decel = 0.5 * accel
+        self.respond_info("Accel %u, decel %u" % (self.toolhead.max_accel,
+                                                  self.toolhead.max_accel_to_decel,))
+    def cmd_M205(self, params):
+        # Set advanced settings
+        value = self.get_float('X', params, None)
+        if value is not None and 0. < value:
+            self.toolhead.junction_deviation = value
+        self.respond_info("Junction deviation %.2f" % (self.toolhead.junction_deviation,))
     def cmd_M206(self, params):
         # Set home offset
         offsets = { self.axis2pos[a]: self.get_float(a, params)
