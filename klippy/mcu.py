@@ -105,10 +105,11 @@ class MCU_stepper:
         if count == STEPCOMPRESS_ERROR_RET:
             raise error("Internal error in stepcompress")
         self._commanded_pos += count
-    def step_const(self, print_time, start_pos, dist, start_v, accel):
+    def step_const(self, print_time, start_pos, dist, start_v, accel, core=False):
         inv_step_dist = self._inv_step_dist
-        #step_offset = self._commanded_pos - start_pos * inv_step_dist
         step_offset = 0
+        if core is False:
+            step_offset = self._commanded_pos - start_pos * inv_step_dist
         count = self._ffi_lib.stepcompress_push_const(
             self._stepqueue, print_time, step_offset, dist * inv_step_dist,
             start_v * inv_step_dist, accel * inv_step_dist)
