@@ -632,6 +632,7 @@ class GCodeParser:
         'M400',
         'M550',
         'M851',
+        'M900',
         'IGNORE', 'QUERY_ENDSTOPS', 'PID_TUNE',
         'RESTART', 'FIRMWARE_RESTART', 'ECHO', 'STATUS', 'HELP',
 
@@ -939,6 +940,25 @@ class GCodeParser:
                               (self.toolhead.kin.steppers[0].homing_offset,
                                self.toolhead.kin.steppers[1].homing_offset,
                                self.toolhead.kin.steppers[2].homing_offset))
+
+    def cmd_M900(self, params):
+        # Pressure Advance configuration
+        index = self.get_int('T', params, None)
+        extr = extruder.get_printer_extruder(self.printer, index)
+        if extr is not None:
+            pa = self.get_float('P', params, None)
+            t  = self.get_float('L', params, None)
+            if pa is not None and 0. <= pa:
+                extr.pressure_advance = pa
+                if pa == 0.:
+                    t = 0. # disable lookahead as well
+            if t is not None and 0. <= t:
+                extr.pressure_advance_lookahead_time = t
+            self.respond_info("Pressure Advance %.2f, lookahead time %.3f" % \
+                              (extr.pressure_advance,
+                               extr.pressure_advance_lookahead_time))
+        else:
+            self.respond_info("Invalid tool index in '%s'" % (params['#original'],))
 
     def cmd_DRV_STATUS(self, params):
         # Driver status if exists

@@ -269,6 +269,8 @@ def get_printer_extruders(printer):
 
 def get_printer_extruder(printer, index):
     try:
+        if index is None:
+            raise KeyError
         return printer.__EXTRUDERS_LST[index]
     except (KeyError, AttributeError):
         return None
