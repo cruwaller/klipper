@@ -188,13 +188,14 @@ class TMC2130(DriverBase):
             self.mcu_driver.write(cmd, val)
 
     def __reset_driver(self):
+        self.get_GSTAT()
         ## Read reset values:
         # Init internal values
-        self.val_GCONF      = 0 #self.__command_read(REG_GCONF);
-        self.val_CHOPCONF   = 0 #self.__command_read(REG_CHOPCONF);
-        self.val_COOLCONF   = 0 #self.__command_read(REG_COOLCONF);
-        self.val_PWMCONF    = 0 #self.__command_read(REG_PWMCONF);
-        self.val_IHOLD_IRUN = self.__command_read(REG_IHOLD_IRUN);
+        self.val_GCONF      = 0
+        self.val_CHOPCONF   = 0
+        self.val_COOLCONF   = 0
+        self.val_PWMCONF    = 0
+        self.val_IHOLD_IRUN = 0 # read only
         ## reset registers:
         self.__command_write(REG_GCONF,    self.val_GCONF);
         self.__command_write(REG_CHOPCONF, self.val_CHOPCONF);
@@ -203,27 +204,19 @@ class TMC2130(DriverBase):
         self.set_REG_TCOOLTHRS(0)
 
     def __validate_cfg(self):
+        #COOLCONF   = Write only
+        #PWMCONF    = Write only
+        #IHOLD_IRUN = Write only
+        self.get_GSTAT() # read and reset status
+        # validate readable configurations
         GCONF      = self.__command_read(REG_GCONF);
         CHOPCONF   = self.__command_read(REG_CHOPCONF);
-        COOLCONF   = self.__command_read(REG_COOLCONF);
-        PWMCONF    = self.__command_read(REG_PWMCONF);
-        IHOLD_IRUN = self.__command_read(REG_IHOLD_IRUN);
-
         if (GCONF != self.val_GCONF):
             self.logger.error("GCONF Configuration error! [was 0x%08X expected 0x%08X]" %
                               (GCONF, self.val_GCONF))
         if (CHOPCONF != self.val_CHOPCONF):
             self.logger.error("CHOPCONF Configuration error! [was 0x%08X expected 0x%08X]" %
                               (CHOPCONF, self.val_CHOPCONF))
-        if (COOLCONF != self.val_COOLCONF):
-            self.logger.error("COOLCONF Configuration error! [was 0x%08X expected 0x%08X]" %
-                              (COOLCONF, self.val_COOLCONF))
-        if (PWMCONF != self.val_PWMCONF):
-            self.logger.error("PWMCONF Configuration error! [was 0x%08X expected 0x%08X]" %
-                              (PWMCONF, self.val_PWMCONF))
-        if (IHOLD_IRUN != self.val_IHOLD_IRUN):
-            self.logger.error("IHOLD_IRUN Configuration error! [was 0x%08X expected 0x%08X]" %
-                              (IHOLD_IRUN, self.val_IHOLD_IRUN))
 
     def __init_callback(self):
         val_clear = [0, 0, 0, 0]
