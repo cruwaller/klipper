@@ -77,6 +77,12 @@ class DeltaKinematics:
             % (math.sqrt(self.max_xy2), math.sqrt(self.slow_xy2),
                math.sqrt(self.very_slow_xy2)))
         self.set_position([0., 0., 0.])
+        self.toolhead = toolhead
+    def update_velocities(self):
+        max_halt_velocity = self.toolhead.get_max_axis_halt()
+        self.max_velocity, self.max_accel = self.toolhead.get_max_velocity()
+        for s in self.steppers:
+            s.set_max_jerk(max_halt_velocity, self.max_accel)
     def get_steppers(self):
         return list(self.steppers)
     def _cartesian_to_actuator(self, coord):

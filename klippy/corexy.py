@@ -47,9 +47,14 @@ class CoreXYKinematics:
         self.steppers[2].set_max_jerk(
             min(max_halt_velocity, self.max_z_velocity), self.max_z_accel)
         self.coresign = coresign
-
+        self.toolhead = toolhead
         self.logger.info("Kinematic created: %s" % self.name)
 
+    def update_velocities(self):
+        max_halt_velocity = self.toolhead.get_max_axis_halt()
+        max_velocity, max_accel = self.toolhead.get_max_velocity()
+        self.steppers[0].set_max_jerk(max_halt_velocity, max_accel)
+        self.steppers[1].set_max_jerk(max_halt_velocity, max_accel)
     def set_homing_offset(self, offsets):
         for s in self.steppers:
             try:

@@ -820,6 +820,7 @@ class GCodeParser:
         accel = self.get_int('A', params, None)
         if accel is not None and 0. < accel:
             self.toolhead.max_accel = accel
+            self.toolhead.get_kinematics().update_velocities()
         decel = self.get_int('D', params, None)
         if decel is not None and 0. < decel:
             self.toolhead.max_accel_to_decel = decel
@@ -832,6 +833,7 @@ class GCodeParser:
         value = self.get_float('X', params, None)
         if value is not None and 0. < value:
             self.toolhead.junction_deviation = value
+            self.toolhead.get_kinematics().update_velocities()
         self.respond_info("Junction deviation %.2f" % (self.toolhead.junction_deviation,))
     def cmd_M206(self, params):
         # Set home offset
@@ -840,6 +842,8 @@ class GCodeParser:
         for p, offset in offsets.items():
             self.base_position[p] += self.homing_add[p] - offset
             self.homing_add[p] = offset
+        self.respond_info("Current offsets: X:%.2f, Y:%.2f, Z:%.2f" % (
+            self.homing_add[0], self.homing_add[1], self.homing_add[2]))
 
     def cmd_M220(self, params):
         # M220: Set speed factor override percentage
@@ -945,20 +949,21 @@ class GCodeParser:
         # Pressure Advance configuration
         index = self.get_int('T', params, None)
         extr = extruder.get_printer_extruder(self.printer, index)
-        if extr is not None:
-            pa = self.get_float('P', params, None)
-            t  = self.get_float('L', params, None)
-            if pa is not None and 0. <= pa:
-                extr.pressure_advance = pa
-                if pa == 0.:
-                    t = 0. # disable lookahead as well
-            if t is not None and 0. <= t:
-                extr.pressure_advance_lookahead_time = t
-            self.respond_info("Pressure Advance %.2f, lookahead time %.3f" % \
-                              (extr.pressure_advance,
-                               extr.pressure_advance_lookahead_time))
-        else:
-            self.respond_info("Invalid tool index in '%s'" % (params['#original'],))
+        if extr is None:
+            extr = self.extruder
+        if extr is None:
+            return
+        pa = self.get_float('P', params, None)
+        t  = self.get_float('L', params, None)
+        if pa is not None and 0. <= pa:
+            extr.pressure_advance = pa
+            if pa == 0.:
+                t = 0. # disable lookahead as well
+        if t is not None and 0. <= t:
+            extr.pressure_advance_lookahead_time = t
+        self.respond_info("Pressure Advance %.2f, lookahead time %.3f" % \
+                          (extr.pressure_advance,
+                           extr.pressure_advance_lookahead_time))
 
     def cmd_DRV_STATUS(self, params):
         # Driver status if exists
