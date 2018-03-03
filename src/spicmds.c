@@ -19,6 +19,6 @@ command_send_spi_message(uint32_t *args)
     struct gpio_out pin = gpio_out_setup(args[0], 0);
     spi_transfer_len(msg, len);
     gpio_out_write(pin, 1);
-    sendf("spi_response response=%*s", msg);
+    sendf("spi_response response=%*s", len, msg);
 }
 DECL_COMMAND(command_send_spi_message, "send_spi_message pin=%u msg=%*s");
