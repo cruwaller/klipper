@@ -177,7 +177,7 @@ class CoreXYKinematics:
         axes_d = ((exp + eyp),
                   (exp - eyp),
                   move.start_pos[2])
-
+        core_flag = (self.coresign == -1)
         for i in StepList:
             axis_d = axes_d[i]
             if not axis_d:
@@ -193,19 +193,19 @@ class CoreXYKinematics:
             if move.accel_r:
                 accel_d = move.accel_r * axis_d
                 step_const(move_time, start_pos, accel_d,
-                           move.start_v * axis_r, accel, core=True)
+                           move.start_v * axis_r, accel, core=core_flag)
                 start_pos += accel_d
                 move_time += move.accel_t
             # Cruising steps
             if move.cruise_r:
                 cruise_d = move.cruise_r * axis_d
-                step_const(move_time, start_pos, cruise_d, cruise_v, 0., core=True)
+                step_const(move_time, start_pos, cruise_d, cruise_v, 0., core=core_flag)
                 start_pos += cruise_d
                 move_time += move.cruise_t
             # Deceleration steps
             if move.decel_r:
                 decel_d = move.decel_r * axis_d
-                step_const(move_time, start_pos, decel_d, cruise_v, -accel, core=True)
+                step_const(move_time, start_pos, decel_d, cruise_v, -accel, core=core_flag)
 
 class CoreYXKinematics(CoreXYKinematics):
     name = "coreYX"
