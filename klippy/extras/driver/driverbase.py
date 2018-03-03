@@ -2,8 +2,6 @@
 # This is just a basic stepper driver without any special features
 
 class DriverBase(object):
-    motors_deg_map = { "7.5": 7.5, "1.8": 1.8, "0.9": 0.9, '0': None }
-
     def __init__(self, printer, config, config_parent, logger=None):
         self.microsteps = config.getint('microsteps', default=None)
         if self.microsteps is None:
@@ -41,6 +39,8 @@ class DriverBase(object):
             self.step_dist = 1.0 / self.inv_step_dist
 
     # Virtual class for parents to override
+    def init_driver(self, *args, **kwargs):
+        pass;
     def init_home(self, *args, **kwargs):
         pass;
     def status(self, *args, **kwargs):

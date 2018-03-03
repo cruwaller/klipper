@@ -1,6 +1,6 @@
 # Code for coordinating events on the printer toolhead
 #
-# Copyright (C) 2016  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math
@@ -185,8 +185,8 @@ class ToolHead:
         self.logger = printer.logger.getChild('toolhead')
         self.logger.debug("Add toolhead '{}'".format(config.section))
         self.printer = printer
-        self.reactor = printer.reactor
-        self.all_mcus = mcu.get_printer_mcus(printer)
+        self.reactor = printer.get_reactor()
+        self.all_mcus = printer.lookup_module_objects('mcu')
         self.mcu = self.all_mcus[0]
         self.homing_order = config.get('homing_order', 'XYZ').upper()
         self.max_velocity = config.getfloat('max_velocity', above=0.)
@@ -211,7 +211,7 @@ class ToolHead:
         self.need_check_stall = -1.
         self.print_stall = 0
         self.sync_print_time = True
-        self.last_flush_from_idle = False
+        self.idle_flush_print_time = 0.
         self.flush_timer = self.reactor.register_timer(self._flush_handler)
         self.move_queue.set_flush_time(self.buffer_time_high)
         # Motor off tracking
@@ -238,11 +238,8 @@ class ToolHead:
         if not self.sync_print_time:
             return self.print_time
         self.sync_print_time = False
-        est_print_time = self.mcu.estimated_print_time(self.reactor.monotonic())
-        if self.last_flush_from_idle and self.print_time > est_print_time:
-            self.print_stall += 1
-        self.last_flush_from_idle = False
         self.need_motor_off = True
+        est_print_time = self.mcu.estimated_print_time(self.reactor.monotonic())
         self.print_time = max(
             self.print_time, est_print_time + self.buffer_time_start)
         self.reactor.update_timer(self.flush_timer, self.reactor.NOW)
@@ -250,7 +247,7 @@ class ToolHead:
     def _flush_lookahead(self, must_sync=False):
         sync_print_time = self.sync_print_time
         self.move_queue.flush()
-        self.last_flush_from_idle = False
+        self.idle_flush_print_time = 0.
         if sync_print_time or must_sync:
             self.sync_print_time = True
             self.move_queue.set_flush_time(self.buffer_time_high)
@@ -269,6 +266,11 @@ class ToolHead:
         eventtime = self.reactor.monotonic()
         if self.sync_print_time:
             # Building initial queue - make sure to flush on idle input
+            if self.idle_flush_print_time:
+                est_print_time = self.mcu.estimated_print_time(eventtime)
+                if est_print_time < self.idle_flush_print_time:
+                    self.print_stall += 1
+                self.idle_flush_print_time = 0.
             self.reactor.update_timer(self.flush_timer, eventtime + 0.100)
             return
         # Check if there are lots of queued moves and stall if so
@@ -293,7 +295,7 @@ class ToolHead:
             # Under ran low buffer mark - flush lookahead queue
             self._flush_lookahead(must_sync=True)
             if print_time != self.print_time:
-                self.last_flush_from_idle = True
+                self.idle_flush_print_time = self.print_time
         except:
             self.logger.exception("Exception in flush_handler")
             self.printer.invoke_shutdown("Exception in flush_handler")
@@ -311,16 +313,13 @@ class ToolHead:
             self.logger.exception("Exception in motor_off_handler")
             self.printer.invoke_shutdown("Exception in motor_off_handler")
         return eventtime + self.motor_off_time
-    # Homing offset (GCode command)
-    def set_homing_offset(self, offsets):
-        self.kin.set_homing_offset(offsets)
     # Movement commands
     def get_position(self):
         return list(self.commanded_pos)
-    def set_position(self, newpos):
+    def set_position(self, newpos, homing_axes=()):
         self._flush_lookahead()
         self.commanded_pos[:] = newpos
-        self.kin.set_position(newpos)
+        self.kin.set_position(newpos, homing_axes)
     def move(self, newpos, speed, check=True):
         speed = min(speed, self.max_velocity)
         move = Move(self, self.commanded_pos, newpos, speed)
@@ -357,29 +356,26 @@ class ToolHead:
             eventtime = self.reactor.pause(eventtime + 0.100)
     def set_extruder(self, extruder):
         last_move_time = self.get_last_move_time()
-        self.extruder.set_active(last_move_time, False) # Useless...
+        self.extruder.set_active(last_move_time, False)
         extrude_pos = extruder.set_active(last_move_time, True)
         self.extruder = extruder
         self.move_queue.set_extruder(extruder)
         self.commanded_pos[3] = extrude_pos
     # Misc commands
-    def check_active(self, eventtime):
+    def stats(self, eventtime):
         for m in self.all_mcus:
             m.check_active(self.print_time, eventtime)
-        if not self.sync_print_time:
-            return True
-        return self.print_time + 60. > self.mcu.estimated_print_time(eventtime)
-    def stats(self, eventtime):
-        est_print_time = self.mcu.estimated_print_time(eventtime)
-        buffer_time = max(0., self.print_time - est_print_time)
-        return "print_time=%.3f buffer_time=%.3f print_stall=%d" % (
-            self.print_time, buffer_time, self.print_stall)
-    def do_shutdown(self):
-        try:
-            self.move_queue.reset()
-            self.reset_print_time()
-        except:
-            self.logger.exception("Exception in do_shutdown")
+        buffer_time = self.print_time - self.mcu.estimated_print_time(eventtime)
+        is_active = buffer_time > -60. or not self.sync_print_time
+        return is_active, "print_time=%.3f buffer_time=%.3f print_stall=%d" % (
+            self.print_time, max(buffer_time, 0.), self.print_stall)
+    def printer_state(self, state):
+        if state == 'shutdown':
+            try:
+                self.move_queue.reset()
+                self.reset_print_time()
+            except:
+                self.logger.exception("Exception in toolhead shutdown")
     def get_kinematics(self):
         return self.kin
     def get_max_velocity(self):

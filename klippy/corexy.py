@@ -55,26 +55,25 @@ class CoreXYKinematics:
         max_velocity, max_accel = self.toolhead.get_max_velocity()
         self.steppers[0].set_max_jerk(max_halt_velocity, max_accel)
         self.steppers[1].set_max_jerk(max_halt_velocity, max_accel)
-    def set_homing_offset(self, offsets):
-        for s in self.steppers:
-            try:
-                s.set_homing_offset(offsets[s.name])
-            except (KeyError):
-                pass
-    def get_steppers(self):
+    def get_steppers(self, flags=""):
+        if flags == "Z":
+            return [self.steppers[2]]
         return list(self.steppers)
-    def set_position(self, newpos):
-        pos = ((newpos[0] + newpos[1]),
-               (newpos[0] - newpos[1]),
-               newpos[2])
+    def get_position(self):
+        pos = [s.mcu_stepper.get_commanded_position() for s in self.steppers]
+        return [0.5 * (pos[0] + pos[1]), 0.5 * (pos[0] - pos[1]), pos[2]]
+    def set_position(self, newpos, homing_axes):
+        pos = (newpos[0] + newpos[1], newpos[0] - newpos[1], newpos[2])
         for i in StepList:
-            self.steppers[i].set_position(pos[i])
+            s = self.steppers[i]
+            s.set_position(pos[i])
+            if i in homing_axes:
+                self.limits[i] = (s.position_min, s.position_max)
     def home(self, homing_state):
         # Each axis is homed independently and in order
         sensor_funcs = [ s.driver.init_home for s in self.steppers ]
         for axis in homing_state.get_axes():
             s = self.steppers[axis]
-            self.limits[axis] = (s.position_min, s.position_max)
             # Determine moves
             if s.homing_positive_dir:
                 pos = s.position_endstop - 1.5*(
@@ -174,15 +173,13 @@ class CoreXYKinematics:
 
         sxp = move.start_pos[0]
         syp = move.start_pos[1]
-        move_start_pos = ((sxp + syp),
-                          (sxp - syp),
-                          move.start_pos[2])
+        move_start_pos = ((sxp + syp), (sxp - syp), move.start_pos[2])
         exp = (sxp - move.end_pos[0])
         eyp = (syp - move.end_pos[1]) * self.coresign
         axes_d = ((exp + eyp),
                   (exp - eyp),
                   move.start_pos[2])
-
+        core_flag = (self.coresign == -1) # TODO FIXME
         for i in StepList:
             axis_d = axes_d[i]
             if not axis_d:
@@ -198,19 +195,19 @@ class CoreXYKinematics:
             if move.accel_r:
                 accel_d = move.accel_r * axis_d
                 step_const(move_time, start_pos, accel_d,
-                           move.start_v * axis_r, accel, core=True)
+                           move.start_v * axis_r, accel, core=core_flag)
                 start_pos += accel_d
                 move_time += move.accel_t
             # Cruising steps
             if move.cruise_r:
                 cruise_d = move.cruise_r * axis_d
-                step_const(move_time, start_pos, cruise_d, cruise_v, 0., core=True)
+                step_const(move_time, start_pos, cruise_d, cruise_v, 0., core=core_flag)
                 start_pos += cruise_d
                 move_time += move.cruise_t
             # Deceleration steps
             if move.decel_r:
                 decel_d = move.decel_r * axis_d
-                step_const(move_time, start_pos, decel_d, cruise_v, -accel, core=True)
+                step_const(move_time, start_pos, decel_d, cruise_v, -accel, core=core_flag)
 
 class CoreYXKinematics(CoreXYKinematics):
     name = "coreYX"

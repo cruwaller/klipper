@@ -1,10 +1,10 @@
 # system
-import logging, types, struct, ctypes, time
+import logging, types, struct
 import binascii
 from operator import xor
 # project
 from driverbase import DriverBase
-import mcu, pins
+import pins
 
 # Registers:
 REG_GCONF      = 0x00
@@ -53,14 +53,9 @@ class TMC2130(DriverBase):
     isStallguard = False
     isStandstill = False
 
-    micro_steps_map = \
-        { "256": 256, "128": 128, "64": 64, "32": 32,
-           "16":  16,   "8":   8,  "4":  4,  "2":  2,
-            "1":   1 }
-
     def __init__(self, printer, config, config_parent, logger):
         super(TMC2130, self).__init__(printer, config, config_parent, logger)
-        self.name = config.section[7:]
+        self.name = config.get_name()[7:]
 
         if logger is not None:
             self.logger = logger.getChild('tmc2130')
@@ -72,11 +67,15 @@ class TMC2130(DriverBase):
         self.hold_multip = config.getfloat('hold_multiplier', 0.5, above=0., maxval=1.0)
         self.interpolate = config.getboolean('interpolate', True)
         self.sensor_less_homing = config.getboolean('sensor_less_homing', False)
-        #self.hybrid_threshold = config.getint('hybrid_threshold', None, minval=0, maxval=1048575)
-        self.stealth_max_speed = config.getint('stealth_max_speed', None, minval=10) # hybrid threshold
-
+        # option to manually set a hybrid threshold
+        self.hybrid_threshold = config.getint('hybrid_threshold',
+                                              None, minval=0, maxval=1048575)
+        # hybrid threshold, speed is used to derive the threshold
+        self.stealth_max_speed = config.getint('stealth_max_speed',
+                                               None, minval=10)
         # +1...+63 = less sensitivity, -64...-1 = higher sensitivity
-        self.sg_stall_value = config.getint('stall_threshold', 19, minval=-64, maxval=63)
+        self.sg_stall_value = config.getint('stall_threshold',
+                                            10, minval=-64, maxval=63)
 
         diag0types = {
             'NA'           : None,
@@ -107,12 +106,8 @@ class TMC2130(DriverBase):
         # setup SPI pins and configure mcu
         self.mcu_driver = pins.setup_pin(printer, 'spibus', spipin)
         self.mcu_driver.set_spi_settings(spimode, spispeed)
-        self._mcu = self.mcu_driver.get_mcu()
-        # self._mcu.add_config_object(self) # call build_config on connect
-        self._mcu.register_init_cb(self.__init_callback)
 
         printer.add_object(self.name, self)
-        self.logger.debug("config done")
 
     '''
     ~                    READ / WRITE data transfer example
@@ -170,17 +165,8 @@ class TMC2130(DriverBase):
     def __command_write(self, cmd, val=None): # 40bits always = 5 x 8bit!
         if val is not None:
             if type(val) is not types.ListType:
-                #if val > 0xFFFFFFFF:
-                #    conv = struct.Struct('>Q').pack
-                #else:
-                #    conv = struct.Struct('>I').pack
                 conv = struct.Struct('>I').pack
                 val = list(conv(val))
-                #for idx in xrange(len(val)):
-                #    try:
-                #        val[idx] = int(val[idx])
-                #    except:
-                #        val[idx] = 0
             if len(val) != 4:
                 raise Exception("TMC2130 internal error! len(val) != 4")
             self.logger.debug("==>> cmd 0x%02X : 0x%s" % (cmd, binascii.hexlify(bytearray(val))))
@@ -188,8 +174,8 @@ class TMC2130(DriverBase):
             self.mcu_driver.write(cmd, val)
 
     def __reset_driver(self):
+        # Clear errors by reading GSTAT register
         self.get_GSTAT()
-        ## Read reset values:
         # Init internal values
         self.val_GCONF      = 0
         self.val_CHOPCONF   = 0
@@ -204,9 +190,6 @@ class TMC2130(DriverBase):
         self.set_REG_TCOOLTHRS(0)
 
     def __validate_cfg(self):
-        #COOLCONF   = Write only
-        #PWMCONF    = Write only
-        #IHOLD_IRUN = Write only
         self.get_GSTAT() # read and reset status
         # validate readable configurations
         GCONF      = self.__command_read(REG_GCONF);
@@ -259,14 +242,16 @@ class TMC2130(DriverBase):
             #self.modify_REG_CHOPCONF('hysterisis_start', 4)
             #self.modify_REG_CHOPCONF('hysterisis_end', 0)
 
-            if (self.stealth_max_speed is not None):
+            if self.hybrid_threshold is not None:
+                self.set_REG_TPWMTHRS(self.hybrid_threshold)
+                self.logger.info("Hybrid threshold: {}".
+                                 format(self.hybrid_threshold))
+            elif self.stealth_max_speed is not None:
                 speed = int(12650000 * self.microsteps /
                             (self.stealth_max_speed * self.inv_step_dist * 256))
                 self.set_REG_TPWMTHRS(speed)
                 self.logger.info("Stealth max speed: {} ({})".
                                  format(self.stealth_max_speed, speed))
-            elif self.hybrid_threshold is not None:
-                self.set_REG_TPWMTHRS(self.hybrid_threshold)
         else:
             # spreadCycle
             self.modify_REG_GCONF('stealthChop', 0)
@@ -301,9 +286,6 @@ class TMC2130(DriverBase):
 
         self.logger.info(" init done!")
 
-    #def build_config(self):
-    #    self.logger.info("build_config()")
-
     def __calc_rms_current(self,
                            current_in_mA  = 1000,
                            sense_R        = 0.11,
@@ -337,10 +319,12 @@ class TMC2130(DriverBase):
             V_fs = 0.180
         return ( CS + 1. ) / 32.0 * V_fs / (self.Rsense + 0.02) / 1.41421 * 1000.;
 
-
     #**************************************************************************
     # WRAPPER METHODS
     #**************************************************************************
+    def init_driver(self, *args, **kwargs):
+        self.logger.info("TMC2130 Driver Init!")
+        self.__init_callback()
 
     def status(self, log):
         if log is not None: log("name: %s" % self.name)
@@ -355,11 +339,8 @@ class TMC2130(DriverBase):
     def init_home(self, enable=True):
         if self.sensor_less_homing:
             if enable is True:
-                #self.modify_REG_GCONF('stealthChop', 0) # TODO FIXME : required????
                 self.set_REG_TCOOLTHRS(0xFFFFF)
             else:
-                #if self.silent_mode is True:
-                #    self.modify_REG_GCONF('stealthChop', 1) # TODO FIXME : required????
                 self.set_REG_TCOOLTHRS(0)
 
     def set_dir(self, direction=0):

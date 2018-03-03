@@ -8,33 +8,9 @@ import homing, extruder, heater
 
 '''
 TODO:
-  * tool offset: G/Mxxx P2 X17.8 Y-19.3 Z0.0
   * FW retraction: G10, G11, M207, M208
   * Volymetric Extrution
-  * M290: Babystepping
-  * M600: Filament change pause
-
-           =====================
-           **** REPRAP stuff ***
-
-M141 H<heater> S<temp>   : Set Chamber Temperature - IGNORE
-M563                     : Define or remove a tool
-M80                      : ATX Power On
-M81                      : ATX Power Off
-M144                     : Bed Standby (needs stanby temperature...), M140 -> back to active temp
-M1 (partial?)
-
 '''
-
-'''
-extruders: factor_extrude -> extrude_factor
-self.extrude_factor -> self.extruder.extrude_factor!
-
-
-base_position['E'] -> extruder class!
-
-'''
-
 
 tx_sequenceno = 0
 
@@ -51,13 +27,14 @@ class GCodeParser:
         self.fd_r = fd_link.fd_r
         self.fd_w = fd_link.fd_w
         # Input handling
-        self.reactor = printer.reactor
+        self.reactor = printer.get_reactor()
         self.is_processing_data = False
         self.is_fileinput = not not printer.get_start_args().get("debuginput")
         self.fd_handle = None
         if not self.is_fileinput:
             self.fd_handle = self.reactor.register_fd(self.fd_r, self.process_data)
         self.partial_input = ""
+        self.pending_commands = []
         self.bytes_read = 0
         self.input_log = collections.deque([], 50)
         # Command handling
@@ -78,14 +55,14 @@ class GCodeParser:
         self.last_position = [0.0, 0.0, 0.0, 0.0]
         self.homing_add = [0.0, 0.0, 0.0, 0.0]
         self.speed_factor = 1. / 60.
+        self.move_transform = self.move_with_transform = None
+        self.position_with_transform = (lambda: [0., 0., 0., 0.])
         # G-Code state
         self.need_ack = False
-        self.toolhead = None
-        self.extruder = None
+        self.toolhead = self.extruder = None
         self.extruders = {}
         self.speed = 25.0
         self.axis2pos = {'X': 0, 'Y': 1, 'Z': 2, 'E': 3}
-        #self.tx_sequenceno = 0
         self.simulate_print = False
         self.babysteps = 0.0 # Effect to Z only
     def register_command(self, cmd, func, when_not_ready=False, desc=None):
@@ -103,44 +80,52 @@ class GCodeParser:
             self.base_gcode_handlers[cmd] = func
         if desc is not None:
             self.gcode_help[cmd] = desc
+    def set_move_transform(self, transform):
+        if self.move_transform is not None:
+            raise self.printer.config_error(
+                "G-Code move transform already specified")
+        self.move_transform = transform
+        self.move_with_transform = transform.move
+        self.position_with_transform = transform.get_position
     def stats(self, eventtime):
-        return "gcodein=%d" % (self.bytes_read,)
-    def connect(self):
+        return False, "gcodein=%d" % (self.bytes_read,)
+    def printer_state(self, state):
+        if state == 'shutdown':
+            if not self.is_printer_ready:
+                return
+            self.is_printer_ready = False
+            self.gcode_handlers = self.base_gcode_handlers
+            self.dump_debug()
+            if self.is_fileinput:
+                self.printer.request_exit()
+            global tx_sequenceno
+            tx_sequenceno += 1
+            return
+        if state != 'ready':
+            return
         self.is_printer_ready = True
         self.gcode_handlers = self.ready_gcode_handlers
         # Lookup printer components
-        self.toolhead = self.printer.objects.get('toolhead')
+        self.toolhead = self.printer.lookup_object('toolhead')
+        if self.move_transform is None:
+            self.move_with_transform = self.toolhead.move
+            self.position_with_transform = self.toolhead.get_position
         self.extruders = extruder.get_printer_extruders(self.printer)
-        if 0 < len(self.extruders):
-            self.extruder = self.extruders[0] # extruder0
+        if self.extruders:
+            self.extruder = self.extruders[0]
             self.toolhead.set_extruder(self.extruder)
         if self.is_fileinput and self.fd_handle is None:
             self.fd_handle = self.reactor.register_fd(self.fd_r, self.process_data)
         global tx_sequenceno
         tx_sequenceno += 1
     def reset_last_position(self):
-        if self.toolhead is not None:
-            self.last_position = self.toolhead.get_position()
-    def do_shutdown(self):
-        if not self.is_printer_ready:
-            return
-        self.is_printer_ready = False
-        self.gcode_handlers = self.base_gcode_handlers
-        self.dump_debug()
-        if self.is_fileinput:
-            self.printer.request_exit()
-        global tx_sequenceno
-        tx_sequenceno += 1
+        self.last_position = self.position_with_transform()
     def motor_heater_off(self):
-        if self.toolhead is None:
-            return
         self.toolhead.motor_off()
         print_time = self.toolhead.get_last_move_time()
-        for k,h in heater.get_printer_heaters(self.printer).items():
+        for h in self.printer.lookup_module_objects("heater"):
             h.set_temp(print_time, 0.0)
-        # TODO FIXME : is it ok to switch off all fans???
-        #              Should switch off only fan without temp ctrl
-        for fan in self.printer.get_objects_with_prefix('fan'):
+        for fan in self.printer.lookup_module_objects('fan'):
             fan.set_speed(print_time, 0.0)
     def dump_debug(self):
         out = []
@@ -160,7 +145,7 @@ class GCodeParser:
                 self.speed_factor, extrude_factor, self.speed))
         self.logger.info("\n".join(out))
     # Parse input into commands
-    args_r = re.compile('([A-Z_]+|[A-Z*])')
+    args_r = re.compile('([A-Z_]+|[A-Z*/])')
     def process_commands(self, commands, need_ack=True):
         for line in commands:
             # Ignore comments and leading/trailing spaces
@@ -198,7 +183,9 @@ class GCodeParser:
                 if not need_ack:
                     raise
             self.ack()
+    m112_r = re.compile('^(?:[nN][0-9]+)?\s*[mM]112(?:\s|$)')
     def process_data(self, eventtime):
+        # Read input, separate by newline, and add to pending_commands
         data = os.read(self.fd_r, 4096)
         self.input_log.append((eventtime, data))
         self.bytes_read += len(data)
@@ -217,7 +204,7 @@ class GCodeParser:
             if len(pending_commands) < 20:
                 # Check for M112 out-of-order
                 for line in lines:
-                    if 'M112' in line.strip().upper():
+                    if self.m112_r.match(line) is not None:
                         self.cmd_M112({})
             if self.is_processing_data:
                 if len(pending_commands) >= 20:
@@ -240,10 +227,21 @@ class GCodeParser:
             pending_commands = self.pending_commands
         if self.fd_handle is None:
             self.fd_handle = self.reactor.register_fd(self.fd, self.process_data)
+    def process_batch(self, command):
+        if self.is_processing_data:
+            return False
+        self.is_processing_data = True
+        try:
+            self.process_commands([command], need_ack=False)
+        finally:
+            if self.pending_commands:
+                self.process_pending()
+            self.is_processing_data = False
+        return True
     def run_script(self, script):
         prev_need_ack = self.need_ack
         try:
-            self.process_commands(script.split('\n'), need_ack=False)
+            self.process_commands(script.replace('"','').split('\n'), need_ack=False)
         finally:
             self.need_ack = prev_need_ack
     def __write_resp(self, msg):
@@ -311,13 +309,12 @@ class GCodeParser:
     def get_temp(self, eventtime):
         # Tn:XXX /YYY B:XXX /YYY
         out = []
-        # todo add PWM power?
         for key,e in self.extruders.items():
             heater = e.get_heater()
             if heater is not None:
                 cur, target = heater.get_temp(eventtime)
                 out.append("T%d:%.1f /%.1f" % (e.get_index(), cur, target))
-        heater = self.printer.objects.get('heater_bed')
+        heater = self.printer.lookup_object('heater bed')
         if (heater is not None):
             cur, target = heater.get_temp(eventtime)
             out.append("B:%.1f /%.1f" % (cur, target))
@@ -336,7 +333,7 @@ class GCodeParser:
         temp = self.get_float('S', params, 0.0) if (self.simulate_print is False) else 0.0
         heater = None
         if is_bed:
-            heater = self.printer.objects.get('heater_bed')
+            heater = self.printer.lookup_object('heater bed')
         else:
             index = None
             if 'T' in params:
@@ -363,7 +360,7 @@ class GCodeParser:
         if wait and temp and self.simulate_print is False:
             self.bg_temp(heater)
     def set_fan_speed(self, speed, index):
-        fan = self.printer.objects.get('fan%d'%(index))
+        fan = self.printer.objects.get('fan %d'%(index))
         if fan is None:
             if speed and not self.is_fileinput:
                 self.respond_info("Fan not configured")
@@ -405,21 +402,30 @@ class GCodeParser:
             raise error(str(e))
         self.extruder = e
         self.reset_last_position()
-        '''
-        Reset extruder base position if G92 E0 is not called after tool change
-        or some movement is done in activate code set by user.
-        '''
-        self.base_position[3] = self.last_position[3]
         self.run_script(self.extruder.get_activate_gcode(True))
+    all_handlers = [
+        'G1', 'G4', 'G28', 'M18', 'M400',
+        'G20', 'M82', 'M83', 'G90', 'G91', 'G92', 'M206', 'M220', 'M221',
+        'M105', 'M104', 'M109', 'M140', 'M190', 'M106', 'M107',
+        'M112', 'M114', 'M115', 'IGNORE', 'QUERY_ENDSTOPS', 'PID_TUNE',
+        'RESTART', 'FIRMWARE_RESTART', 'ECHO', 'STATUS', 'HELP',
+        # Additions
+        'G2', 'G3', 'G10', 'G11', 'G29',
+        'M0', 'M1', 'M37', 'M118', 'M204', 'M205', 'M290',
+        'M302',
+        'M550',
+        'M851',
+        'M900',
+        # Stepper driver commands:
+        'DRV_STATUS', 'DRV_CURRENT', 'DRV_SG',
+    ]
 
+
+    # Move all_handlers here...
     def _parse_movement(self, params, is_arch=False):
-        # parse move command
-
-        # Save coodinate system
         absolutecoord = self.absolutecoord
         if is_arch:
             self.absolutecoord = False; # change to relative
-
         try:
             for axis in 'XYZ':
                 if axis in params:
@@ -433,7 +439,7 @@ class GCodeParser:
                         self.last_position[pos] = v + self.base_position[pos]
             if 'E' in params:
                 v = ( (float(params['E']) * self.extruder.extrude_factor) if (self.simulate_print is False) else 0.0 )
-                if not self.absolutecoord or not self.absoluteextrude: # TODO: Only extruder????
+                if not self.absolutecoord or not self.absoluteextrude:
                     # value relative to position of last move
                     self.last_position[3] += v
                 else:
@@ -461,14 +467,434 @@ class GCodeParser:
                         raise ValueError()
         except ValueError as e:
             raise error("Unable to parse move '%s'" % (params['#original'],))
-
         self.absolutecoord = absolutecoord
 
     def _apply_move(self, pos, speed):
         try:
-            self.toolhead.move(pos, speed)
+            self.move_with_transform(pos, speed)
         except homing.EndstopError as e:
             raise error(str(e))
+    # G-Code movement commands
+    cmd_G1_aliases = ['G0']
+    def cmd_G1(self, params):
+        # Move
+        self._parse_movement(params)
+        self._apply_move(self.last_position, self.speed)
+    def cmd_G2(self, params):
+        # G2 Xnnn Ynnn Innn Jnnn Ennn Fnnn (Clockwise Arc)
+        self._calculate_arch(params, 1)
+    def cmd_G3(self, params):
+        # G3 Xnnn Ynnn Innn Jnnn Ennn Fnnn (Counter-Clockwise Arc)
+        self._calculate_arch(params, 0)
+    def cmd_G4(self, params):
+        # Dwell
+        if 'S' in params:
+            delay = self.get_float('S', params)
+        else:
+            delay = self.get_float('P', params, 0.) / 1000.
+        self.toolhead.dwell(delay)
+    def cmd_G28(self, params):
+        # Move to origin
+        axes = []
+        homing_order = self.toolhead.homing_order
+        for axis in homing_order:
+            if axis in params:
+                axes.append(self.axis2pos[axis])
+        if not axes:
+            axes = [self.axis2pos[axis] for axis in homing_order]
+        homing_state = homing.Homing(self.toolhead)
+        if self.is_fileinput:
+            homing_state.set_no_verify_retract()
+        try:
+            homing_state.home_axes(axes)
+        except homing.EndstopError as e:
+            raise error(str(e))
+        for axis in homing_state.get_axes():
+            self.base_position[axis] = -self.homing_add[axis]
+        self.reset_last_position()
+    cmd_M18_aliases = ["M84"]
+    def cmd_M18(self, params):
+        # Turn off motors
+        # Should wait queued moves to prevent unwanted error!
+        self.toolhead.wait_moves()
+        self.toolhead.motor_off()
+    def cmd_M400(self, params):
+        # Wait for current moves to finish
+        self.toolhead.wait_moves()
+    # G-Code coordinate manipulation
+    def cmd_G20(self, params):
+        # Set units to inches
+        self.respond_error('Machine does not support G20 (inches) command')
+    def cmd_M82(self, params):
+        # Use absolute distances for extrusion
+        self.absoluteextrude = True
+    def cmd_M83(self, params):
+        # Use relative distances for extrusion
+        self.absoluteextrude = False
+    def cmd_G90(self, params):
+        # Use absolute coordinates
+        self.absolutecoord = True
+    def cmd_G91(self, params):
+        # Use relative coordinates
+        self.absolutecoord = False
+    def cmd_G92(self, params):
+        # Set position
+        offsets = { p: self.get_float(a, params)
+                    for a, p in self.axis2pos.items() if a in params }
+        for p, offset in offsets.items():
+            if p == 3:
+                offset *= self.extruder.extrude_factor
+            self.base_position[p] = self.last_position[p] - offset
+        if not offsets:
+            self.base_position = list(self.last_position)
+    def cmd_M206(self, params):
+        # Set home offset
+        offsets = { self.axis2pos[a]: self.get_float(a, params)
+                    for a in 'XYZ' if a in params }
+        for p, offset in offsets.items():
+            self.base_position[p] += self.homing_add[p] - offset
+            self.homing_add[p] = offset
+        self.respond_info("Current offsets: X:%.2f, Y:%.2f, Z:%.2f" % (
+            self.homing_add[0], self.homing_add[1], self.homing_add[2]))
+    def cmd_M220(self, params):
+        # Set speed factor override percentage
+        value = self.get_float('S', params, 100.) / (60. * 100.)
+        if value <= 0.:
+            raise error("Invalid factor in '%s'" % (params['#original'],))
+        self.speed_factor = value
+    def cmd_M221(self, params):
+        # Set extrude factor override percentage
+        new_extrude_factor = self.get_float('S', params, 100.) / 100.
+        if new_extrude_factor <= 0.:
+            raise error("Invalid factor in '%s'" % (params['#original'],))
+        index = extr = None
+        # extruder number
+        if 'D' in params:
+            index = self.get_int('D', params)
+        elif 'T' in params:
+            index = self.get_int('T', params)
+        if index is None:
+            extr = self.extruder
+        else:
+            extr = extruder.get_printer_extruder(self.printer, index)
+        if extr is not None:
+            last_e_pos = self.last_position[3]
+            e_value = (last_e_pos - self.base_position[3]) / extr.extrude_factor
+            self.base_position[3] = last_e_pos - e_value * new_extrude_factor
+            extr.extrude_factor = new_extrude_factor
+    # G-Code temperature and fan commands
+    cmd_M105_when_not_ready = True
+    def cmd_M105(self, params):
+        # Get Extruder Temperature
+        self.ack(self.get_temp(self.reactor.monotonic()))
+    def cmd_M104(self, params):
+        # Set Extruder Temperature
+        self.set_temp(params)
+    def cmd_M109(self, params):
+        # Set Extruder Temperature and Wait
+        self.set_temp(params, wait=True)
+    def cmd_M140(self, params):
+        # Set Bed Temperature
+        self.set_temp(params, is_bed=True)
+    def cmd_M190(self, params):
+        # Set Bed Temperature and Wait
+        self.set_temp(params, is_bed=True, wait=True)
+    def cmd_M106(self, params):
+        # Set fan speed
+        self.set_fan_speed(self.get_float('S', params, 255.) / 255.,
+                           self.get_int('P', params, 0))
+    def cmd_M107(self, params):
+        # Turn fan off
+        self.set_fan_speed(0., self.get_int('P', params, 0))
+    # G-Code miscellaneous commands
+    cmd_M112_when_not_ready = True
+    def cmd_M112(self, params):
+        # Emergency Stop
+        self.printer.invoke_shutdown("Shutdown due to M112 command")
+    cmd_M114_when_not_ready = True
+    def cmd_M114(self, params):
+        # Get Current Position
+        if self.toolhead is None:
+            self.cmd_default(params)
+            return
+        raw_pos = homing.query_position(self.toolhead)
+        self.respond("X:%.3f Y:%.3f Z:%.3f E:%.3f Count %s" % (
+            self.last_position[0], self.last_position[1],
+            self.last_position[2], self.last_position[3],
+            " ".join(["%s:%d" % (n.upper(), p) for n, p in raw_pos])))
+    cmd_M115_when_not_ready = True
+    def cmd_M115(self, params):
+        # Get Firmware Version and Capabilities
+        software_version = self.printer.get_start_args().get('software_version')
+        kw = {"FIRMWARE_NAME": "Klipper", "FIRMWARE_VERSION": software_version}
+        self.ack(" ".join(["%s:%s" % (k, v) for k, v in kw.items()]))
+    cmd_IGNORE_when_not_ready = True
+    cmd_IGNORE_aliases = ["G21", "M110", "M21",
+        'M120', 'M121', 'M122', "M141",
+        'M291', 'M292',
+        'M752', 'M753', 'M754', 'M755', 'M756',
+        'M997'
+    ]
+    def cmd_IGNORE(self, params):
+        # Commands that are just silently accepted
+        pass
+    cmd_QUERY_ENDSTOPS_help = "Report on the status of each endstop"
+    cmd_QUERY_ENDSTOPS_aliases = ["M119"]
+    def cmd_QUERY_ENDSTOPS(self, params):
+        # Get Endstop Status
+        res = homing.query_endstops(self.toolhead)
+        self.respond(" ".join(["%s:%s" % (name, ["open", "TRIGGERED"][not not t])
+                               for name, t in res]))
+    cmd_PID_TUNE_help = "Run PID Tuning"
+    cmd_PID_TUNE_aliases = ["M303"]
+    def cmd_PID_TUNE(self, params):
+        # Run PID tuning (M303 E<-1 or 0...> S<temp> C<count>)
+        heater = None;
+        heater_index = self.get_int('E', params, 0)
+        if (heater_index == -1):
+            heater = self.printer.lookup_object('heater bed')
+        else:
+            e = extruder.get_printer_extruder(self.printer, heater_index)
+            if e is not None:
+                heater = e.get_heater()
+        if heater is None:
+            self.respond_error("Heater is not configured")
+        else:
+            temp = self.get_float('S', params)
+            #count = self.get_int('C', params, 12, 8)
+            heater.start_auto_tune(temp)
+            self.bg_temp(heater)
+    def request_restart(self, result):
+        if self.is_printer_ready:
+            self.respond_info("Preparing to restart...")
+            self.motor_heater_off()
+            self.toolhead.dwell(0.500)
+            self.toolhead.wait_moves()
+        self.printer.request_exit(result)
+    cmd_RESTART_when_not_ready = True
+    cmd_RESTART_help = "Reload config file and restart host software"
+    def cmd_RESTART(self, params):
+        self.request_restart('restart')
+    cmd_FIRMWARE_RESTART_when_not_ready = True
+    cmd_FIRMWARE_RESTART_help = "Restart firmware, host, and reload config"
+    cmd_FIRMWARE_RESTART_aliases = ["M999"]
+    def cmd_FIRMWARE_RESTART(self, params):
+        self.request_restart('firmware_restart')
+    cmd_ECHO_when_not_ready = True
+    def cmd_ECHO(self, params):
+        self.respond_info(params['#original'])
+    cmd_STATUS_when_not_ready = True
+    cmd_STATUS_help = "Report the printer status"
+    def cmd_STATUS(self, params):
+        msg = self.printer.get_state_message()
+        if self.is_printer_ready:
+            self.respond_info(msg)
+        else:
+            self.respond_error(msg)
+    cmd_HELP_when_not_ready = True
+    def cmd_HELP(self, params):
+        cmdhelp = []
+        if not self.is_printer_ready:
+            cmdhelp.append("Printer is not ready - not all commands available.")
+        cmdhelp.append("Available extended commands:")
+        for cmd in sorted(self.gcode_handlers):
+            if cmd in self.gcode_help:
+                cmdhelp.append("%-10s: %s" % (cmd, self.gcode_help[cmd]))
+        self.respond_info("\n".join(cmdhelp))
+
+
+
+
+    # TODO: firmware retraction support
+    def cmd_G10(self, params):
+        # G10: Retract
+        short = 0
+        if 'S' in params:
+            short = self.get_int('S', params, 0)
+    def cmd_G11(self, params):
+        # G11: Unretract
+        short = 0
+        if 'S' in params:
+            short = self.get_int('S', params, 0)
+    def cmd_G29(self, params):
+        self.respond_info("Bed levelling is not supported yet!")
+        #self.cmd_default(params)
+        pass
+
+    def cmd_M0(self, params):
+        heaters_on = self.get_int('H', params, 0)
+        if (heaters_on is 0):
+            self.motor_heater_off()
+        elif self.toolhead is not None:
+            self.toolhead.motor_off()
+            # self.respond("Printer reset invoked")
+            # self.printer.request_exit('firmware_restart')
+    def cmd_M1(self, params):
+        # Wait for current moves to finish
+        self.toolhead.wait_moves()
+        self.motor_heater_off()
+        # self.respond("Printer restart invoked")
+        # self.printer.request_exit('restart')
+
+    def cmd_M37(self, params):
+        simulation_enabled = self.get_int('P', params, 0)
+        if simulation_enabled is 1:
+            self.simulate_print = True
+        else:
+            self.simulate_print = False
+
+    def cmd_M118(self, params):
+        self.respond_info(params['#original'].replace(params['#command'], ""))
+
+    def cmd_M204(self, params):
+        # Set default acceleration
+        accel = self.get_int('A', params, None)
+        if accel is not None and 0. < accel:
+            self.toolhead.max_accel = accel
+            self.toolhead.get_kinematics().update_velocities()
+        decel = self.get_int('D', params, None)
+        if decel is not None and 0. < decel:
+            self.toolhead.max_accel_to_decel = decel
+        elif accel is not None and 0. < accel:
+            self.toolhead.max_accel_to_decel = 0.5 * accel
+        self.respond_info("Accel %u, decel %u" % (self.toolhead.max_accel,
+                                                  self.toolhead.max_accel_to_decel,))
+    def cmd_M205(self, params):
+        # Set advanced settings
+        value = self.get_float('X', params, None)
+        if value is not None and 0. < value:
+            self.toolhead.junction_deviation = value
+            self.toolhead.get_kinematics().update_velocities()
+        self.respond_info("Junction deviation %.2f" % (self.toolhead.junction_deviation,))
+
+    def cmd_M290(self, params):
+        # Babystepping
+        if 'S' in params:
+            babysteps_to_apply = self.get_float('S', params)
+            if (self.absolutecoord):
+                self.base_position[self.axis2pos['Z']] += babysteps_to_apply
+            else:
+                self.last_position[self.axis2pos['Z']] += babysteps_to_apply
+            self.babysteps += babysteps_to_apply
+
+        elif 'R' in params: # Reset
+            if (self.absolutecoord):
+                self.base_position[self.axis2pos['Z']] -= self.babysteps
+            else:
+                self.last_position[self.axis2pos['Z']] -= self.babysteps
+            self.babysteps = 0.0
+
+        else:
+            self.respond_info("Baby stepping offset is %.3fmm" % (self.babysteps,))
+
+    def cmd_M302(self, params):
+        # Allow cold extrusion
+        #       M302         ; report current cold extrusion state
+        #       M302 P0      ; enable cold extrusion checking
+        #       M302 P1      ; disables cold extrusion checking
+        #       M302 S0      ; always allow extrusion (disables checking)
+        #       M302 S170    ; only allow extrusion above 170
+        #       M302 S170 P1 ; set min extrude temp to 170 but leave disabled
+        disable = None
+        temperature = None
+        if 'P' in params:
+            disable = self.get_int('P', params, 0) == 1
+        if 'S' in params:
+            temperature = self.get_int('S', params, -1)
+        for h in self.printer.lookup_module_objects("heater"):
+            h.set_min_extrude_temp(temperature, disable)
+            status, temp = h.get_min_extrude_status()
+            if "bed" not in h.name:
+                self.respond_info(
+                    "Heater '{}' cold extrude: {}, min temp {}C".
+                    format(h.name, status, temp))
+
+    def cmd_M301(self, params):
+        # TODO: M301: Set PID parameters
+        pass
+    def cmd_M304(self, params):
+        # TODO: M304: Set PID parameters - Bed
+        pass
+
+    def cmd_M550(self, params):
+        if 'P' in params:
+            self.printer.name = params['P']
+        self.logger.info("My name is now {}".format(self.printer.name))
+
+    def cmd_M851(self, params):
+        # Set X, Y, Z offsets
+        steppers = self.toolhead.get_kinematics().get_steppers()
+        offsets = { self.axis2pos[a]: self.get_float(a, params)
+                    for a, p in self.axis2pos.items() if a in params }
+        for p, offset in offsets.items():
+            steppers[p].set_homing_offset(offset)
+        self.respond_info("Current offsets: X=%.2f Y=%.2f Z=%.2f" % \
+                          (steppers[0].homing_offset,
+                           steppers[1].homing_offset,
+                           steppers[2].homing_offset))
+
+    def cmd_M900(self, params):
+        # Pressure Advance configuration
+        index = self.get_int('T', params, None)
+        extr = extruder.get_printer_extruder(self.printer, index)
+        if extr is None:
+            extr = self.extruder
+        if extr is None:
+            return
+        pa = self.get_float('P', params, None)
+        t  = self.get_float('L', params, None)
+        if pa is not None and 0. <= pa:
+            extr.pressure_advance = pa
+            if pa == 0.:
+                t = 0. # disable lookahead as well
+        if t is not None and 0. <= t:
+            extr.pressure_advance_lookahead_time = t
+        self.respond_info("Pressure Advance %.2f, lookahead time %.3f" % \
+                          (extr.pressure_advance,
+                           extr.pressure_advance_lookahead_time))
+
+    def cmd_DRV_STATUS(self, params):
+        # Driver status if exists
+        steppers = self.toolhead.get_kinematics().get_steppers()
+        steppers.extend([ extr.stepper for extr in extruder.get_printer_extruders(self.printer) ])
+        for stepper in steppers:
+            stepper.driver.status(log=self.respond_info)
+    def cmd_DRV_CURRENT(self, params):
+        # Driver current
+        drivers = { self.axis2pos[a]: self.get_float(a, params)
+                    for a in 'XYZ' if a in params }
+        steppers = self.toolhead.get_kinematics().get_steppers()
+        for drv, current in drivers.items():
+            steppers[drv].driver.set_current(current)
+
+        extrs = { int(a[1:]) : self.get_float(a, params) for a in params if "E" in a  }
+        for index, current in extrs.items():
+            extr = extruder.get_printer_extruder(self.printer, index)
+            if extr is None:
+                self.respond_error("Extruder %d not configured" % (index,))
+                return
+            extr.stepper.driver.set_current(current)
+    def cmd_DRV_SG(self, params):
+        # Driver StallGuard value
+        drivers = { self.axis2pos[a]: self.get_float(a, params)
+                    for a in 'XYZ' if a in params }
+        steppers = self.toolhead.get_kinematics().get_steppers()
+        for drv, sg in drivers.items():
+            driver = steppers[drv].driver
+            if hasattr(driver, 'set_stallguard'):
+                driver.set_stallguard(sg)
+        extrs = { int(a[1:]) : self.get_float(a, params) for a in params if "E" in a }
+        for index, current in extrs.items():
+            extr = extruder.get_printer_extruder(self.printer, index)
+            if extr is None:
+                self.respond_error("Extruder %d not configured" % (index,))
+                return
+            if hasattr(extr.stepper.driver, 'set_stallguard'):
+                extr.stepper.driver.set_stallguard(current)
+
+
+
+
 
     def _plan_arc(self, position, arc_offset, clockwise):
         N_ARC_CORRECTION = 25
@@ -632,462 +1058,3 @@ class GCodeParser:
                 self._plan_arc(self.base_position, arc_offset, clockwise)
         # Arch itself
         self._plan_arc(self.last_position, arc_offset, clockwise)
-
-
-    all_handlers = [
-        'G1', 'G2', 'G3', 'G4', 'G10', 'G11', 'G20', 'G28', 'G29',
-        'G90', 'G91', 'G92',
-        'M0', 'M1', 'M18', 'M37', 'M82', 'M83',
-        'M104', 'M105', 'M106', 'M107', 'M109',
-        'M112', 'M114', 'M115', 'M118',
-        'M140', 'M190',
-        'M204', 'M205', 'M206', 'M220', 'M221', 'M290',
-        'M302',
-        'M400',
-        'M550',
-        'M851',
-        'M900',
-        'IGNORE', 'QUERY_ENDSTOPS', 'PID_TUNE',
-        'RESTART', 'FIRMWARE_RESTART', 'ECHO', 'STATUS', 'HELP',
-
-        # Stepper driver commands:
-        'DRV_STATUS', 'DRV_CURRENT', 'DRV_SG',
-    ]
-
-    # Basic movement
-    cmd_G1_aliases = ['G0']
-    def cmd_G1(self, params):
-        # Move
-        self._parse_movement(params)
-        self._apply_move(self.last_position, self.speed)
-
-    # todo Arch support
-    def cmd_G2(self, params):
-        # G2 Xnnn Ynnn Innn Jnnn Ennn Fnnn (Clockwise Arc)
-        self._calculate_arch(params, 1)
-    def cmd_G3(self, params):
-        # G3 Xnnn Ynnn Innn Jnnn Ennn Fnnn (Counter-Clockwise Arc)
-        self._calculate_arch(params, 0)
-
-    def cmd_G4(self, params):
-        # Dwell
-        if 'S' in params:
-            delay = self.get_float('S', params)
-        else:
-            delay = self.get_float('P', params, 0.0) / 1000.0
-        self.toolhead.dwell(delay)
-
-    # todo firmware retraction support
-    def cmd_G10(self, params):
-        # G10: Retract
-        short = 0
-        if 'S' in params:
-            short = self.get_int('S', params, 0)
-    def cmd_G11(self, params):
-        # G11: Unretract
-        short = 0
-        if 'S' in params:
-            short = self.get_int('S', params, 0)
-
-    def cmd_G20(self, params):
-        # Set units to inches
-        self.respond_error('Machine does not support G20 (inches) command')
-
-    # Homing
-    def cmd_G28(self, params):
-        # Move to origin
-        axes = []
-        homing_order = self.toolhead.homing_order
-        for axis in homing_order:
-            if axis in params:
-                axes.append(self.axis2pos[axis])
-        if not axes:
-            axes = [self.axis2pos[axis] for axis in homing_order]
-        homing_state = homing.Homing(self.toolhead)
-        if self.is_fileinput:
-            homing_state.set_no_verify_retract()
-        try:
-            homing_state.home_axes(axes)
-        except homing.EndstopError as e:
-            raise error(str(e))
-        '''
-        newpos = self.toolhead.get_position()
-        for axis in homing_state.get_axes():
-            self.last_position[axis] = newpos[axis]
-            self.base_position[axis] = -self.homing_add[axis]
-        '''
-        # Reset current position
-        self.reset_last_position()
-        for axis in homing_state.get_axes():
-            self.base_position[axis] = -self.homing_add[axis]
-
-    def cmd_G29(self, params):
-        self.respond_info("Bed levelling is not supported yet!")
-        #self.cmd_default(params)
-        pass
-
-    # G-Code coordinate manipulation
-    def cmd_G90(self, params):
-        # Use absolute coordinates
-        self.absolutecoord = True
-    def cmd_G91(self, params):
-        # Use relative coordinates
-        self.absolutecoord = False
-
-    def cmd_G92(self, params):
-        # Set position
-        offsets = { p: self.get_float(a, params)
-                    for a, p in self.axis2pos.items() if a in params }
-        for p, offset in offsets.items():
-            if p == 3:
-                offset *= self.extruder.extrude_factor
-            self.base_position[p] = self.last_position[p] - offset
-        if not offsets:
-            self.base_position = list(self.last_position)
-
-    def cmd_M0(self, params):
-        heaters_on = self.get_int('H', params, 0)
-        if (heaters_on is 0):
-            self.motor_heater_off()
-        elif self.toolhead is not None:
-            self.toolhead.motor_off()
-            # self.respond("Printer reset invoked")
-            # self.printer.request_exit('firmware_restart')
-    def cmd_M1(self, params):
-        # Wait for current moves to finish
-        self.toolhead.wait_moves()
-        self.motor_heater_off()
-        # self.respond("Printer restart invoked")
-        # self.printer.request_exit('restart')
-
-    def cmd_M37(self, params):
-        simulation_enabled = self.get_int('P', params, 0)
-        if simulation_enabled is 1:
-            self.simulate_print = True
-        else:
-            self.simulate_print = False
-
-    def cmd_M82(self, params):
-        # Use absolute distances for extrusion
-        self.absoluteextrude = True
-    def cmd_M83(self, params):
-        # Use relative distances for extrusion
-        self.absoluteextrude = False
-
-    cmd_M18_aliases = ["M84"]
-    def cmd_M18(self, params):
-        # Turn off motors
-        # Should wait queued moves to prevent unwanted error!
-        self.toolhead.wait_moves()
-        self.toolhead.motor_off()
-    def cmd_M104(self, params):
-        # Set Extruder Temperature
-        self.set_temp(params)
-    cmd_M105_when_not_ready = True
-    def cmd_M105(self, params):
-        # Get Extruder Temperature
-        self.ack(self.get_temp(self.reactor.monotonic()))
-    def cmd_M106(self, params):
-        # Set fan speed
-        self.set_fan_speed(self.get_float('S', params, 255.0) / 255.0,
-                           self.get_int('P', params, 0))
-    def cmd_M107(self, params):
-        # Turn fan off
-        self.set_fan_speed(0.0, self.get_int('P', params, 0))
-    def cmd_M109(self, params):
-        # Set Extruder Temperature and Wait
-        self.set_temp(params, wait=True)
-    # G-Code miscellaneous commands
-    cmd_M112_when_not_ready = True
-    def cmd_M112(self, params):
-        # Emergency Stop
-        self.printer.invoke_shutdown("Shutdown due to M112 command")
-    cmd_M114_when_not_ready = True
-    def cmd_M114(self, params):
-        # Get Current Position
-        if self.toolhead is None:
-            self.cmd_default(params)
-            return
-        raw_pos = homing.query_position(self.toolhead)
-        self.respond("X:%.3f Y:%.3f Z:%.3f E:%.3f Count %s" % (
-            self.last_position[0], self.last_position[1],
-            self.last_position[2], self.last_position[3],
-            " ".join(["%s:%d" % (n.upper(), p) for n, p in raw_pos])))
-    cmd_M115_when_not_ready = True
-    def cmd_M115(self, params):
-        # Get Firmware Version and Capabilities
-        software_version = self.printer.get_start_args().get('software_version')
-        kw = {"FIRMWARE_NAME": "Klipper", "FIRMWARE_VERSION": software_version}
-        self.ack(" ".join(["%s:%s" % (k, v) for k, v in kw.items()]))
-
-    def cmd_M118(self, params):
-        self.respond_info(params['#original'].replace(params['#command'], ""))
-    def cmd_M140(self, params):
-        # Set Bed Temperature
-        self.set_temp(params, is_bed=True)
-    def cmd_M190(self, params):
-        # Set Bed Temperature and Wait
-        self.set_temp(params, is_bed=True, wait=True)
-
-    def cmd_M204(self, params):
-        # Set default acceleration
-        accel = self.get_int('A', params, None)
-        if accel is not None and 0. < accel:
-            self.toolhead.max_accel = accel
-            self.toolhead.get_kinematics().update_velocities()
-        decel = self.get_int('D', params, None)
-        if decel is not None and 0. < decel:
-            self.toolhead.max_accel_to_decel = decel
-        elif accel is not None and 0. < accel:
-            self.toolhead.max_accel_to_decel = 0.5 * accel
-        self.respond_info("Accel %u, decel %u" % (self.toolhead.max_accel,
-                                                  self.toolhead.max_accel_to_decel,))
-    def cmd_M205(self, params):
-        # Set advanced settings
-        value = self.get_float('X', params, None)
-        if value is not None and 0. < value:
-            self.toolhead.junction_deviation = value
-            self.toolhead.get_kinematics().update_velocities()
-        self.respond_info("Junction deviation %.2f" % (self.toolhead.junction_deviation,))
-    def cmd_M206(self, params):
-        # Set home offset
-        offsets = { self.axis2pos[a]: self.get_float(a, params)
-                    for a in 'XYZ' if a in params }
-        for p, offset in offsets.items():
-            self.base_position[p] += self.homing_add[p] - offset
-            self.homing_add[p] = offset
-        self.respond_info("Current offsets: X:%.2f, Y:%.2f, Z:%.2f" % (
-            self.homing_add[0], self.homing_add[1], self.homing_add[2]))
-
-    def cmd_M220(self, params):
-        # M220: Set speed factor override percentage
-        value = self.get_float('S', params, 100.) / (60. * 100.)
-        if value <= 0.:
-            raise error("Invalid factor in '%s'" % (params['#original'],))
-        self.speed_factor = value
-    def cmd_M221(self, params):
-        # M221: Set extrude factor override percentage
-        new_extrude_factor = self.get_float('S', params, 100.) / 100.
-        if new_extrude_factor <= 0.:
-            raise error("Invalid factor in '%s'" % (params['#original'],))
-        index = extr = None
-        # extruder number
-        if 'D' in params:
-            index = self.get_int('D', params)
-        elif 'T' in params:
-            index = self.get_int('T', params)
-        if index is None:
-            extr = self.extruder
-        else:
-            extr = extruder.get_printer_extruder(self.printer, index)
-        if extr is not None:
-            last_e_pos = self.last_position[3]
-            e_value = (last_e_pos - self.base_position[3]) / extr.extrude_factor
-            self.base_position[3] = last_e_pos - e_value * new_extrude_factor
-            extr.extrude_factor = new_extrude_factor
-
-    def cmd_M290(self, params):
-        # Babystepping
-        if 'S' in params:
-            babysteps_to_apply = self.get_float('S', params)
-            if (self.absolutecoord):
-                self.base_position[self.axis2pos['Z']] += babysteps_to_apply
-            else:
-                self.last_position[self.axis2pos['Z']] += babysteps_to_apply
-            self.babysteps += babysteps_to_apply
-
-        elif 'R' in params: # Reset
-            if (self.absolutecoord):
-                self.base_position[self.axis2pos['Z']] -= self.babysteps
-            else:
-                self.last_position[self.axis2pos['Z']] -= self.babysteps
-            self.babysteps = 0.0
-
-        else:
-            self.respond_info("Baby stepping offset is %.3fmm" % (self.babysteps,))
-
-    def cmd_M302(self, params):
-        # Allow cold extrusion
-        #       M302         ; report current cold extrusion state
-        #       M302 P0      ; enable cold extrusion checking
-        #       M302 P1      ; disables cold extrusion checking
-        #       M302 S0      ; always allow extrusion (disables checking)
-        #       M302 S170    ; only allow extrusion above 170
-        #       M302 S170 P1 ; set min extrude temp to 170 but leave disabled
-        disable = None
-        temperature = None
-        if 'P' in params:
-            disable = self.get_int('P', params, 0) == 1
-        if 'S' in params:
-            temperature = self.get_int('S', params, -1)
-        for k,h in heater.get_printer_heaters(self.printer).items():
-            if not h.is_bed:
-                h.set_min_extrude_temp(temperature, disable)
-                status, temp = h.get_min_extrude_status()
-                self.respond_info(
-                    "Heater '{}' cold extrude: {}, min temp {}C".
-                    format(h.name, status, temp))
-
-    def cmd_M301(self, params):
-        # TODO: M301: Set PID parameters
-        pass
-    def cmd_M304(self, params):
-        # TODO: M304: Set PID parameters - Bed
-        pass
-
-    def cmd_M400(self, params):
-        # Wait for current moves to finish
-        self.toolhead.wait_moves()
-
-    def cmd_M550(self, params):
-        if 'P' in params:
-            self.printer.name = params['P']
-        self.logger.info("My name is now {}".format(self.printer.name))
-
-    def cmd_M851(self, params):
-        # Set X, Y, Z offsets
-        offsets = { a.lower(): self.get_float(a, params)
-                    for a, p in self.axis2pos.items() if a in params }
-        if len(offsets) > 0:
-            if self.toolhead is None:
-                self.cmd_default(params)
-                return
-            self.toolhead.set_homing_offset(offsets)
-        else:
-            self.respond_info("Current offsets: X=%.2f Y=%.2f Z=%.2f" % \
-                              (self.toolhead.kin.steppers[0].homing_offset,
-                               self.toolhead.kin.steppers[1].homing_offset,
-                               self.toolhead.kin.steppers[2].homing_offset))
-
-    def cmd_M900(self, params):
-        # Pressure Advance configuration
-        index = self.get_int('T', params, None)
-        extr = extruder.get_printer_extruder(self.printer, index)
-        if extr is None:
-            extr = self.extruder
-        if extr is None:
-            return
-        pa = self.get_float('P', params, None)
-        t  = self.get_float('L', params, None)
-        if pa is not None and 0. <= pa:
-            extr.pressure_advance = pa
-            if pa == 0.:
-                t = 0. # disable lookahead as well
-        if t is not None and 0. <= t:
-            extr.pressure_advance_lookahead_time = t
-        self.respond_info("Pressure Advance %.2f, lookahead time %.3f" % \
-                          (extr.pressure_advance,
-                           extr.pressure_advance_lookahead_time))
-
-    def cmd_DRV_STATUS(self, params):
-        # Driver status if exists
-        steppers = self.toolhead.kin.steppers
-        steppers.extend([ extr.stepper for extr in extruder.get_printer_extruders(self.printer) ])
-        for stepper in steppers:
-            stepper.driver.status(log=self.respond_info)
-    def cmd_DRV_CURRENT(self, params):
-        # Driver current
-        drivers = { self.axis2pos[a]: self.get_float(a, params)
-                    for a in 'XYZ' if a in params }
-        for drv, current in drivers.items():
-            self.toolhead.kin.steppers[drv].driver.set_current(current)
-
-        extrs = { int(a[1:]) : self.get_float(a, params) for a in params if "E" in a  }
-        for index, current in extrs.items():
-            extr = extruder.get_printer_extruder(self.printer, index)
-            if extr is None:
-                self.respond_error("Extruder %d not configured" % (index,))
-                return
-            extr.stepper.driver.set_current(current)
-    def cmd_DRV_SG(self, params):
-        # Driver StallGuard value
-        drivers = { self.axis2pos[a]: self.get_float(a, params)
-                    for a in 'XYZ' if a in params }
-        for drv, sg in drivers.items():
-            driver = self.toolhead.kin.steppers[drv].driver
-            if hasattr(driver, 'set_stallguard'):
-                driver.set_stallguard(sg)
-        extrs = { int(a[1:]) : self.get_float(a, params) for a in params if "E" in a }
-        for index, current in extrs.items():
-            extr = extruder.get_printer_extruder(self.printer, index)
-            if extr is None:
-                self.respond_error("Extruder %d not configured" % (index,))
-                return
-            if hasattr(extr.stepper.driver, 'set_stallguard'):
-                extr.stepper.driver.set_stallguard(current)
-
-    cmd_IGNORE_when_not_ready = True
-    cmd_IGNORE_aliases = [
-        "G21",
-        "M21",
-        "M110", 'M120', 'M121', 'M122', "M141",
-        'M291', 'M292',
-        'M752', 'M753', 'M754', 'M755', 'M756',
-        'M997'
-    ]
-    def cmd_IGNORE(self, params):
-        # Commands that are just silently accepted
-        pass
-    cmd_QUERY_ENDSTOPS_help = "Report on the status of each endstop"
-    cmd_QUERY_ENDSTOPS_aliases = ["M119"]
-    def cmd_QUERY_ENDSTOPS(self, params):
-        # Get Endstop Status
-        res = homing.query_endstops(self.toolhead)
-        self.respond(" ".join(["%s:%s" % (name, ["open", "TRIGGERED"][not not t])
-                               for name, t in res]))
-    cmd_PID_TUNE_help = "Run PID Tuning"
-    cmd_PID_TUNE_aliases = ["M303"]
-    def cmd_PID_TUNE(self, params):
-        # Run PID tuning (M303 E<-1 or 0...> S<temp> C<count>)
-        heater = None;
-        heater_index = self.get_int('E', params, 0)
-        if (heater_index == -1):
-            heater = self.printer.objects.get('heater_bed')
-        else:
-            e = extruder.get_printer_extruder(self.printer, heater_index)
-            if e is not None:
-                heater = e.get_heater()
-        if heater is None:
-            self.respond_error("Heater is not configured")
-        else:
-            temp = self.get_float('S', params)
-            #count = self.get_int('C', params, 12, 8)
-            heater.start_auto_tune(temp)
-            self.bg_temp(heater)
-    def request_restart(self, result):
-        if self.is_printer_ready:
-            self.respond_info("Preparing to restart...")
-            self.motor_heater_off()
-            self.toolhead.dwell(0.500)
-            self.toolhead.wait_moves()
-        self.printer.request_exit(result)
-    cmd_RESTART_when_not_ready = True
-    cmd_RESTART_help = "Reload config file and restart host software"
-    def cmd_RESTART(self, params):
-        self.request_restart('restart')
-    cmd_FIRMWARE_RESTART_when_not_ready = True
-    cmd_FIRMWARE_RESTART_help = "Restart firmware, host, and reload config"
-    cmd_FIRMWARE_RESTART_aliases = ["M999"]
-    def cmd_FIRMWARE_RESTART(self, params):
-        self.request_restart('firmware_restart')
-    cmd_ECHO_when_not_ready = True
-    def cmd_ECHO(self, params):
-        self.respond_info(params['#original'])
-    cmd_STATUS_when_not_ready = True
-    cmd_STATUS_help = "Report the printer status"
-    def cmd_STATUS(self, params):
-        msg = self.printer.get_state_message()
-        if self.is_printer_ready:
-            self.respond_info(msg)
-        else:
-            self.respond_error(msg)
-    cmd_HELP_when_not_ready = True
-    def cmd_HELP(self, params):
-        cmdhelp = []
-        if not self.is_printer_ready:
-            cmdhelp.append("Printer is not ready - not all commands available.")
-        cmdhelp.append("Available extended commands:")
-        for cmd in sorted(self.gcode_handlers):
-            if cmd in self.gcode_help:
-                cmdhelp.append("%-10s: %s" % (cmd, self.gcode_help[cmd]))
-        self.respond_info("\n".join(cmdhelp))

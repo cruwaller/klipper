@@ -1,12 +1,19 @@
 #!/usr/bin/env python2
 # Main code for host side printer firmware
 #
-# Copyright (C) 2016,2017  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import sys, os, optparse, ConfigParser, logging, time, threading
-import util, reactor, queuelogger, msgproto, gcode
-import pins, mcu, chipmisc, toolhead, extruder, heater, fan
+import sys, os, optparse, logging, time, threading
+import collections, ConfigParser, importlib
+
+# Include extras path to search dir
+sys.path.append(os.path.join(os.path.dirname(__file__), "extras"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "modules"))
+
+import util, reactor, queuelogger, msgproto
+import gcode, pins, mcu, chipmisc, toolhead, extruder, heater
+
 
 status_delay = 1.0
 
@@ -65,13 +72,18 @@ class ConfigWrapper:
     error = ConfigParser.Error
     class sentinel:
         pass
-    def __init__(self, printer, section):
+    def __init__(self, printer, fileconfig, section):
         self.printer = printer
+        self.fileconfig = fileconfig
         self.section = section
-    def get_wrapper(self, parser, option, default
-                    , minval=None, maxval=None, above=None, below=None):
+    def get_printer(self):
+        return self.printer
+    def get_name(self):
+        return self.section
+    def _get_wrapper(self, parser, option, default,
+                     minval=None, maxval=None, above=None, below=None):
         if (default is not self.sentinel
-            and not self.printer.fileconfig.has_option(self.section, option)):
+            and not self.fileconfig.has_option(self.section, option)):
             return default
         self.printer.all_config_options[
             (self.section.lower(), option.lower())] = 1
@@ -100,18 +112,16 @@ class ConfigWrapper:
                     option, self.section, below))
         return v
     def get(self, option, default=sentinel):
-        return self.get_wrapper(self.printer.fileconfig.get, option, default)
+        return self._get_wrapper(self.fileconfig.get, option, default)
     def getint(self, option, default=sentinel, minval=None, maxval=None):
-        return self.get_wrapper(
-            self.printer.fileconfig.getint, option, default, minval, maxval)
-    def getfloat(self, option, default=sentinel
-                 , minval=None, maxval=None, above=None, below=None):
-        return self.get_wrapper(
-            self.printer.fileconfig.getfloat, option, default
-            , minval, maxval, above, below)
+        return self._get_wrapper(
+            self.fileconfig.getint, option, default, minval, maxval)
+    def getfloat(self, option, default=sentinel,
+                 minval=None, maxval=None, above=None, below=None):
+        return self._get_wrapper(self.fileconfig.getfloat, option, default,
+                                 minval, maxval, above, below)
     def getboolean(self, option, default=sentinel):
-        return self.get_wrapper(
-            self.printer.fileconfig.getboolean, option, default)
+        return self._get_wrapper(self.fileconfig.getboolean, option, default)
     def getchoice(self, option, choices, default=sentinel):
         c = self.get(option, default)
         if c not in choices:
@@ -120,11 +130,11 @@ class ConfigWrapper:
                     option, self.section))
         return choices[c]
     def getsection(self, section):
-        return ConfigWrapper(self.printer, section)
+        return ConfigWrapper(self.printer, self.fileconfig, section)
     def has_section(self, section):
-        return self.printer.fileconfig.has_section(section)
+        return self.fileconfig.has_section(section)
     def get_prefix_sections(self, prefix):
-        return [self.getsection(s) for s in self.printer.fileconfig.sections()
+        return [self.getsection(s) for s in self.fileconfig.sections()
                 if s.startswith(prefix)]
 
 class ConfigLogger():
@@ -149,8 +159,8 @@ class Printer:
         if bglogger is not None:
             bglogger.set_rollover_info("config", None)
         self.reactor = reactor.Reactor()
-        self.gcode = gcode.GCodeParser(self, input_fd)
-        self.objects = {'gcode': self.gcode}
+        gc = gcode.GCodeParser(self, input_fd)
+        self.objects = collections.OrderedDict({'gcode': gc})
         self.stats_timer = self.reactor.register_timer(self._stats)
         self.connect_timer = self.reactor.register_timer(
             self._connect, self.reactor.NOW)
@@ -159,74 +169,111 @@ class Printer:
         self.is_shutdown = False
         self.async_shutdown_msg = ""
         self.run_result = None
-        self.fileconfig = None
-        self.mcus = []
-        self.starttime = time.time()
+        self.stats_cb = []
+        self.state_cb = []
+        self.starttime = time.time() # RepRap WebGUI
     def get_start_args(self):
         return self.start_args
-    def _stats(self, eventtime, force_output=False):
-        toolhead = self.objects.get('toolhead')
-        if toolhead is None:
-            return eventtime + 1.
-        is_active = toolhead.check_active(eventtime)
-        if not is_active and not force_output:
-            return eventtime + 1.
-        out = []
-        out.append(self.gcode.stats(eventtime))
-        out.append(toolhead.stats(eventtime))
-        for m in self.mcus:
-            out.append(m.stats(eventtime))
-        self.logger.info("Stats %.1f: %s", eventtime, ' '.join(out))
-        return eventtime + status_delay
+    def get_reactor(self):
+        return self.reactor
+    def get_state_message(self):
+        return self.state_message
     def add_object(self, name, obj):
+        if obj in self.objects:
+            raise self.config_error(
+                "Printer object '%s' already created" % (name,))
         self.objects[name] = obj
-    def get_object(self, name):
-        return self.objects.get(name)
-    def get_objects_with_prefix(self, prefix):
-        return [ val for key,val in self.objects.items() if prefix in key ]
-    def _load_config(self):
-        self.fileconfig = ConfigParser.RawConfigParser()
+    def lookup_object(self, name, default=ConfigWrapper.sentinel):
+        if name in self.objects:
+            return self.objects[name]
+        if default is ConfigWrapper.sentinel:
+            raise self.config_error("Unknown config object '%s'" % (name,))
+        return default
+    def lookup_module_objects(self, module_name):
+        prefix = module_name + ' '
+        objs = [self.objects[n] for n in self.objects if n.startswith(prefix)]
+        if module_name in self.objects:
+            return [self.objects[module_name]] + objs
+        return objs
+    def set_rollover_info(self, name, info):
+        if self.bglogger is not None:
+            self.bglogger.set_rollover_info(name, info)
+    def _stats(self, eventtime, force_output=False):
+        stats = [cb(eventtime) for cb in self.stats_cb]
+        if max([s[0] for s in stats] + [force_output]):
+            self.logger.info("Stats %.1f: %s", eventtime,
+                             ' '.join([s[1] for s in stats]))
+        return eventtime + status_delay
+    def _try_load_module(self, config, section):
+        if section in self.objects:
+            return
+        module_parts = section.split()
+        module_name = module_parts[0]
+        try:
+            mod = importlib.import_module(module_name)
+        except ImportError:
+            return
+        init_func = 'load_config'
+        if len(module_parts) > 1:
+            init_func = 'load_config_prefix'
+        init_func = getattr(mod, init_func, None)
+        if init_func is not None:
+            self.objects[section] = init_func(config.getsection(section))
+    def _read_config(self):
+        fileconfig = ConfigParser.RawConfigParser()
         config_file = self.start_args['config_file']
-        res = self.fileconfig.read(config_file)
+        res = fileconfig.read(config_file)
         if not res:
             raise self.config_error("Unable to open config file %s" % (
                 config_file,))
         if self.bglogger is not None:
-            ConfigLogger(self.fileconfig, self.bglogger)
+            ConfigLogger(fileconfig, self.bglogger)
         # Create printer components
-        config = ConfigWrapper(self, 'printer')
+        config = ConfigWrapper(self, fileconfig, 'printer')
         # Read my name
         self.name = config.getsection('printer').get('name',
                                                      default="Klipper printer")
-        # keep order!
-        for m in [pins, mcu, chipmisc, heater, fan, toolhead, extruder]:
+        # Read config
+        for m in [pins, mcu]:
             m.add_printer_objects(self, config)
-        self.mcus = mcu.get_printer_mcus(self)
+        for section in fileconfig.sections():
+            self._try_load_module(config, section)
+        #for m in [chipmisc, heater, toolhead, extruder]:
+        for m in [chipmisc, toolhead, extruder]:
+            m.add_printer_objects(self, config)
         '''
-        # NOTE: Removed to allow debugging stuff to be left in config files....
-
         # Validate that there are no undefined parameters in the config file
         valid_sections = { s: 1 for s, o in self.all_config_options }
-        for section in self.fileconfig.sections():
+        for section in fileconfig.sections():
             section = section.lower()
-            if section not in valid_sections:
+            if section not in valid_sections and section not in self.objects:
                 raise self.config_error("Unknown config file section '%s'" % (
                     section,))
-            for option in self.fileconfig.options(section):
+            for option in fileconfig.options(section):
                 option = option.lower()
                 if (section, option) not in self.all_config_options:
                     raise self.config_error(
                         "Unknown option '%s' in section '%s'" % (
                             option, section))
         '''
+        # Determine which printer objects have stats/state callbacks
+        self.stats_cb = [o.stats for o in self.objects.values()
+                         if hasattr(o, 'stats')]
+        self.state_cb = [o.printer_state for o in self.objects.values()
+                         if hasattr(o, 'printer_state')]
     def _connect(self, eventtime):
         self.reactor.unregister_timer(self.connect_timer)
         try:
-            self._load_config()
-            for m in self.mcus:
-                m.connect()
-            self.gcode.connect()
+            self._read_config()
+            for cb in self.state_cb:
+                if self.state_message is not message_startup:
+                    return self.reactor.NEVER
+                cb('connect')
             self.state_message = message_ready
+            for cb in self.state_cb:
+                if self.state_message is not message_ready:
+                    return self.reactor.NEVER
+                cb('ready')
             if self.start_args.get('debugoutput') is None:
                 self.reactor.update_timer(self.stats_timer, self.reactor.NOW)
         except (self.config_error, pins.error) as e:
@@ -262,26 +309,21 @@ class Printer:
                     self.invoke_shutdown(self.async_shutdown_msg)
                     continue
                 self._stats(self.reactor.monotonic(), force_output=True)
-                for m in self.mcus:
-                    if run_result == 'firmware_restart':
+                if run_result == 'firmware_restart':
+                    for m in self.lookup_module_objects('mcu'):
                         m.microcontroller_restart()
-                    m.disconnect()
+                for cb in self.state_cb:
+                    cb('disconnect')
             except:
                 self.logger.exception("Unhandled exception during post run")
             return run_result
-    def get_state_message(self):
-        return self.state_message
     def invoke_shutdown(self, msg):
         if self.is_shutdown:
             return
         self.is_shutdown = True
         self.state_message = "%s%s" % (msg, message_shutdown)
-        for m in self.mcus:
-            m.do_shutdown()
-        self.gcode.do_shutdown()
-        toolhead = self.objects.get('toolhead')
-        if toolhead is not None:
-            toolhead.do_shutdown()
+        for cb in self.state_cb:
+            cb('shutdown')
     def invoke_async_shutdown(self, msg):
         self.async_shutdown_msg = msg
         self.request_exit("shutdown")
@@ -338,9 +380,9 @@ class Printer:
             curr_pos = toolhead.get_position()
         else:
             curr_pos = [0] * 4
-        fans     = [ fan.last_fan_value * 100.0 for fan in self.get_objects_with_prefix("fan") ]
-        heatbed  = self.objects.get('heater_bed')
-        _heaters = heater.get_printer_heaters(self)
+        fans     = [ fan.last_fan_value * 100.0 for fan in self.lookup_module_objects("fan") ]
+        heatbed  = self.lookup_object('heater bed')
+        _heaters = self.printer.lookup_module_objects("heater")
         _extrs   = extruder.get_printer_extruders(self)
         num_extruders = len(_extrs)
 
@@ -391,10 +433,9 @@ class Printer:
         htr_state   = [  3] * num_extruders
         htr_heater  = [ -1] * num_extruders
         htr_standby = [0.0] * num_extruders
-        for idx in _heaters:
-            htr = _heaters[idx]
-            #if htr.is_bed:
-            #    continue
+        for idx,htr in _heaters.items():
+            if htr == heatbed:
+                continue
             index = htr.index
             htr_current[index] = float("%.2f" % htr.last_temp)
             htr_active[index]  = float("%.2f" % htr.target_temp)

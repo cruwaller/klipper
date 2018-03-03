@@ -412,34 +412,31 @@ class error(Exception):
 
 class PrinterHeater:
     error = error
-    def __init__(self, printer, config, index):
-        self.index    = index
-        self._printer = printer
-        self.name     = config.section
-        self.is_bed = False
-        if "bed" in self.name:
-            self.is_bed = True
-        self.logger = printer.logger.getChild(self.name)
-        self.logger.debug("Add heater [{}] '{}'".format(self.index, self.name))
+    def __init__(self, config):
+        self.printer = printer = config.get_printer()
+        self.name = config.get_name()
+        try:
+            self.index = int(self.name[7:])
+        except ValueError:
+            self.index = -1 # Mark to bed
+        self.logger = printer.logger.getChild(self.name.replace(" ", "_"))
+        self.logger.debug("Add heater '{}', index {}".
+                          format(self.name, self.index))
         sensor_params = config.getchoice('sensor_type', Sensors)
-        self.sensor   = sensor_params['class'](config, sensor_params)
-        self.min_temp = config.getfloat('min_temp', minval=0.0)
+        self.sensor = sensor_params['class'](config, sensor_params)
+        self.min_temp = config.getfloat('min_temp', minval=0.)
         self.max_temp = config.getfloat('max_temp', above=self.min_temp)
-        self.min_extrude_temp = 170.0
+        self.min_extrude_temp = 170. # Set by the extruder
         self.min_extrude_temp_disabled = False
-        self.max_power      = config.getfloat('max_power',
-                                              1.0,
-                                              above=0.0,
-                                              maxval=1.0)
-        self.lock           = threading.Lock()
-        self.last_temp      = 0.0
-        self.last_temp_time = 0.0
-        self.target_temp    = 0.0
-        algos      = {'watermark': ControlBangBang,
-                      'pid': ControlPID}
-        algo       = config.getchoice('control', algos)
+        self.max_power = config.getfloat('max_power', 1., above=0., maxval=1.)
+        self.lock = threading.Lock()
+        self.last_temp = 0.
+        self.last_temp_time = 0.
+        self.target_temp = 0.
+        algos = {'watermark': ControlBangBang, 'pid': ControlPID}
+        algo = config.getchoice('control', algos)
         heater_pin = config.get('heater_pin')
-        if algo is ControlBangBang and self.max_power == 1.0:
+        if algo is ControlBangBang and self.max_power == 1.:
             self.mcu_pwm = pins.setup_pin(printer, 'digital_out', heater_pin)
         else:
             self.mcu_pwm = pins.setup_pin(printer, 'pwm', heater_pin)
@@ -478,12 +475,12 @@ class PrinterHeater:
                                          maxval=max(adc_range))
 
         self.mcu_sensor.setup_adc_callback(REPORT_TIME, self.adc_callback)
-
-        self.can_extrude = False
-        self.control     = algo(self, config)
+        is_fileoutput = self.mcu_sensor.get_mcu().is_fileoutput()
+        self.can_extrude = self.min_extrude_temp <= 0. or is_fileoutput
+        self.control = algo(self, config)
         # pwm caching
         self.next_pwm_time = 0.
-        self.last_pwm_value = 0
+        self.last_pwm_value = 0.
 
         # heat check timer
         self.protection_period_heat = \
@@ -526,9 +523,9 @@ class PrinterHeater:
                 errorstr = "Thermal runaway! current temp {}, last {}". \
                            format(current_temp, self.protection_last_temp)
                 self.set_temp(0, 0);
-                self._printer.gcode.respond_error(errorstr)
-                #self._printer.request_exit('firmware_restart')
-                self._printer.request_exit('shutdown')
+                self.printer.gcode.respond_error(errorstr)
+                #self.printer.request_exit('firmware_restart')
+                self.printer.request_exit('shutdown')
             self.protection_last_temp = current_temp
             next_time = self.protection_period
         elif (self.is_cooling):
@@ -547,9 +544,9 @@ class PrinterHeater:
                     errorstr = "Heating error! current temp {}, last {}". \
                                format(current_temp, self.protection_last_temp)
                     self.set_temp(0, 0);
-                    self._printer.gcode.respond_error(errorstr)
-                    #self._printer.request_exit('firmware_restart')
-                    self._printer.request_exit('shutdown')
+                    self.printer.gcode.respond_error(errorstr)
+                    #self.printer.request_exit('firmware_restart')
+                    self.printer.request_exit('shutdown')
             self.protection_last_temp = current_temp
             next_time = self.protection_period_heat
         self.logger.debug("check_heating(eventtime {}, next {}) {} / {}".
@@ -584,8 +581,8 @@ class PrinterHeater:
         pwm_time = read_time + REPORT_TIME + self.sensor.sample_time*self.sensor.sample_count
         self.next_pwm_time = pwm_time + 0.75 * MAX_HEAT_TIME
         self.last_pwm_value = value
-        self.logger.debug("pwm=%.3f@%.3f (from %.3f@%.3f [%.3f])",
-                          value, pwm_time,
+        self.logger.debug("%s: pwm=%.3f@%.3f (from %.3f@%.3f [%.3f])",
+                          self.name, value, pwm_time,
                           self.last_temp, self.last_temp_time, self.target_temp)
         self.mcu_pwm.set_pwm(pwm_time, value)
     def adc_callback(self, read_time, read_value, fault = 0):
@@ -643,6 +640,14 @@ class PrinterHeater:
             old_control.set_new_terms(kp, ki, kd)
         self.control = old_control
         self.set_temp(0, 0)
+    def stats(self, eventtime):
+        with self.lock:
+            target_temp = self.target_temp
+            last_temp = self.last_temp
+            last_pwm_value = self.last_pwm_value
+        is_active = target_temp or last_temp > 50.
+        return is_active, '%s: target=%.0f temp=%.1f pwm=%.3f' % (
+            self.name, target_temp, last_temp, last_pwm_value)
 
 
 ######################################################################
@@ -775,23 +780,37 @@ class ControlAutoTune:
             self.peak = -9999999.
         if len(self.peaks) < 4:
             return
-        temp_diff = self.peaks[-1][0] - self.peaks[-2][0]
-        time_diff = self.peaks[-1][1] - self.peaks[-3][1]
+        self.calc_pid(len(self.peaks)-1)
+    def calc_pid(self, pos):
+        temp_diff = self.peaks[pos][0] - self.peaks[pos-1][0]
+        time_diff = self.peaks[pos][1] - self.peaks[pos-2][1]
         max_power = self.heater.max_power
         Ku = 4. * (2. * max_power) / (abs(temp_diff) * math.pi)
         Tu = time_diff
 
-        self.Kp = 0.6 * Ku
         Ti = 0.5 * Tu
         Td = 0.125 * Tu
-        self.Ki = self.Kp / Ti
-        self.Kd = self.Kp * Td
+        Kp = 0.6 * Ku * PID_PARAM_BASE
+        Ki = Kp / Ti
+        Kd = Kp * Td
         self.logger.info("Autotune: raw=%f/%f Ku=%f Tu=%f  Kp=%f Ki=%f Kd=%f",
-                     temp_diff, max_power, Ku, Tu, self.Kp * PID_PARAM_BASE,
-                     self.Ki * PID_PARAM_BASE, self.Kd * PID_PARAM_BASE)
+                     temp_diff, max_power, Ku, Tu, Kp, Ki, Kd)
+        return Kp, Ki, Kd
+    def final_calc(self):
+        cycle_times = [(self.peaks[pos][1] - self.peaks[pos-2][1], pos)
+                       for pos in range(4, len(self.peaks))]
+        midpoint_pos = sorted(cycle_times)[len(cycle_times)/2][1]
+        self.Kp, self.Ki, self.Kd = self.calc_pid(midpoint_pos)
+        logging.info("Autotune: final: Kp=%f Ki=%f Kd=%f", self.Kp, self.Ki, self.Kd)
+        gcode = self.heater.printer.lookup_object('gcode')
+        gcode.respond_info(
+            "PID parameters: pid_Kp=%.3f pid_Ki=%.3f pid_Kd=%.3f\n"
+            "To use these parameters, update the printer config file with\n"
+            "the above and then issue a RESTART command" % (self.Kp, self.Ki, self.Kd))
     def check_busy(self, eventtime):
         if self.heating or len(self.peaks) < 12:
             return True
+        self.final_calc()
         self.heater.finish_auto_tune(self.old_control)
         return False
     def get_terms(self):
@@ -840,38 +859,9 @@ class ControlBumpTest:
         self.heater.finish_auto_tune(self.old_control)
         return False
 
-def add_printer_objects(printer, config):
-    index = 0
-    printer.__HEATERS_LST = {}
-    for s in config.get_prefix_sections('heater_'):
-        if 'fan' in s.section:
-            continue
-        #if 'bed' in s.section:
-        #    index_tmp = -1
-        #else:
-        #    index_tmp = index
-        #    index += 1
-        index_tmp = index
-        index += 1
-        temp = PrinterHeater(printer, s, index_tmp)
-        printer.add_object(s.section, temp)
-        printer.__HEATERS_LST[s.section] = temp
+def load_config(config):
+    raise config.get_printer().config_error(
+        "Naming without index (bed or [0-9]+) is not allowed")
 
-def get_printer_heaters(printer):
-    try:
-        return printer.__HEATERS_LST
-    except AttributeError:
-        return {}
-
-def get_printer_heater(printer, name):
-    try:
-        return printer.__HEATERS_LST[name]
-    except (KeyError, AttributeError):
-        return None
-    #if name == 'heater_bed' and name in printer.objects:
-    #    return printer.objects[name]
-    #if name == 'extruder':
-    #    name = 'extruder0'
-    #if name.startswith('extruder') and name in printer.objects:
-    #    return printer.objects[name].get_heater()
-    #raise printer.config_error("Unknown heater '%s'" % (name,))
+def load_config_prefix(config):
+    return PrinterHeater(config)

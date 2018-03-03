@@ -11,45 +11,41 @@ EXTRUDE_DIFF_IGNORE = 1.02
 
 class PrinterExtruder:
     def __init__(self, printer, config, index):
-        self.name   = config.section
+        self.name   = config.get_name()
         self.logger = printer.logger.getChild(self.name)
         self.config = config
         self.index  = index
-        self.heater = printer.objects.get(config.get('heater'))
+        self.heater = printer.lookup_object(config.get('heater').replace('"',''))
         self.heater.set_min_extrude_temp(config.getfloat('min_extrude_temp',
                                                          170.0))
         self.stepper = stepper.PrinterStepper(printer, config, self.logger)
         self.nozzle_diameter = config.getfloat('nozzle_diameter', above=0.)
-        filament_diameter = config.getfloat('filament_diameter',
-                                            minval=self.nozzle_diameter)
+        filament_diameter = config.getfloat(
+            'filament_diameter', minval=self.nozzle_diameter)
         self.filament_area = math.pi * (filament_diameter * .5)**2
-        max_cross_section = config.getfloat('max_extrude_cross_section',
-                                            4. * self.nozzle_diameter**2,
-                                            above=0.)
+        max_cross_section = config.getfloat(
+            'max_extrude_cross_section', 4. * self.nozzle_diameter**2
+            , above=0.)
         self.max_extrude_ratio = max_cross_section / self.filament_area
-        toolhead = printer.objects['toolhead']
+        toolhead = printer.lookup_object('toolhead')
         max_velocity, max_accel = toolhead.get_max_velocity()
-        self.max_e_velocity = self.config.getfloat('max_extrude_only_velocity',
-                                                   max_velocity * self.max_extrude_ratio,
-                                                   above=0.)
-        self.max_e_accel = self.config.getfloat('max_extrude_only_accel',
-                                                max_accel * self.max_extrude_ratio,
-                                                above=0.)
+        self.max_e_velocity = config.getfloat(
+            'max_extrude_only_velocity', max_velocity * self.max_extrude_ratio
+            , above=0.)
+        self.max_e_accel = config.getfloat(
+            'max_extrude_only_accel', max_accel * self.max_extrude_ratio
+            , above=0.)
         self.stepper.set_max_jerk(9999999.9, 9999999.9)
-        self.max_e_dist = config.getfloat('max_extrude_only_distance',
-                                          50.0,
-                                          minval=0.)
-        self.activate_gcode   = config.get('activate_gcode', '')
+        self.max_e_dist = config.getfloat(
+            'max_extrude_only_distance', 50., minval=0.)
+        self.activate_gcode = config.get('activate_gcode', '')
         self.deactivate_gcode = config.get('deactivate_gcode', '')
-        self.pressure_advance = config.getfloat('pressure_advance',
-                                                0.0,
-                                                minval=0.)
+        self.pressure_advance = config.getfloat(
+            'pressure_advance', 0., minval=0.)
         self.pressure_advance_lookahead_time = 0.
         if self.pressure_advance:
-            self.pressure_advance_lookahead_time = \
-                config.getfloat('pressure_advance_lookahead_time',
-                                0.010,
-                                minval=0.)
+            self.pressure_advance_lookahead_time = config.getfloat(
+                'pressure_advance_lookahead_time', 0.010, minval=0.)
         self.need_motor_enable = True
         self.extrude_pos = 0.
         self.extrude_factor = config.getfloat('extrusion_factor',
@@ -67,6 +63,8 @@ class PrinterExtruder:
         if is_active:
             return self.activate_gcode
         return self.deactivate_gcode
+    def stats(self, eventtime):
+        return self.heater.stats(eventtime)
     def motor_off(self, print_time):
         self.stepper.motor_enable(print_time, 0)
         self.need_motor_enable = True
@@ -87,8 +85,11 @@ class PrinterExtruder:
             inv_extrude_r = 1. / abs(move.extrude_r)
             move.limit_speed(self.max_e_velocity * inv_extrude_r
                              , self.max_e_accel * inv_extrude_r)
-        elif (move.extrude_r > self.max_extrude_ratio
-              and move.axes_d[3] > self.nozzle_diameter*self.max_extrude_ratio):
+        elif move.extrude_r > self.max_extrude_ratio:
+            if move.axes_d[3] <= self.nozzle_diameter * self.max_extrude_ratio:
+                # Permit extrusion if amount extruded is tiny
+                move.extrude_r = self.max_extrude_ratio
+                return
             area = move.axes_d[3] * self.filament_area / move.move_d
             self.logger.debug("Overextrude: %s vs %s (area=%.3f dist=%.3f)",
                               move.extrude_r, self.max_extrude_ratio,
