@@ -14,6 +14,7 @@ SLOW_RATIO = 3.
 class DeltaKinematics:
     name = "delta"
     def __init__(self, toolhead, printer, config):
+        self.toolhead = toolhead
         self.logger = printer.logger.getChild(self.name)
         stepper_configs = [config.getsection('stepper_' + n)
                            for n in ['a', 'b', 'c']]
@@ -50,11 +51,7 @@ class DeltaKinematics:
         max_halt_velocity = toolhead.get_max_axis_halt()
         for s in self.steppers:
             s.set_max_jerk(max_halt_velocity, self.max_accel)
-        self.require_home_after_motor_off = config.getboolean(
-            'require_home_after_motor_off', True)
-        self.allow_move_wo_homing = config.getboolean(
-            'allow_move_without_home', False)
-        if self.allow_move_wo_homing is True:
+        if toolhead.allow_move_wo_homing is True:
             self.need_home = False
         # Determine tower locations in cartesian space
         self.angles = [sconfig.getfloat('angle', angle)
@@ -80,12 +77,6 @@ class DeltaKinematics:
             % (math.sqrt(self.max_xy2), math.sqrt(self.slow_xy2),
                math.sqrt(self.very_slow_xy2)))
         self.set_position([0., 0., 0.], ())
-        self.toolhead = toolhead
-    def update_velocities(self):
-        max_halt_velocity = self.toolhead.get_max_axis_halt()
-        self.max_velocity, self.max_accel = self.toolhead.get_max_velocity()
-        for s in self.steppers:
-            s.set_max_jerk(max_halt_velocity, self.max_accel)
     def get_steppers(self, flags=""):
         return list(self.steppers)
     def _cartesian_to_actuator(self, coord):
@@ -105,7 +96,7 @@ class DeltaKinematics:
         if tuple(homing_axes) == StepList:
             self.need_home = False
     def home(self, homing_state):
-        sensor_funcs = [ s.driver.init_home for s in self.steppers ]
+        sensor_funcs = [ getattr(s.driver, 'init_home', None) for s in self.steppers ]
         # All axes are homed simultaneously
         homing_state.set_axes([0, 1, 2])
         endstops = [es for s in self.steppers for es in s.get_endstops()]
@@ -117,15 +108,14 @@ class DeltaKinematics:
         coord[2] = -1.5 * math.sqrt(max(self.arm2)-self.max_xy2)
         homing_state.home(coord, homepos, endstops, homing_speed,
                           init_sensor=sensor_funcs)
-        if 0 < s.homing_retract_dist:
-            # Retract
-            coord[2] = homepos[2] - s.homing_retract_dist
-            homing_state.retract(coord, homing_speed)
-            # Home again
-            coord[2] -= s.homing_retract_dist
-            homing_state.home(coord, homepos, endstops,
-                              homing_speed/2.0, second_home=True,
-                              init_sensor=sensor_funcs)
+        # Retract
+        coord[2] = homepos[2] - s.homing_retract_dist
+        homing_state.retract(coord, homing_speed)
+        # Home again
+        coord[2] -= s.homing_retract_dist
+        homing_state.home(coord, homepos, endstops,
+                          homing_speed/2.0, second_home=True,
+                          init_sensor=sensor_funcs)
         # Set final homed position
         spos = [ep + s.get_homed_offset()
                 for ep, s in zip(self.endstops, self.steppers)]
@@ -142,18 +132,13 @@ class DeltaKinematics:
         self.limit_xy2 = -1.
         for stepper in self.steppers:
             stepper.motor_enable(print_time, 0)
-        if self.require_home_after_motor_off is True:
+        if self.toolhead.require_home_after_motor_off is True:
             self.need_home = True
         self.need_motor_enable = True
     def _check_motor_enable(self, print_time):
         for i in StepList:
             self.steppers[i].motor_enable(print_time, 1)
         self.need_motor_enable = False
-    def is_homed(self):
-        ret = [1, 1, 1]
-        if self.need_home is True:
-            ret[i] = [0, 0, 0]
-        return ret
     def check_move(self, move):
         end_pos = move.end_pos
         xy2 = end_pos[0]**2 + end_pos[1]**2
@@ -253,6 +238,17 @@ class DeltaKinematics:
             'angle_c': self.angles[2], 'radius': self.radius,
             'arm_a': self.arm_lengths[0], 'arm_b': self.arm_lengths[1],
             'arm_c': self.arm_lengths[2] }
+
+    def is_homed(self):
+        ret = [1, 1, 1]
+        if self.need_home is True:
+            ret[i] = [0, 0, 0]
+        return ret
+    def update_velocities(self):
+        max_halt_velocity = self.toolhead.get_max_axis_halt()
+        self.max_velocity, self.max_accel = self.toolhead.get_max_velocity()
+        for s in self.steppers:
+            s.set_max_jerk(max_halt_velocity, self.max_accel)
 
 
 ######################################################################

@@ -4,7 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math
-import homing, pins, driver
+import homing, pins
 
 # Tracking of shared stepper enable pins
 class StepperEnablePin:
@@ -33,8 +33,31 @@ def lookup_enable_pin(printer, pin):
         pin_params['class'] = enable = StepperEnablePin(mcu_enable)
     return enable
 
+def calculate_steps(config, microsteps=None):
+    step_dist = inv_step_dist = 0.
+    # Read config and send to driver
+    step_dist = config.getfloat('step_distance', default=None, above=0.)
+    if step_dist is not None:
+        inv_step_dist = 1. / step_dist
+    else:
+        steps_per_mm = config.getfloat('steps_per_mm', default=None, above=0.)
+        if steps_per_mm is None:
+            if (microsteps is None):
+                return None, None
+            motor_deg = config.getfloat('motor_step_angle', above=0.)
+            # Calculate base on settings
+            pitch = config.getfloat('pitch', above=0.)
+            teeth = config.getfloat('teeths', above=0.)
+            ratio = config.getfloat('gear_ratio', above=0., default=1.0)
+            motor_rev = 360. / motor_deg
+            steps_per_mm = motor_rev * microsteps / (pitch * teeth) * ratio
+        inv_step_dist = steps_per_mm
+        step_dist = 1.0 / inv_step_dist
+    return step_dist, inv_step_dist
+
 # Code storing the definitions for a stepper motor
 class PrinterStepper:
+    step_dist = inv_step_dist = None
     def __init__(self, printer, config, logger=None):
         self.name = config.get_name()
         if self.name.startswith('stepper_'):
@@ -43,18 +66,20 @@ class PrinterStepper:
             self.logger = printer.logger.getChild('stepper.%s' % self.name)
         else:
             self.logger = logger.getChild('stepper')
-        self.is_Z = False
-        if ('Z' in self.name.upper()):
-            self.is_Z = True
-
         self.need_motor_enable = True
         # get a driver
-        self.driver = \
-            driver.get_driver(printer, config,
-                              name=config.get('driver', None),
-                              logger=self.logger)
-        self.step_dist = self.driver.step_dist
-        self.inv_step_dist = self.driver.inv_step_dist
+        self.driver = driver = printer.lookup_object(
+            'driver %s' % config.get('driver', None), None)
+        microsteps = None
+        if driver is not None:
+            microsteps = driver.microsteps
+            self.step_dist = driver.step_dist
+            self.inv_step_dist = driver.inv_step_dist
+        if self.step_dist is None or self.inv_step_dist is None:
+            self.step_dist, self.inv_step_dist = calculate_steps(config, microsteps)
+            if driver is not None:
+                driver.step_dist = self.step_dist
+                driver.inv_step_dist = self.inv_step_dist
         # Stepper definition
         self.mcu_stepper = pins.setup_pin(
             printer, 'stepper', config.get('step_pin'))
@@ -68,7 +93,6 @@ class PrinterStepper:
         self.enable = lookup_enable_pin(printer, config.get('enable_pin', None))
         self.logger.info("steps per mm {} , step in mm {}".
                          format(self.inv_step_dist, self.step_dist))
-        printer.add_object(self.name, self)
     def _dist_to_time(self, dist, start_velocity, accel):
         # Calculate the time it takes to travel a distance with constant accel
         time_offset = start_velocity / accel
@@ -87,15 +111,6 @@ class PrinterStepper:
         if self.need_motor_enable != (not enable):
             self.enable.set_enable(print_time, enable)
         self.need_motor_enable = not enable
-    def printer_state(self, state):
-        if state == 'shutdown':
-            pass
-        elif state == 'ready':
-            self.driver.init_driver()
-        elif state == 'connect':
-            pass
-        elif state == 'disconnect':
-            pass
 
 # Support for stepper controlled linear axis with an endstop
 class PrinterHomingStepper(PrinterStepper):
@@ -196,32 +211,32 @@ class PrinterHomingStepper(PrinterStepper):
                 self.homing_endstop_accuracy = self.homing_stepper_phases
 
         # Valid for CoreXY and Cartesian Z axis
-        if (self.is_Z):
-            self.homing_pos_x = config.getfloat('homing_pos_x', None,
+        if 'Z' in self.name.upper():
+            self.homing_pos_x = config.getfloat('homing_pos_x', default=None,
                                                 minval=self.position_min,
                                                 maxval=self.position_max)
-            self.homing_pos_y = config.getfloat('homing_pos_y', None,
+            self.homing_pos_y = config.getfloat('homing_pos_y', default=None,
                                                 minval=self.position_min,
                                                 maxval=self.position_max)
         else:
             # None for X and Y axis
             self.homing_pos_x = None
             self.homing_pos_y = None
-        self.retract_after_home = config.getboolean('homing_retract_after',
-                                                    False)
+        self.retract_after_home = config.getfloat(
+            'homing_retract_dist_after', 0., minval=0.)
     def set_homing_offset(self, offset):
         self.homing_offset = offset
     def get_endstops(self):
         return [(self.mcu_endstop, self.name)]
     def get_homed_offset(self):
         if not self.homing_stepper_phases or self.need_motor_enable:
-            return 0.0 - self.homing_offset
+            return 0. - self.homing_offset
         pos = self.mcu_stepper.get_mcu_position()
         pos %= self.homing_stepper_phases
         if self.homing_endstop_phase is None:
             self.logger.info("Setting %s endstop phase to %d", self.name, pos)
             self.homing_endstop_phase = pos
-            return 0.0 - self.homing_offset
+            return 0. - self.homing_offset
         delta = (pos - self.homing_endstop_phase) % self.homing_stepper_phases
         if delta >= self.homing_stepper_phases - self.homing_endstop_accuracy:
             delta -= self.homing_stepper_phases

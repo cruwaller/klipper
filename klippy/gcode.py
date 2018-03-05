@@ -6,12 +6,6 @@
 import os, re, collections
 import homing, extruder, heater
 
-'''
-TODO:
-  * FW retraction: G10, G11, M207, M208
-  * Volymetric Extrution
-'''
-
 tx_sequenceno = 0
 
 class error(Exception):
@@ -60,11 +54,9 @@ class GCodeParser:
         # G-Code state
         self.need_ack = False
         self.toolhead = self.extruder = None
-        self.extruders = {}
         self.speed = 25.0
         self.axis2pos = {'X': 0, 'Y': 1, 'Z': 2, 'E': 3}
         self.simulate_print = False
-        self.babysteps = 0.0 # Effect to Z only
     def register_command(self, cmd, func, when_not_ready=False, desc=None):
         if func is None:
             if cmd in self.ready_gcode_handlers:
@@ -110,9 +102,8 @@ class GCodeParser:
         if self.move_transform is None:
             self.move_with_transform = self.toolhead.move
             self.position_with_transform = self.toolhead.get_position
-        self.extruders = extruder.get_printer_extruders(self.printer)
-        if self.extruders:
-            self.extruder = self.extruders[0]
+        self.extruder = extruder.get_printer_extruder(self.printer, 0)
+        if self.extruder is not None:
             self.toolhead.set_extruder(self.extruder)
         if self.is_fileinput and self.fd_handle is None:
             self.fd_handle = self.reactor.register_fd(self.fd_r, self.process_data)
@@ -133,9 +124,10 @@ class GCodeParser:
             len(self.input_log),))
         for eventtime, data in self.input_log:
             out.append("Read %f: %s" % (eventtime, repr(data)))
-        extrude_factor = 0.
-        if self.extruder is not None:
+        try:
             extrude_factor = self.extruder.extrude_factor
+        except AttributeError:
+            extrude_factor = 0.
         out.append(
             "gcode state: absolutecoord=%s absoluteextrude=%s"
             " base_position=%s last_position=%s homing_add=%s"
@@ -309,7 +301,7 @@ class GCodeParser:
     def get_temp(self, eventtime):
         # Tn:XXX /YYY B:XXX /YYY
         out = []
-        for key,e in self.extruders.items():
+        for key,e in extruder.get_printer_extruders(self.printer).items():
             heater = e.get_heater()
             if heater is not None:
                 cur, target = heater.get_temp(eventtime)
@@ -330,16 +322,16 @@ class GCodeParser:
             self.respond(self.get_temp(eventtime))
             eventtime = self.reactor.pause(eventtime + 1.)
     def set_temp(self, params, is_bed=False, wait=False):
-        temp = self.get_float('S', params, 0.0) if (self.simulate_print is False) else 0.0
+        temp = self.get_float('S', params, 0.) if (self.simulate_print is False) else 0.
         heater = None
         if is_bed:
-            heater = self.printer.lookup_object('heater bed')
+            heater = self.printer.lookup_object('heater bed', None)
         else:
             index = None
             if 'T' in params:
-                index = self.get_int('T', params)
+                index = self.get_int('T', params, None)
             elif 'P' in params:
-                index = self.get_int('P', params)
+                index = self.get_int('P', params, None)
 
             if index is not None:
                 e = extruder.get_printer_extruder(self.printer, index)
@@ -360,14 +352,13 @@ class GCodeParser:
         if wait and temp and self.simulate_print is False:
             self.bg_temp(heater)
     def set_fan_speed(self, speed, index):
-        fan = self.printer.objects.get('fan %d'%(index))
+        fan = self.printer.lookup_object('fan %d' % (index,), None)
         if fan is None:
             if speed and not self.is_fileinput:
                 self.respond_info("Fan not configured")
             return
         print_time = self.toolhead.get_last_move_time()
         fan.set_speed(print_time, speed)
-
     # G-Code special command handlers
     def cmd_default(self, params):
         if not self.is_printer_ready:
@@ -382,7 +373,6 @@ class GCodeParser:
             self.cmd_Tn(params)
             return
         self.respond_info('Unknown command:"%s"' % (cmd,))
-
     def cmd_Tn(self, params):
         # Select Tool
         index = self.get_int('T', params)
@@ -395,7 +385,8 @@ class GCodeParser:
             return
         if self.extruder is e:
             return
-        self.run_script(self.extruder.get_activate_gcode(False))
+        if self.extruder is not None:
+            self.run_script(self.extruder.get_activate_gcode(False))
         try:
             self.toolhead.set_extruder(e)
         except homing.EndstopError as e:
@@ -408,24 +399,11 @@ class GCodeParser:
         'G20', 'M82', 'M83', 'G90', 'G91', 'G92', 'M206', 'M220', 'M221',
         'M105', 'M104', 'M109', 'M140', 'M190', 'M106', 'M107',
         'M112', 'M114', 'M115', 'IGNORE', 'QUERY_ENDSTOPS', 'PID_TUNE',
-        'RESTART', 'FIRMWARE_RESTART', 'ECHO', 'STATUS', 'HELP',
-        # Additions
-        'G2', 'G3', 'G10', 'G11', 'G29',
-        'M0', 'M1', 'M37', 'M118', 'M204', 'M205', 'M290',
-        'M302',
-        'M550',
-        'M851',
-        'M900',
-        # Stepper driver commands:
-        'DRV_STATUS', 'DRV_CURRENT', 'DRV_SG',
-    ]
-
-
-    # Move all_handlers here...
-    def _parse_movement(self, params, is_arch=False):
-        absolutecoord = self.absolutecoord
-        if is_arch:
-            self.absolutecoord = False; # change to relative
+        'RESTART', 'FIRMWARE_RESTART', 'ECHO', 'STATUS', 'HELP']
+    # G-Code movement commands
+    cmd_G1_aliases = ['G0']
+    def cmd_G1(self, params):
+        # Move
         try:
             for axis in 'XYZ':
                 if axis in params:
@@ -438,7 +416,11 @@ class GCodeParser:
                         # value relative to base coordinate position
                         self.last_position[pos] = v + self.base_position[pos]
             if 'E' in params:
-                v = ( (float(params['E']) * self.extruder.extrude_factor) if (self.simulate_print is False) else 0.0 )
+                try:
+                    v = ( (float(params['E']) * self.extruder.extrude_factor)
+                          if (self.simulate_print is False) else 0.0 )
+                except AttributeError:
+                    v = 0.
                 if not self.absolutecoord or not self.absoluteextrude:
                     # value relative to position of last move
                     self.last_position[3] += v
@@ -450,42 +432,12 @@ class GCodeParser:
                 if speed <= 0.:
                     raise error("Invalid speed in '%s'" % (params['#original'],))
                 self.speed = speed
-            if is_arch:
-                self.arch_I = 0.0
-                self.arch_J = 0.0
-                self.arch_R = None
-                self.arch_circles = 0
-                if 'R' in params:
-                    self.arch_R = float(params['R'])
-                if 'I' in params:
-                    self.arch_I = float(params['I'])
-                if 'J' in params:
-                    self.arch_J = float(params['J'])
-                if 'P' in params:
-                    self.arch_circles = int(params['P'])
-                    if self.arch_circles <= 0:
-                        raise ValueError()
         except ValueError as e:
             raise error("Unable to parse move '%s'" % (params['#original'],))
-        self.absolutecoord = absolutecoord
-
-    def _apply_move(self, pos, speed):
         try:
-            self.move_with_transform(pos, speed)
+            self.move_with_transform(self.last_position, self.speed)
         except homing.EndstopError as e:
             raise error(str(e))
-    # G-Code movement commands
-    cmd_G1_aliases = ['G0']
-    def cmd_G1(self, params):
-        # Move
-        self._parse_movement(params)
-        self._apply_move(self.last_position, self.speed)
-    def cmd_G2(self, params):
-        # G2 Xnnn Ynnn Innn Jnnn Ennn Fnnn (Clockwise Arc)
-        self._calculate_arch(params, 1)
-    def cmd_G3(self, params):
-        # G3 Xnnn Ynnn Innn Jnnn Ennn Fnnn (Counter-Clockwise Arc)
-        self._calculate_arch(params, 0)
     def cmd_G4(self, params):
         # Dwell
         if 'S' in params:
@@ -543,7 +495,10 @@ class GCodeParser:
                     for a, p in self.axis2pos.items() if a in params }
         for p, offset in offsets.items():
             if p == 3:
-                offset *= self.extruder.extrude_factor
+                try:
+                    offset *= self.extruder.extrude_factor
+                except AttributeError:
+                    pass
             self.base_position[p] = self.last_position[p] - offset
         if not offsets:
             self.base_position = list(self.last_position)
@@ -554,8 +509,6 @@ class GCodeParser:
         for p, offset in offsets.items():
             self.base_position[p] += self.homing_add[p] - offset
             self.homing_add[p] = offset
-        self.respond_info("Current offsets: X:%.2f, Y:%.2f, Z:%.2f" % (
-            self.homing_add[0], self.homing_add[1], self.homing_add[2]))
     def cmd_M220(self, params):
         # Set speed factor override percentage
         value = self.get_float('S', params, 100.) / (60. * 100.)
@@ -570,9 +523,9 @@ class GCodeParser:
         index = extr = None
         # extruder number
         if 'D' in params:
-            index = self.get_int('D', params)
+            index = self.get_int('D', params, None)
         elif 'T' in params:
-            index = self.get_int('T', params)
+            index = self.get_int('T', params, None)
         if index is None:
             extr = self.extruder
         else:
@@ -629,12 +582,7 @@ class GCodeParser:
         kw = {"FIRMWARE_NAME": "Klipper", "FIRMWARE_VERSION": software_version}
         self.ack(" ".join(["%s:%s" % (k, v) for k, v in kw.items()]))
     cmd_IGNORE_when_not_ready = True
-    cmd_IGNORE_aliases = ["G21", "M110", "M21",
-        'M120', 'M121', 'M122', "M141",
-        'M291', 'M292',
-        'M752', 'M753', 'M754', 'M755', 'M756',
-        'M997'
-    ]
+    cmd_IGNORE_aliases = ["G21", "M110", "M21"]
     def cmd_IGNORE(self, params):
         # Commands that are just silently accepted
         pass
@@ -652,7 +600,7 @@ class GCodeParser:
         heater = None;
         heater_index = self.get_int('E', params, 0)
         if (heater_index == -1):
-            heater = self.printer.lookup_object('heater bed')
+            heater = self.printer.lookup_object('heater bed', None)
         else:
             e = extruder.get_printer_extruder(self.printer, heater_index)
             if e is not None:
@@ -677,7 +625,6 @@ class GCodeParser:
         self.request_restart('restart')
     cmd_FIRMWARE_RESTART_when_not_ready = True
     cmd_FIRMWARE_RESTART_help = "Restart firmware, host, and reload config"
-    cmd_FIRMWARE_RESTART_aliases = ["M999"]
     def cmd_FIRMWARE_RESTART(self, params):
         self.request_restart('firmware_restart')
     cmd_ECHO_when_not_ready = True
@@ -701,360 +648,3 @@ class GCodeParser:
             if cmd in self.gcode_help:
                 cmdhelp.append("%-10s: %s" % (cmd, self.gcode_help[cmd]))
         self.respond_info("\n".join(cmdhelp))
-
-
-
-
-    # TODO: firmware retraction support
-    def cmd_G10(self, params):
-        # G10: Retract
-        short = 0
-        if 'S' in params:
-            short = self.get_int('S', params, 0)
-    def cmd_G11(self, params):
-        # G11: Unretract
-        short = 0
-        if 'S' in params:
-            short = self.get_int('S', params, 0)
-    def cmd_G29(self, params):
-        self.respond_info("Bed levelling is not supported yet!")
-        #self.cmd_default(params)
-        pass
-
-    def cmd_M0(self, params):
-        heaters_on = self.get_int('H', params, 0)
-        if (heaters_on is 0):
-            self.motor_heater_off()
-        elif self.toolhead is not None:
-            self.toolhead.motor_off()
-            # self.respond("Printer reset invoked")
-            # self.printer.request_exit('firmware_restart')
-    def cmd_M1(self, params):
-        # Wait for current moves to finish
-        self.toolhead.wait_moves()
-        self.motor_heater_off()
-        # self.respond("Printer restart invoked")
-        # self.printer.request_exit('restart')
-
-    def cmd_M37(self, params):
-        simulation_enabled = self.get_int('P', params, 0)
-        if simulation_enabled is 1:
-            self.simulate_print = True
-        else:
-            self.simulate_print = False
-
-    def cmd_M118(self, params):
-        self.respond_info(params['#original'].replace(params['#command'], ""))
-
-    def cmd_M204(self, params):
-        # Set default acceleration
-        accel = self.get_int('A', params, None)
-        if accel is not None and 0. < accel:
-            self.toolhead.max_accel = accel
-            self.toolhead.get_kinematics().update_velocities()
-        decel = self.get_int('D', params, None)
-        if decel is not None and 0. < decel:
-            self.toolhead.max_accel_to_decel = decel
-        elif accel is not None and 0. < accel:
-            self.toolhead.max_accel_to_decel = 0.5 * accel
-        self.respond_info("Accel %u, decel %u" % (self.toolhead.max_accel,
-                                                  self.toolhead.max_accel_to_decel,))
-    def cmd_M205(self, params):
-        # Set advanced settings
-        value = self.get_float('X', params, None)
-        if value is not None and 0. < value:
-            self.toolhead.junction_deviation = value
-            self.toolhead.get_kinematics().update_velocities()
-        self.respond_info("Junction deviation %.2f" % (self.toolhead.junction_deviation,))
-
-    def cmd_M290(self, params):
-        # Babystepping
-        if 'S' in params:
-            babysteps_to_apply = self.get_float('S', params)
-            if (self.absolutecoord):
-                self.base_position[self.axis2pos['Z']] += babysteps_to_apply
-            else:
-                self.last_position[self.axis2pos['Z']] += babysteps_to_apply
-            self.babysteps += babysteps_to_apply
-
-        elif 'R' in params: # Reset
-            if (self.absolutecoord):
-                self.base_position[self.axis2pos['Z']] -= self.babysteps
-            else:
-                self.last_position[self.axis2pos['Z']] -= self.babysteps
-            self.babysteps = 0.0
-
-        else:
-            self.respond_info("Baby stepping offset is %.3fmm" % (self.babysteps,))
-
-    def cmd_M302(self, params):
-        # Allow cold extrusion
-        #       M302         ; report current cold extrusion state
-        #       M302 P0      ; enable cold extrusion checking
-        #       M302 P1      ; disables cold extrusion checking
-        #       M302 S0      ; always allow extrusion (disables checking)
-        #       M302 S170    ; only allow extrusion above 170
-        #       M302 S170 P1 ; set min extrude temp to 170 but leave disabled
-        disable = None
-        temperature = None
-        if 'P' in params:
-            disable = self.get_int('P', params, 0) == 1
-        if 'S' in params:
-            temperature = self.get_int('S', params, -1)
-        for h in self.printer.lookup_module_objects("heater"):
-            h.set_min_extrude_temp(temperature, disable)
-            status, temp = h.get_min_extrude_status()
-            if "bed" not in h.name:
-                self.respond_info(
-                    "Heater '{}' cold extrude: {}, min temp {}C".
-                    format(h.name, status, temp))
-
-    def cmd_M301(self, params):
-        # TODO: M301: Set PID parameters
-        pass
-    def cmd_M304(self, params):
-        # TODO: M304: Set PID parameters - Bed
-        pass
-
-    def cmd_M550(self, params):
-        if 'P' in params:
-            self.printer.name = params['P']
-        self.logger.info("My name is now {}".format(self.printer.name))
-
-    def cmd_M851(self, params):
-        # Set X, Y, Z offsets
-        steppers = self.toolhead.get_kinematics().get_steppers()
-        offsets = { self.axis2pos[a]: self.get_float(a, params)
-                    for a, p in self.axis2pos.items() if a in params }
-        for p, offset in offsets.items():
-            steppers[p].set_homing_offset(offset)
-        self.respond_info("Current offsets: X=%.2f Y=%.2f Z=%.2f" % \
-                          (steppers[0].homing_offset,
-                           steppers[1].homing_offset,
-                           steppers[2].homing_offset))
-
-    def cmd_M900(self, params):
-        # Pressure Advance configuration
-        index = self.get_int('T', params, None)
-        extr = extruder.get_printer_extruder(self.printer, index)
-        if extr is None:
-            extr = self.extruder
-        if extr is None:
-            return
-        pa = self.get_float('P', params, None)
-        t  = self.get_float('L', params, None)
-        if pa is not None and 0. <= pa:
-            extr.pressure_advance = pa
-            if pa == 0.:
-                t = 0. # disable lookahead as well
-        if t is not None and 0. <= t:
-            extr.pressure_advance_lookahead_time = t
-        self.respond_info("Pressure Advance %.2f, lookahead time %.3f" % \
-                          (extr.pressure_advance,
-                           extr.pressure_advance_lookahead_time))
-
-    def cmd_DRV_STATUS(self, params):
-        # Driver status if exists
-        steppers = self.toolhead.get_kinematics().get_steppers()
-        steppers.extend([ extr.stepper for extr in extruder.get_printer_extruders(self.printer) ])
-        for stepper in steppers:
-            stepper.driver.status(log=self.respond_info)
-    def cmd_DRV_CURRENT(self, params):
-        # Driver current
-        drivers = { self.axis2pos[a]: self.get_float(a, params)
-                    for a in 'XYZ' if a in params }
-        steppers = self.toolhead.get_kinematics().get_steppers()
-        for drv, current in drivers.items():
-            steppers[drv].driver.set_current(current)
-
-        extrs = { int(a[1:]) : self.get_float(a, params) for a in params if "E" in a  }
-        for index, current in extrs.items():
-            extr = extruder.get_printer_extruder(self.printer, index)
-            if extr is None:
-                self.respond_error("Extruder %d not configured" % (index,))
-                return
-            extr.stepper.driver.set_current(current)
-    def cmd_DRV_SG(self, params):
-        # Driver StallGuard value
-        drivers = { self.axis2pos[a]: self.get_float(a, params)
-                    for a in 'XYZ' if a in params }
-        steppers = self.toolhead.get_kinematics().get_steppers()
-        for drv, sg in drivers.items():
-            driver = steppers[drv].driver
-            if hasattr(driver, 'set_stallguard'):
-                driver.set_stallguard(sg)
-        extrs = { int(a[1:]) : self.get_float(a, params) for a in params if "E" in a }
-        for index, current in extrs.items():
-            extr = extruder.get_printer_extruder(self.printer, index)
-            if extr is None:
-                self.respond_error("Extruder %d not configured" % (index,))
-                return
-            if hasattr(extr.stepper.driver, 'set_stallguard'):
-                extr.stepper.driver.set_stallguard(current)
-
-
-
-
-
-    def _plan_arc(self, position, arc_offset, clockwise):
-        N_ARC_CORRECTION = 25
-
-        p_axis = self.axis2pos['X']
-        q_axis = self.axis2pos['Y']
-        l_axis = self.axis2pos['Z']
-        e_axis = self.axis2pos['E']
-
-        # Radius vector from center to current location
-        r_P = -offset[0]
-        r_Q = -offset[1]
-
-        radius          = float(math.hypot(r_P, r_Q))
-        center_P        = float(self.base_position[p_axis] - r_P)
-        center_Q        = float(self.base_position[q_axis] - r_Q)
-        rt_X            = float(position[p_axis] - center_P)
-        rt_Y            = float(position[q_axis] - center_Q)
-        linear_travel   = float(position[l_axis] - self.base_position[l_axis])
-        extruder_travel = float(position[e_axis] - self.base_position[e_axis])
-
-        # CCW angle of rotation between position and target from the circle center. Only one atan2() trig computation required.
-        angular_travel = math.atan2(r_P * rt_Y - r_Q * rt_X, r_P * rt_X + r_Q * rt_Y)
-        if (angular_travel < 0):
-            angular_travel += math.radians(360)
-        if (clockwise):
-            angular_travel -= math.radians(360)
-
-        # Make a circle if the angular rotation is 0 and the target is current position
-        if (angular_travel == 0 and
-            self.base_position[p_axis] == logical[p_axis] and
-            self.base_position[q_axis] == logical[q_axis]):
-            angular_travel = math.radians(360);
-
-        mm_of_travel = math.hypot(angular_travel * radius, math.fabs(linear_travel))
-        if (mm_of_travel < 0.001):
-            return;
-
-        segments = int(math.floor(mm_of_travel / (MM_PER_ARC_SEGMENT)))
-        if (segments <= 0):
-            segments = 1
-
-        '''
-        * Vector rotation by transformation matrix: r is the original vector, r_T is the rotated vector,
-        * and phi is the angle of rotation. Based on the solution approach by Jens Geisler.
-        *     r_T = [cos(phi) -sin(phi);
-        *            sin(phi)  cos(phi)] * r ;
-        *
-        * For arc generation, the center of the circle is the axis of rotation and the radius vector is
-        * defined from the circle center to the initial position. Each line segment is formed by successive
-        * vector rotations. This requires only two cos() and sin() computations to form the rotation
-        * matrix for the duration of the entire arc. Error may accumulate from numerical round-off, since
-        * all double numbers are single precision on the Arduino. (True double precision will not have
-        * round off issues for CNC applications.) Single precision error can accumulate to be greater than
-        * tool precision in some cases. Therefore, arc path correction is implemented.
-        *
-        * Small angle approximation may be used to reduce computation overhead further. This approximation
-        * holds for everything, but very small circles and large MM_PER_ARC_SEGMENT values. In other words,
-        * theta_per_segment would need to be greater than 0.1 rad and N_ARC_CORRECTION would need to be large
-        * to cause an appreciable drift error. N_ARC_CORRECTION~=25 is more than small enough to correct for
-        * numerical drift error. N_ARC_CORRECTION may be on the order a hundred(s) before error becomes an
-        * issue for CNC machines with the single precision Arduino calculations.
-        *
-        * This approximation also allows plan_arc to immediately insert a line segment into the planner
-        * without the initial overhead of computing cos() or sin(). By the time the arc needs to be applied
-        * a correction, the planner should have caught up to the lag caused by the initial plan_arc overhead.
-        * This is important when there are successive arc motions.
-        '''
-        # Vector rotation matrix values
-        arc_target = len(self.axis2pos) * [0]
-        theta_per_segment    = float(angular_travel / segments)
-        linear_per_segment   = float(linear_travel / segments)
-        extruder_per_segment = float(extruder_travel / segments)
-        sin_T                = theta_per_segment
-        cos_T                = float(1 - 0.5 * SQ(theta_per_segment)) # Small angle approximation
-
-        # Initialize the linear axis
-        arc_target[l_axis] = self.base_position[l_axis];
-
-        # Initialize the extruder axis
-        arc_target[e_axis] = self.base_position[e_axis];
-
-        fr_mm_s = self.speed
-
-        if N_ARC_CORRECTION > 1:
-            count = N_ARC_CORRECTION
-
-        # Iterate (segments-1) times
-        for i in range(1, segments):
-
-            count = count - 1
-            if (count and N_ARC_CORRECTION > 1):
-                # Apply vector rotation matrix to previous r_P / 1
-                r_new_Y = r_P * sin_T + r_Q * cos_T;
-                r_P = r_P * cos_T - r_Q * sin_T;
-                r_Q = r_new_Y;
-            else:
-                if N_ARC_CORRECTION > 1:
-                    count = N_ARC_CORRECTION
-
-                # Arc correction to radius vector. Computed only every N_ARC_CORRECTION increments.
-                # Compute exact location by applying transformation matrix from initial radius vector(=-offset).
-                # To reduce stuttering, the sin and cos could be computed at different times.
-                # For now, compute both at the same time.
-                cos_Ti = cos(i * theta_per_segment)
-                sin_Ti = sin(i * theta_per_segment)
-                r_P    = -offset[0] * cos_Ti + offset[1] * sin_Ti
-                r_Q    = -offset[0] * sin_Ti - offset[1] * cos_Ti
-
-            # Update arc_target location
-            arc_target[p_axis] = center_P + r_P
-            arc_target[q_axis] = center_Q + r_Q
-            arc_target[l_axis] = arc_target[l_axis] + linear_per_segment
-            arc_target[e_axis] = arc_target[e_axis] + extruder_per_segment
-
-            #clamp_to_software_endstops(arc_target);
-            self._apply_move(arc_target, self.speed)
-
-        # Ensure last segment arrives at target location.
-        self._apply_move(position, self.speed)
-
-        # As far as the parser is concerned, the position is now == target. In reality the
-        # motion control system might still be processing the action and the real tool position
-        # in any intermediate location.
-        self.last_position = position
-
-    def _calculate_arch(self, params, clockwise):
-        self._parse_movement(params, True)
-        arc_offset = [ self.arch_I, self.arch_J ]
-        if self.arch_R is not None:
-            r  = self.arch_R
-            p1 = self.base_position[self.axis2pos['X']]
-            q1 = self.base_position[self.axis2pos['Y']]
-            p2 = self.last_position[self.axis2pos['X']]
-            q2 = self.last_position[self.axis2pos['Y']]
-            if (r and (p2 != p1 or q2 != q1)):
-                # clockwise -1/1, counterclockwise 1/-1
-                if clockwise ^ (r < 0):
-                    e = -1
-                else:
-                    e = 1
-                dx = p2 - p1                           # X differences
-                dy = q2 - q1                           # Y differences
-                d  = math.hypot(dx, dy)                # Linear distance between the points
-                h  = math.sqrt(math.pow(r,2) -
-                               math.pow((d * 0.5),2))  # Distance to the arc pivot-point
-                mx = (p1 + p2) * 0.5                   # Point between the two points
-                my = (q1 + q2) * 0.5                   # Point between the two points
-                sx = -dy / d                           # Slope of the perpendicular bisector
-                sy = dx / d                            # Slope of the perpendicular bisector
-                cx = mx + e * h * sx                   # Pivot-point of the arc
-                cy = my + e * h * sy                   # Pivot-point of the arc
-                arc_offset[0] = cx - p1
-                arc_offset[1] = cy - q1
-        if arc_offset[0] == 0 or arc_offset[1] == 0:
-            raise error("Unable to parse move '%s'" % (params['#original'],))
-
-        # Number of circles to do
-        if self.arch_circles is not None:
-            for idx in range[0, self.arch_circles]:
-                self._plan_arc(self.base_position, arc_offset, clockwise)
-        # Arch itself
-        self._plan_arc(self.last_position, arc_offset, clockwise)

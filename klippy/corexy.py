@@ -11,6 +11,7 @@ StepList = (0, 1, 2)
 class CoreXYKinematics:
     name = "coreXY"
     def __init__(self, toolhead, printer, config, coresign=1.):
+        self.toolhead = toolhead
         self.logger = printer.logger.getChild(self.name)
         self.steppers = [
             stepper.PrinterHomingStepper(
@@ -26,14 +27,8 @@ class CoreXYKinematics:
             'max_z_velocity', max_velocity, above=0., maxval=max_velocity)
         self.max_z_accel = config.getfloat(
             'max_z_accel', max_accel, above=0., maxval=max_accel)
-        self.require_home_after_motor_off = config.getboolean(
-            'require_home_after_motor_off', True)
         self.need_motor_enable = True
-        self.sw_limit_check_enabled = config.getboolean(
-            'sw_limit_check_enabled', True)
-        self.allow_move_wo_homing = config.getboolean(
-            'allow_move_without_home', False)
-        if self.allow_move_wo_homing is False:
+        if toolhead.allow_move_wo_homing is False:
             self.limits = [(1.0, -1.0)] * 3
         else:
             # Just set min and max values for SW limit
@@ -47,14 +42,9 @@ class CoreXYKinematics:
         self.steppers[2].set_max_jerk(
             min(max_halt_velocity, self.max_z_velocity), self.max_z_accel)
         self.coresign = coresign
-        self.toolhead = toolhead
+        self.experimental = config.getboolean(
+            'experimental', False)
         self.logger.info("Kinematic created: %s" % self.name)
-
-    def update_velocities(self):
-        max_halt_velocity = self.toolhead.get_max_axis_halt()
-        max_velocity, max_accel = self.toolhead.get_max_velocity()
-        self.steppers[0].set_max_jerk(max_halt_velocity, max_accel)
-        self.steppers[1].set_max_jerk(max_halt_velocity, max_accel)
     def get_steppers(self, flags=""):
         if flags == "Z":
             return [self.steppers[2]]
@@ -71,7 +61,7 @@ class CoreXYKinematics:
                 self.limits[i] = (s.position_min, s.position_max)
     def home(self, homing_state):
         # Each axis is homed independently and in order
-        sensor_funcs = [ s.driver.init_home for s in self.steppers ]
+        sensor_funcs = [ getattr(s.driver, 'init_home', None) for s in self.steppers ]
         for axis in homing_state.get_axes():
             s = self.steppers[axis]
             # Determine moves
@@ -100,26 +90,25 @@ class CoreXYKinematics:
             coord[axis] = pos
             homing_state.home(coord, homepos, s.get_endstops(), homing_speed,
                               init_sensor=sensor_funcs)
-            if 0 < s.homing_retract_dist:
-                # Retract
-                coord[axis] = rpos
-                homing_state.retract(coord, homing_speed)
-                # Home again
-                coord[axis] = r2pos
-                homing_state.home(coord, homepos, s.get_endstops(),
-                                  homing_speed/2.0, second_home=True,
-                                  init_sensor=sensor_funcs)
+            # Retract
+            coord[axis] = rpos
+            homing_state.retract(coord, homing_speed)
+            # Home again
+            coord[axis] = r2pos
+            homing_state.home(coord, homepos, s.get_endstops(),
+                              homing_speed/2.0, second_home=True,
+                              init_sensor=sensor_funcs)
             if axis == 2:
                 # Support endstop phase detection on Z axis
                 coord[axis] = s.position_endstop + s.get_homed_offset()
                 homing_state.set_homed_position(coord)
-                if s.retract_after_home is True:
+                if s.retract_after_home:
                     # Retract
-                    coord[axis] = rpos
+                    coord[axis] = s.retract_after_home
                     homing_state.retract(list(coord), homing_speed)
     def motor_off(self, print_time):
-        if self.require_home_after_motor_off is True \
-           and self.sw_limit_check_enabled is True:
+        if self.toolhead.require_home_after_motor_off is True \
+           and self.toolhead.sw_limit_check_enabled is True:
             self.limits = [(1.0, -1.0)] * 3
         for stepper in self.steppers:
             stepper.motor_enable(print_time, 0)
@@ -144,16 +133,9 @@ class CoreXYKinematics:
                     raise homing.EndstopMoveError(
                         end_pos, "Must home axis first")
                 raise homing.EndstopMoveError(end_pos)
-    def is_homed(self):
-        ret = [1, 1, 1]
-        if self.sw_limit_check_enabled is True:
-            for i in StepList:
-                if self.limits[i][0] > self.limits[i][1]:
-                    ret[i] = 0
-        return ret
     def check_move(self, move):
         xpos, ypos = move.end_pos[:2]
-        if self.sw_limit_check_enabled is True:
+        if self.toolhead.sw_limit_check_enabled is True:
             limits = self.limits
             if (xpos < limits[0][0] or xpos > limits[0][1]
                 or ypos < limits[1][0] or ypos > limits[1][1]):
@@ -162,7 +144,7 @@ class CoreXYKinematics:
             # Normal XY move - use defaults
             return
         # Move with Z - update velocity and accel for slower Z axis
-        if self.sw_limit_check_enabled is True:
+        if self.toolhead.sw_limit_check_enabled is True:
             self._check_endstops(move)
         z_ratio = move.move_d / abs(move.axes_d[2])
         move.limit_speed(
@@ -173,13 +155,21 @@ class CoreXYKinematics:
 
         sxp = move.start_pos[0]
         syp = move.start_pos[1]
-        move_start_pos = ((sxp + syp), (sxp - syp), move.start_pos[2])
-        exp = (sxp - move.end_pos[0])
-        eyp = (syp - move.end_pos[1]) * self.coresign
-        axes_d = ((exp + eyp),
-                  (exp - eyp),
-                  move.start_pos[2])
-        core_flag = (self.coresign == -1) # TODO FIXME
+        if self.experimental:
+            move_start_pos = ((sxp + syp), (sxp - syp), move.start_pos[2])
+            exp = (sxp - move.end_pos[0])
+            eyp = (syp - move.end_pos[1]) * self.coresign
+            axes_d = ((exp + eyp),
+                      (exp - eyp),
+                      move.start_pos[2])
+            core_flag = (self.coresign == -1) # TODO FIXME
+        else:
+            move_start_pos = (sxp + syp, sxp - syp, move.start_pos[2])
+            exp = move.end_pos[0]
+            eyp = move.end_pos[1]
+            axes_d = ((exp + eyp) - move_start_pos[0],
+                      (exp - eyp) - move_start_pos[1], move.axes_d[2])
+            core_flag = False
         for i in StepList:
             axis_d = axes_d[i]
             if not axis_d:
@@ -208,6 +198,19 @@ class CoreXYKinematics:
             if move.decel_r:
                 decel_d = move.decel_r * axis_d
                 step_const(move_time, start_pos, decel_d, cruise_v, -accel, core=core_flag)
+
+    def is_homed(self):
+        ret = [1, 1, 1]
+        if self.toolhead.sw_limit_check_enabled is True:
+            for i in StepList:
+                if self.limits[i][0] > self.limits[i][1]:
+                    ret[i] = 0
+        return ret
+    def update_velocities(self):
+        max_halt_velocity = self.toolhead.get_max_axis_halt()
+        max_velocity, max_accel = self.toolhead.get_max_velocity()
+        self.steppers[0].set_max_jerk(max_halt_velocity, max_accel)
+        self.steppers[1].set_max_jerk(max_halt_velocity, max_accel)
 
 class CoreYXKinematics(CoreXYKinematics):
     name = "coreYX"

@@ -222,6 +222,12 @@ class ToolHead:
         # Create kinematics class
         self.extruder = extruder.DummyExtruder()
         self.move_queue.set_extruder(self.extruder)
+        self.require_home_after_motor_off = config.getboolean(
+            'require_home_after_motor_off', True)
+        self.sw_limit_check_enabled = config.getboolean(
+            'sw_limit_check_enabled', True)
+        self.allow_move_wo_homing = config.getboolean(
+            'allow_move_without_home', False)
         kintypes = {'cartesian': cartesian.CartKinematics,
                     'corexy': corexy.CoreXYKinematics,
                     'coreyx': corexy.CoreYXKinematics,

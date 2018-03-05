@@ -63,6 +63,7 @@ fail:
 uint32_t
 gpio_adc_sample(struct gpio_adc g)
 {
+    (void)g;
     return 0;
 }
 
@@ -84,6 +85,7 @@ gpio_adc_read(struct gpio_adc g)
         return atoi(buf);
 #if (CONFIG_SIMULATOR == 1)
     } else {
+        (void)g;
         return (uint16_t)(0.8f * CONFIG_ADC_MAX_VALUE);
 #endif
     }
@@ -92,14 +94,14 @@ gpio_adc_read(struct gpio_adc g)
 void
 gpio_adc_cancel_sample(struct gpio_adc g)
 {
+    (void)g;
 }
 
 
 /********************************************************************************/
 
 struct gpio_out gpio_out_setup(uint8_t pin, uint8_t val) {
-    (void)val;
-    return (struct gpio_out){.fd = pin};
+    return (struct gpio_out){.fd = pin, .val = val};
 }
 void gpio_out_toggle(struct gpio_out g) {
     (void)g;
@@ -112,19 +114,17 @@ void gpio_out_write(struct gpio_out g, uint8_t val) {
 /********************************************************************************/
 
 struct gpio_in gpio_in_setup(uint8_t pin, int8_t pull_up) {
-    (void)pull_up;
-    return (struct gpio_in){.fd = pin};
+    return (struct gpio_in){.fd = pin, .val = !pull_up};
 }
 uint8_t gpio_in_read(struct gpio_in g) {
-    return (g.fd & 1);
+    return g.val; //(g.fd & 1);
 }
 
 /********************************************************************************/
 
 struct gpio_pwm gpio_pwm_setup(uint8_t pin, uint32_t cycle_time, uint8_t val) {
     (void)cycle_time;
-    (void)val;
-    return (struct gpio_pwm){.fd = pin};
+    return (struct gpio_pwm){.fd = pin, .val = val};
 }
 void gpio_pwm_write(struct gpio_pwm g, uint8_t val) {
     (void)g;
@@ -140,14 +140,17 @@ void spi_init(void) {
 DECL_INIT(spi_init);
 
 SPI_t spi_get_config(uint8_t const mode, uint32_t const speed) {
+    (void)mode; (void)speed;
     return spi_basic_config;
 }
 void spi_set_config(SPI_t const config) {
+    (void)config;
 }
 void spi_transfer_len(char *data, uint8_t len) {
     (void)data; (void)len;
 }
 uint8_t spi_transfer(uint8_t const data, uint8_t const last) {
+    (void)last;
     return data;
 }
 

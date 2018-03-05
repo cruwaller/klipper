@@ -9,7 +9,6 @@ import collections, ConfigParser, importlib
 
 # Include extras path to search dir
 sys.path.append(os.path.join(os.path.dirname(__file__), "extras"))
-sys.path.append(os.path.join(os.path.dirname(__file__), "modules"))
 
 import util, reactor, queuelogger, msgproto
 import gcode, pins, mcu, chipmisc, toolhead, extruder, heater
@@ -236,11 +235,41 @@ class Printer:
         # Read config
         for m in [pins, mcu]:
             m.add_printer_objects(self, config)
+        self.logger.info("========================================")
         for section in fileconfig.sections():
             self._try_load_module(config, section)
-        #for m in [chipmisc, heater, toolhead, extruder]:
+        self.logger.info("========================================")
         for m in [chipmisc, toolhead, extruder]:
             m.add_printer_objects(self, config)
+
+        # Read gcode extensions
+        gcode_files = os.listdir(os.path.join(os.path.dirname(__file__), "gcodes"))
+        for module in gcode_files:
+            if module == '__init__.py' or module[-3:] != '.py':
+                continue
+            try:
+                mod_name = 'gcodes.' + module[:-3]
+                mod = importlib.import_module(mod_name)
+            except ImportError as e:
+                continue
+            init_func = getattr(mod, "load_gcode", None)
+            if init_func is not None:
+                init_func(self)
+
+        # Read modules
+        gcode_files = os.listdir(os.path.join(os.path.dirname(__file__), "modules"))
+        for module in gcode_files:
+            if module == '__init__.py' or module[-3:] != '.py':
+                continue
+            try:
+                mod_name = 'modules.' + module[:-3]
+                mod = importlib.import_module(mod_name)
+            except ImportError as e:
+                continue
+            init_func = getattr(mod, "load_module", None)
+            if init_func is not None:
+                init_func(self)
+
         '''
         # Validate that there are no undefined parameters in the config file
         valid_sections = { s: 1 for s, o in self.all_config_options }

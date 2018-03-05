@@ -4,12 +4,17 @@
 //
 // This file may be distributed under the terms of the GNU GPLv3 license.
 
+#include "autoconf.h" // CONFIG_*
 #include "basecmd.h" // oid_alloc
 #include "board/gpio.h" // struct gpio
 #include "board/irq.h" // irq_disable
 #include "command.h" // DECL_COMMAND
 #include "sched.h" // struct timer
 #include "stepper.h" // stepper_stop
+
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+#include <stdio.h>
+#endif
 
 struct end_stop {
     struct timer time;
@@ -86,6 +91,10 @@ command_config_end_stop(uint32_t *args)
     e->pin = gpio_in_setup(args[1], args[2]);
     e->stepper_count = stepper_count;
     e->sample_count = 1;
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    printf("config_end_stop() stepper_count %d, pin %d, pull_up %d\n",
+           args[3], args[1], args[2]);
+#endif
 }
 DECL_COMMAND(command_config_end_stop,
              "config_end_stop oid=%c pin=%c pull_up=%c stepper_count=%c");
@@ -98,6 +107,11 @@ command_end_stop_set_stepper(uint32_t *args)
     if (pos >= e->stepper_count)
         shutdown("Set stepper past maximum stepper count");
     e->steppers[pos] = stepper_oid_lookup(args[2]);
+
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    printf("end_stop_set_stepper() pos %d, stepper_oid %d\n",
+           pos, args[2]);
+#endif
 }
 DECL_COMMAND(command_end_stop_set_stepper,
              "end_stop_set_stepper oid=%c pos=%c stepper_oid=%c");

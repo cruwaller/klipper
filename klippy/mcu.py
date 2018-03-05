@@ -353,7 +353,7 @@ class MCU_pwm:
                            minclock=self._last_clock, reqclock=clock)
         self._last_clock = clock
 
-class MCU_temper_adc:
+class MCU_adc:
     def __init__(self, mcu, pin_params):
         self._logger = mcu.logger.getChild('temper_adc')
         self._mcu = mcu
@@ -742,7 +742,7 @@ class MCU:
             'endstop'     : MCU_endstop,
             'digital_out' : MCU_digital_out,
             'pwm'         : MCU_pwm,
-            'temp_adc'    : MCU_temper_adc,
+            'adc'         : MCU_adc,
             'temp_spi'    : MCU_temper_spi,
             'spibus'      : MCU_spibus,
         }

@@ -53,15 +53,13 @@ class TMC2130(DriverBase):
     isStallguard = False
     isStandstill = False
 
-    def __init__(self, printer, config, config_parent, logger):
-        super(TMC2130, self).__init__(printer, config, config_parent, logger)
+    def __init__(self, config):
+        printer = config.get_printer()
+        DriverBase.__init__(self, config)
         self.name = config.get_name()[7:]
+        self.logger = printer.logger.getChild("driver.%s"%(self.name,))
 
-        if logger is not None:
-            self.logger = logger.getChild('tmc2130')
-        else:
-            self.logger = logging.getLogger("driver.%s"%(self.name,))
-
+        #self.microsteps = config.getint('microsteps')
         self.current = config.getfloat('current', 1000.0, above=100., maxval=MAX_CURRENT)
         self.Rsense = config.getfloat('sense_R', 0.11, above=0.09)
         self.hold_multip = config.getfloat('hold_multiplier', 0.5, above=0., maxval=1.0)
@@ -106,8 +104,6 @@ class TMC2130(DriverBase):
         # setup SPI pins and configure mcu
         self.mcu_driver = pins.setup_pin(printer, 'spibus', spipin)
         self.mcu_driver.set_spi_settings(spimode, spispeed)
-
-        printer.add_object(self.name, self)
 
     '''
     ~                    READ / WRITE data transfer example
@@ -201,7 +197,7 @@ class TMC2130(DriverBase):
             self.logger.error("CHOPCONF Configuration error! [was 0x%08X expected 0x%08X]" %
                               (CHOPCONF, self.val_CHOPCONF))
 
-    def __init_callback(self):
+    def __init_driver(self):
         val_clear = [0, 0, 0, 0]
 
         self.__reset_driver()
@@ -284,8 +280,6 @@ class TMC2130(DriverBase):
 
         self.__validate_cfg()
 
-        self.logger.info(" init done!")
-
     def __calc_rms_current(self,
                            current_in_mA  = 1000,
                            sense_R        = 0.11,
@@ -322,9 +316,18 @@ class TMC2130(DriverBase):
     #**************************************************************************
     # WRAPPER METHODS
     #**************************************************************************
-    def init_driver(self, *args, **kwargs):
-        self.logger.info("TMC2130 Driver Init!")
-        self.__init_callback()
+    def printer_state(self, state):
+        if state == 'shutdown':
+            pass
+        elif state == 'ready':
+            self.logger.info("init driver")
+            self.__init_driver()
+            self.logger.info("init done!")
+        elif state == 'connect':
+            pass
+        elif state == 'disconnect':
+            pass
+
 
     def status(self, log):
         if log is not None: log("name: %s" % self.name)
@@ -352,17 +355,22 @@ class TMC2130(DriverBase):
         self.isStallguard = False
         self.isStandstill = False
 
-    def set_current(self, current=None):
-        if current is not None and 100. <= current <= MAX_CURRENT :
+    def set_current(self, current):
+        if 100. <= current <= MAX_CURRENT :
             self.__calc_rms_current(current, self.Rsense, self.hold_multip)
+            return "Current is now %f" % (current,)
+        return "Current out of range (100. <= current <= %s)" % (MAX_CURRENT,)
+
     def get_current(self):
         return self.__get_rms_current()
 
     def set_stallguard(self, sg):
-        if (sg is not None and -64 <= sg <= 63):
+        if (-64 <= sg <= 63):
             self.sg_stall_value = sg
             self.modify_REG_COOLCONF('sg_stall_value',
                                      self.sg_stall_value)
+            return "SG value is now %d" % sg
+        return "SG out of range (-64 <= SG <= 63)"
 
     def is_stall(self, *args, **kwargs):
         val = self.get_REG_DRV_STATUS(check=False)

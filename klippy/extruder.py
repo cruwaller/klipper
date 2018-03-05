@@ -247,24 +247,20 @@ class DummyExtruder:
         return flush_count
 
 def add_printer_objects(printer, config):
-    printer.__EXTRUDERS_LST = {}
+    printer._extruders = {}
     if config.has_section('extruder'):
-        temp = PrinterExtruder(printer,
-                               config.getsection('extruder'),
-                               0)
-        printer.add_object('extruder0', temp)
-        printer.__EXTRUDERS_LST[0] = temp
+        printer._extruders[0] = PrinterExtruder(
+            printer, config.getsection('extruder'), 0)
     else:
         extruders = config.get_prefix_sections('extruder')
         for s in extruders:
             index = int(s.section[-1:])
-            temp = PrinterExtruder(printer, s, index)
-            printer.add_object(s.section, temp)
-            printer.__EXTRUDERS_LST[index] = temp
+            printer._extruders[index] = PrinterExtruder(
+                printer, s, index)
 
 def get_printer_extruders(printer):
     try:
-        return printer.__EXTRUDERS_LST
+        return printer._extruders
     except AttributeError:
         return {}
 
@@ -272,6 +268,6 @@ def get_printer_extruder(printer, index):
     try:
         if index is None:
             raise KeyError
-        return printer.__EXTRUDERS_LST[index]
+        return printer._extruders[index]
     except (KeyError, AttributeError):
         return None
