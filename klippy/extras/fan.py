@@ -36,6 +36,8 @@ class PrinterFan:
         self.last_fan_time = print_time
         self.last_fan_value = value
         self.logger.debug("Fan speed set to {}".format(value))
+    def get_status(self, eventtime):
+        return {'speed': self.last_fan_value}
 
 def load_config(config):
     raise config.get_printer().config_error(

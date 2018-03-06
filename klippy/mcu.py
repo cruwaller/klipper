@@ -3,7 +3,7 @@
 # Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import sys, os, zlib, logging, math
+import sys, os, zlib, logging, math, time
 import serialhdl, pins, chelper, clocksync
 
 class error(Exception):
@@ -405,9 +405,9 @@ class MCU_adc:
             self._callback(last_read_time, last_value)
 
 
-class MCU_temper_spi:
+class MCU_thermocouple:
     def __init__(self, mcu, pin_params):
-        self._logger = mcu.logger.getChild('temper_spi')
+        self._logger = mcu.logger.getChild('thermocouple')
         self._mcu           = mcu
         self._pin           = pin_params['pin']
         self._min_sample    = self._max_sample  = 0.
@@ -594,7 +594,7 @@ class MCU:
             return
         self._is_shutdown = True
         self._shutdown_msg = msg = params['#msg']
-        self.logger.info("MCU '%s' %s: %s\n%s\n%s", self._name, params['#name'],
+        self.logger.error("MCU '%s' %s: %s\n%s\n%s", self._name, params['#name'],
                      self._shutdown_msg, self._clocksync.dump_debug(),
                      self._serial.dump_debug())
         prefix = "MCU '%s' shutdown: " % (self._name,)
@@ -735,6 +735,7 @@ class MCU:
         self.register_msg(self.handle_mcu_stats, 'stats')
         self._build_config()
         self._send_config()
+        time.sleep(1) # give a little delay to receive shutdown
     # Config creation helpers
     def setup_pin(self, pin_params):
         pcs = {
@@ -743,7 +744,7 @@ class MCU:
             'digital_out' : MCU_digital_out,
             'pwm'         : MCU_pwm,
             'adc'         : MCU_adc,
-            'temp_spi'    : MCU_temper_spi,
+            'thermocouple': MCU_thermocouple,
             'spibus'      : MCU_spibus,
         }
         pin_type = pin_params['type']
@@ -928,4 +929,3 @@ def get_printer_mcu(printer, name):
     if name == 'mcu':
         return printer.lookup_object(name)
     return printer.lookup_object('mcu ' + name)
-

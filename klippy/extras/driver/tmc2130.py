@@ -320,14 +320,18 @@ class TMC2130(DriverBase):
         if state == 'shutdown':
             pass
         elif state == 'ready':
-            self.logger.info("init driver")
-            self.__init_driver()
-            self.logger.info("init done!")
+            # Do not call init to avoid overlapping configuration if driver is not used
+            #self.init_driver()
+            pass
         elif state == 'connect':
             pass
         elif state == 'disconnect':
             pass
 
+    def init_driver(self):
+        self.logger.info("init driver")
+        self.__init_driver()
+        self.logger.info("init done!")
 
     def status(self, log):
         if log is not None: log("name: %s" % self.name)

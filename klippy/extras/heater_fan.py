@@ -10,7 +10,7 @@ PIN_MIN_TIME = 0.100
 class PrinterHeaterFan:
     def __init__(self, config):
         self.printer = config.get_printer()
-        self.heater_name = config.get("heater").replace('"','')
+        self.heater_name = config.get("heater")
         self.heater_temp = config.getfloat("heater_temp")
         self.fan = fan.PrinterFan(config)
         self.mcu = self.fan.mcu_fan.get_mcu()

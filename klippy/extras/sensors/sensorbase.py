@@ -29,7 +29,7 @@ class SensorBase(object):
 
         if is_spi:
             self.mcu = pins.setup_pin(
-                self.printer, 'temp_spi', sensor_pin)
+                self.printer, 'thermocouple', sensor_pin)
             self.mcu.setup_spi_settings(
                 config.getint('spi_mode', minval=0, maxval=3),
                 config.getint('spi_speed', minval=0))

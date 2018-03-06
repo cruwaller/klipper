@@ -93,6 +93,7 @@ class PrinterStepper:
         self.enable = lookup_enable_pin(printer, config.get('enable_pin', None))
         self.logger.info("steps per mm {} , step in mm {}".
                          format(self.inv_step_dist, self.step_dist))
+        printer.add_object(config.get_name(), self) # to get printer_state called
     def _dist_to_time(self, dist, start_velocity, accel):
         # Calculate the time it takes to travel a distance with constant accel
         time_offset = start_velocity / accel
@@ -111,6 +112,13 @@ class PrinterStepper:
         if self.need_motor_enable != (not enable):
             self.enable.set_enable(print_time, enable)
         self.need_motor_enable = not enable
+    def printer_state(self, state):
+        if state == 'ready':
+            if self.mcu_stepper.get_mcu().is_shutdown():
+                return
+            init = getattr(self.driver, "init_driver", None)
+            if init is not None:
+                init()
 
 # Support for stepper controlled linear axis with an endstop
 class PrinterHomingStepper(PrinterStepper):

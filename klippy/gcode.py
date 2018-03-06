@@ -81,6 +81,9 @@ class GCodeParser:
         self.position_with_transform = transform.get_position
     def stats(self, eventtime):
         return False, "gcodein=%d" % (self.bytes_read,)
+    def get_status(self, eventtime):
+        busy = self.is_processing_data
+        return {'speed_factor': self.speed_factor * 60., 'busy': busy}
     def printer_state(self, state):
         if state == 'shutdown':
             if not self.is_printer_ready:
@@ -233,7 +236,7 @@ class GCodeParser:
     def run_script(self, script):
         prev_need_ack = self.need_ack
         try:
-            self.process_commands(script.replace('"','').split('\n'), need_ack=False)
+            self.process_commands(script.split('\n'), need_ack=False)
         finally:
             self.need_ack = prev_need_ack
     def __write_resp(self, msg):
@@ -258,7 +261,7 @@ class GCodeParser:
         lines = [l.strip() for l in msg.strip().split('\n')]
         self.respond("// " + "\n// ".join(lines))
     def respond_error(self, msg):
-        self.logger.warning(msg)
+        self.logger.warning(msg.replace('\n', ". "))
         lines = msg.strip().split('\n')
         if len(lines) > 1:
             self.respond_info("\n".join(lines[:-1]))
@@ -342,7 +345,7 @@ class GCodeParser:
 
         if heater is None:
             if temp > 0.:
-                self.respond_error("Heater not configured")
+                self.respond("Heater not configured") # was _error
             return
         print_time = self.toolhead.get_last_move_time()
         try:
@@ -381,7 +384,7 @@ class GCodeParser:
             return
         e = extruder.get_printer_extruder(self.printer, index)
         if e is None:
-            self.respond_error("Extruder %d not configured" % (index,))
+            self.respond("Extruder %d not configured" % (index,)) # was _error
             return
         if self.extruder is e:
             return
@@ -606,7 +609,7 @@ class GCodeParser:
             if e is not None:
                 heater = e.get_heater()
         if heater is None:
-            self.respond_error("Heater is not configured")
+            self.respond("Heater is not configured") # was _error
         else:
             temp = self.get_float('S', params)
             #count = self.get_int('C', params, 12, 8)

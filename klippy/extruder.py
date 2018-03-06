@@ -15,7 +15,7 @@ class PrinterExtruder:
         self.logger = printer.logger.getChild(self.name)
         self.config = config
         self.index  = index
-        self.heater = printer.lookup_object(config.get('heater').replace('"',''))
+        self.heater = printer.lookup_object(config.get('heater'))
         self.heater.set_min_extrude_temp(config.getfloat('min_extrude_temp',
                                                          170.0))
         self.stepper = stepper.PrinterStepper(printer, config, self.logger)
@@ -51,7 +51,7 @@ class PrinterExtruder:
         self.extrude_factor = config.getfloat('extrusion_factor',
                                               1.0,
                                               minval=0.1)
-        self.logger.debug("Add extruder[{}] heater={}".
+        self.logger.debug("index={}, heater={}".
                           format(self.index, self.heater.name))
     def get_index(self):
         return self.index

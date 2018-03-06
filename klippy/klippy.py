@@ -88,6 +88,8 @@ class ConfigWrapper:
             (self.section.lower(), option.lower())] = 1
         try:
             v = parser(self.section, option)
+            if type(v) == str:
+                v = v.strip('"|\'')
         except self.error as e:
             raise
         except:
@@ -218,6 +220,19 @@ class Printer:
         init_func = getattr(mod, init_func, None)
         if init_func is not None:
             self.objects[section] = init_func(config.getsection(section))
+    def _try_load_extensions(self, folder, func):
+        files = os.listdir(os.path.join(os.path.dirname(__file__), folder))
+        for module in files:
+            if module == '__init__.py' or module[-3:] != '.py':
+                continue
+            try:
+                mod_name = ".".join([folder, module[:-3]])
+                mod = importlib.import_module(mod_name)
+            except ImportError as e:
+                continue
+            init_func = getattr(mod, func, None)
+            if init_func is not None:
+                init_func(self)
     def _read_config(self):
         fileconfig = ConfigParser.RawConfigParser()
         config_file = self.start_args['config_file']
@@ -230,8 +245,8 @@ class Printer:
         # Create printer components
         config = ConfigWrapper(self, fileconfig, 'printer')
         # Read my name
-        self.name = config.getsection('printer').get('name',
-                                                     default="Klipper printer")
+        self.name = config.getsection('printer').get(
+            'name', default="Klipper printer")
         # Read config
         for m in [pins, mcu]:
             m.add_printer_objects(self, config)
@@ -242,33 +257,10 @@ class Printer:
         for m in [chipmisc, toolhead, extruder]:
             m.add_printer_objects(self, config)
 
-        # Read gcode extensions
-        gcode_files = os.listdir(os.path.join(os.path.dirname(__file__), "gcodes"))
-        for module in gcode_files:
-            if module == '__init__.py' or module[-3:] != '.py':
-                continue
-            try:
-                mod_name = 'gcodes.' + module[:-3]
-                mod = importlib.import_module(mod_name)
-            except ImportError as e:
-                continue
-            init_func = getattr(mod, "load_gcode", None)
-            if init_func is not None:
-                init_func(self)
-
-        # Read modules
-        gcode_files = os.listdir(os.path.join(os.path.dirname(__file__), "modules"))
-        for module in gcode_files:
-            if module == '__init__.py' or module[-3:] != '.py':
-                continue
-            try:
-                mod_name = 'modules.' + module[:-3]
-                mod = importlib.import_module(mod_name)
-            except ImportError as e:
-                continue
-            init_func = getattr(mod, "load_module", None)
-            if init_func is not None:
-                init_func(self)
+        # Load gcode extensions
+        self._try_load_extensions('gcodes', 'load_gcode')
+        # Load modules
+        self._try_load_extensions('modules', 'load_module')
 
         '''
         # Validate that there are no undefined parameters in the config file

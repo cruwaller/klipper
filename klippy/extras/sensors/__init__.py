@@ -4,6 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import os, sys
+from dummy import ThermistorDummy
 from thermistor import Thermistor, ThermistorBeta, Linear
 from thermocouple import Thermocouple
 from rtd import RTD
@@ -31,6 +32,12 @@ Sensors = {
     # RTD readers (SPI)
     "MAX31865": {
         'class': RTD },
+
+    # for testing
+    #"dummy25": {
+    #    'class': ThermistorDummy, 't1': 25 },
+    #"dummy100": {
+    #    'class': ThermistorDummy, 't1': 100 },
 }
 
 def load_sensor(config):

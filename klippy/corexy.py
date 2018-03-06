@@ -44,7 +44,6 @@ class CoreXYKinematics:
         self.coresign = coresign
         self.experimental = config.getboolean(
             'experimental', False)
-        self.logger.info("Kinematic created: %s" % self.name)
     def get_steppers(self, flags=""):
         if flags == "Z":
             return [self.steppers[2]]
