@@ -9,6 +9,8 @@ class GCodeRetract(object):
             desc = getattr(self, 'cmd_' + cmd + '_help', None)
             self.gcode.register_command(cmd, getattr(self, 'cmd_' + cmd),
                                         desc=desc)
+        self.respond_dbg = self.gcode.respond_info
+        self.respond_info = self.gcode.respond
         # get configs
         self.z_hop = config.getfloat(
             'z_hop', default=0., minval=0.)
@@ -38,11 +40,11 @@ class GCodeRetract(object):
         if self.retract_dist and short == 0:
             self.gcode.run_script(
                 "G1 E%f F%u" % (self.retract_dist, self.retract_speed))
-            self.gcode.respond_info("retract")
+            self.respond_dbg("retract")
         elif self.retract_dist_short:
             self.gcode.run_script(
                 "G1 E%f F%u" % (self.retract_dist_short, self.retract_speed))
-            self.gcode.respond_info("short retract")
+            self.respond_dbg("short retract")
 
     def cmd_G11(self, params):
         # G11: Unretract
@@ -53,12 +55,12 @@ class GCodeRetract(object):
             self.gcode.run_script(
                 "G1 E-%f F%u" % ((self.retract_dist + self.return_dist),
                                  self.return_speed))
-            self.gcode.respond_info("retract recover")
+            self.respond_dbg("retract recover")
         elif self.retract_dist_short:
             self.gcode.run_script(
                 "G1 E-%f F%u" % ((self.retract_dist_short + self.return_dist_short),
                                  self.return_speed))
-            self.gcode.respond_info("short retract recover")
+            self.respond_dbg("short retract recover")
 
     def cmd_M207(self, params):
         # M207 F<feedrate> S<length> Z<hight>
@@ -75,8 +77,8 @@ class GCodeRetract(object):
         if "T" in params:
             self.return_speed = self.gcode.get_int(
                 'T', params, default=self.retract_speed)
-        self.gcode.respond_info("FW Retract: speed %s length %s z_hop %s" %
-                                (self.retract_speed, self.retract_dist, self.z_hop))
+        self.respond_info("FW Retract: speed %s length %s z_hop %s" %
+                          (self.retract_speed, self.retract_dist, self.z_hop))
 
     def cmd_M208(self, params):
         # M208 F<feedrate> S<length>
@@ -84,8 +86,8 @@ class GCodeRetract(object):
             'S', params, default=0.)
         self.return_speed = self.gcode.get_int(
             'F', params, default=self.retract_speed)
-        self.gcode.respond_info("FW Retract recover: speed %s addition %s" %
-                                (self.return_speed, self.return_dist))
+        self.respond_info("FW Retract recover: speed %s addition %s" %
+                          (self.return_speed, self.return_dist))
 
 def load_config(config):
     GCodeRetract(config)

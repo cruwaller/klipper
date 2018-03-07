@@ -17,7 +17,7 @@ class GenericGcode(object):
                                     self.gcode.cmd_FIRMWARE_RESTART,
                                     when_not_ready=True,
                                     desc="Alias to FIRMWARE_RESTART")
-        self.respond_info = self.gcode.respond_info
+        self.respond_info = self.gcode.respond # self.gcode.respond_info
         self.axis2pos = self.gcode.axis2pos
         self.logger = self.gcode.logger
         self.logger.info("Generic GCode extension initialized")
@@ -145,4 +145,3 @@ class GenericGcode(object):
 
 def load_gcode(printer):
     GenericGcode(printer)
-

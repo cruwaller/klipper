@@ -59,7 +59,6 @@ class TMC2130(DriverBase):
         self.name = config.get_name()[7:]
         self.logger = printer.logger.getChild("driver.%s"%(self.name,))
 
-        #self.microsteps = config.getint('microsteps')
         self.current = config.getfloat('current', 1000.0, above=100., maxval=MAX_CURRENT)
         self.Rsense = config.getfloat('sense_R', 0.11, above=0.09)
         self.hold_multip = config.getfloat('hold_multiplier', 0.5, above=0., maxval=1.0)
@@ -316,17 +315,19 @@ class TMC2130(DriverBase):
     #**************************************************************************
     # WRAPPER METHODS
     #**************************************************************************
+    '''
     def printer_state(self, state):
         if state == 'shutdown':
             pass
         elif state == 'ready':
-            # Do not call init to avoid overlapping configuration if driver is not used
-            #self.init_driver()
+            # Do not call init to avoid overlapping
+            #   configuration if driver is not used
             pass
         elif state == 'connect':
             pass
         elif state == 'disconnect':
             pass
+    '''
 
     def init_driver(self):
         self.logger.info("init driver")

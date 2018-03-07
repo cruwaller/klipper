@@ -174,7 +174,7 @@ class GCodeParser:
                 msg = 'Internal error on command:"%s"' % (cmd,)
                 self.logger.exception(msg)
                 self.printer.invoke_shutdown(msg)
-                self.respond_error(msg)
+                self.respond_stop(msg)
                 if not need_ack:
                     raise
             self.ack()
@@ -264,6 +264,12 @@ class GCodeParser:
         self.logger.warning(msg.replace('\n', ". "))
         lines = msg.strip().split('\n')
         if len(lines) > 1:
+            self.respond("Error: %s" % "\n".join(lines[:-1]))
+        self.respond_info('%s' % (lines[-1].strip(),))
+    def respond_stop(self, msg):
+        self.logger.error(msg.replace('\n', ". "))
+        lines = msg.strip().split('\n')
+        if len(lines) > 1:
             self.respond_info("\n".join(lines[:-1]))
         self.respond('!! %s' % (lines[-1].strip(),))
     # Parameter parsing helpers
@@ -345,7 +351,7 @@ class GCodeParser:
 
         if heater is None:
             if temp > 0.:
-                self.respond("Heater not configured") # was _error
+                self.respond_error("Heater not configured")
             return
         print_time = self.toolhead.get_last_move_time()
         try:
@@ -384,7 +390,7 @@ class GCodeParser:
             return
         e = extruder.get_printer_extruder(self.printer, index)
         if e is None:
-            self.respond("Extruder %d not configured" % (index,)) # was _error
+            self.respond_error("Extruder %d not configured" % (index,))
             return
         if self.extruder is e:
             return
@@ -609,7 +615,7 @@ class GCodeParser:
             if e is not None:
                 heater = e.get_heater()
         if heater is None:
-            self.respond("Heater is not configured") # was _error
+            self.respond_error("Heater is not configured")
         else:
             temp = self.get_float('S', params)
             #count = self.get_int('C', params, 12, 8)

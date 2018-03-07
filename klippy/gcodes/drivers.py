@@ -8,7 +8,8 @@ class DriverGcode(object):
             self.gcode.register_command(cmd,
                                         getattr(self, 'cmd_' + cmd),
                                         desc=getattr(self, 'cmd_' + cmd + '_help', None))
-        self.respond_info = self.gcode.respond_info
+        self.respond_db = self.gcode.respond_info
+        self.respond_info = self.gcode.respond
         self.axis2pos = self.gcode.axis2pos
         self.logger = self.gcode.logger
         self.drivers = []
