@@ -49,6 +49,8 @@ class CartKinematics:
         # Each axis is homed independently and in order
         for axis in homing_state.get_axes():
             s = self.steppers[axis]
+            if hasattr(s, "dummy"):
+                continue
             sensor_funcs = [getattr(s.driver, 'init_home', None)]
             # Determine moves
             if s.homing_positive_dir:
@@ -87,10 +89,14 @@ class CartKinematics:
             # Set final homed position
             coord[axis] = s.position_endstop + s.get_homed_offset()
             homing_state.set_homed_position(coord)
-            if axis == 2 and s.retract_after_home:
+            if 0. < s.retract_after_home:
                 # Retract
-                coord[axis] = s.retract_after_home
-                homing_state.retract(list(coord), homing_speed)
+                movepos = [None, None, None, None]
+                if s.homing_positive_dir:
+                    movepos[axis] = s.position_endstop - s.retract_after_home
+                else:
+                    movepos[axis] = s.position_endstop + s.retract_after_home
+                homing_state.retract(movepos, homing_speed)
     def motor_off(self, print_time):
         if self.toolhead.require_home_after_motor_off is True \
            and self.toolhead.sw_limit_check_enabled is True:

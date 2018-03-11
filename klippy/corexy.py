@@ -101,10 +101,14 @@ class CoreXYKinematics:
                 # Support endstop phase detection on Z axis
                 coord[axis] = s.position_endstop + s.get_homed_offset()
                 homing_state.set_homed_position(coord)
-                if s.retract_after_home:
-                    # Retract
-                    coord[axis] = s.retract_after_home
-                    homing_state.retract(list(coord), homing_speed)
+            if 0. < s.retract_after_home:
+                movepos = [None, None, None, None]
+                # Retract
+                if s.homing_positive_dir:
+                    movepos[axis] = s.position_endstop - s.retract_after_home
+                else:
+                    movepos[axis] = s.position_endstop + s.retract_after_home
+                homing_state.retract(movepos, homing_speed)
     def motor_off(self, print_time):
         if self.toolhead.require_home_after_motor_off is True \
            and self.toolhead.sw_limit_check_enabled is True:
