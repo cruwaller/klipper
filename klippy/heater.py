@@ -26,6 +26,7 @@ class PrinterHeater:
     error = error
     def __init__(self, config):
         self.printer = printer = config.get_printer()
+        self.gcode = printer.lookup_object('gcode')
         self.name = config.get_name()
         try:
             self.index = int(self.name[7:])
@@ -105,7 +106,7 @@ class PrinterHeater:
                 errorstr = "Thermal runaway! current temp {}, last {}". \
                            format(current_temp, self.protection_last_temp)
                 self.set_temp(0, 0);
-                self.printer.gcode.respond_error(errorstr)
+                self.gcode.respond_stop(errorstr)
                 #self.printer.request_exit('firmware_restart')
                 self.printer.request_exit('shutdown')
             self.protection_last_temp = current_temp
@@ -126,7 +127,7 @@ class PrinterHeater:
                     errorstr = "Heating error! current temp {}, last {}". \
                                format(current_temp, self.protection_last_temp)
                     self.set_temp(0, 0);
-                    self.printer.gcode.respond_error(errorstr)
+                    self.gcode.respond_stop(errorstr)
                     #self.printer.request_exit('firmware_restart')
                     self.printer.request_exit('shutdown')
             self.protection_last_temp = current_temp
