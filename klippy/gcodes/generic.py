@@ -4,7 +4,7 @@ class GenericGcode(object):
     def __init__(self, printer):
         self.printer = printer
         self.gcode = printer.lookup_object('gcode')
-        for cmd in ['M0', 'M1', 'M37', 'M118', 'M204', 'M205','M302','M550', 'M851', 'M900']:
+        for cmd in ['M0', 'M1', 'M37', 'M118', 'M204', 'M205', 'M302', 'M851', 'M900']:
             self.gcode.register_command(cmd, getattr(self, 'cmd_' + cmd))
         # just discard
         # TODO : Should discard M206 ?
@@ -104,12 +104,6 @@ class GenericGcode(object):
     def cmd_M304(self, params):
         # TODO: M304: Set PID parameters - Bed
         pass
-
-    # TODO FIXME: Store name to printer objects!
-    def cmd_M550(self, params):
-        if 'P' in params:
-            self.printer.name = params['P']
-        self.logger.info("My name is now {}".format(self.printer.name))
 
     def cmd_M851(self, params):
         # Set X, Y, Z offsets

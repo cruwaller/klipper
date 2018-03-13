@@ -9,6 +9,7 @@ class BabySteps(object):
         self.babysteps = 0.
         self.logger = self.gcode.logger
         self.logger.info("BabySteps initialized")
+        printer.add_object("babysteps", self)
 
     def cmd_M290(self, params):
         absolutecoord = self.gcode.absolutecoord

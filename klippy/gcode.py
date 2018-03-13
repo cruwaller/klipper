@@ -6,8 +6,6 @@
 import os, re, collections
 import homing, extruder, heater
 
-tx_sequenceno = 0
-
 class error(Exception):
     pass
 
@@ -15,18 +13,18 @@ class error(Exception):
 class GCodeParser:
     error = error
     RETRY_TIME = 0.100
-    def __init__(self, printer, fd_link):
+    def __init__(self, printer, fd):
         self.logger = printer.logger.getChild('gcode')
         self.printer = printer
-        self.fd_r = fd_link.fd_r
-        self.fd_w = fd_link.fd_w
+        self.fd_r = fd
+        self.fd_w = fd
         # Input handling
         self.reactor = printer.get_reactor()
         self.is_processing_data = False
         self.is_fileinput = not not printer.get_start_args().get("debuginput")
         self.fd_handle = None
-        if not self.is_fileinput:
-            self.fd_handle = self.reactor.register_fd(self.fd_r, self.process_data)
+        #if not self.is_fileinput:
+        #    self.fd_handle = self.reactor.register_fd(self.fd_r, self.process_data)
         self.partial_input = ""
         self.pending_commands = []
         self.bytes_read = 0
@@ -93,9 +91,11 @@ class GCodeParser:
             self.dump_debug()
             if self.is_fileinput:
                 self.printer.request_exit()
-            global tx_sequenceno
-            tx_sequenceno += 1
             return
+        elif state == 'connect':
+            if not self.is_fileinput and self.fd_handle is None:
+                self.fd_handle = self.reactor.register_fd(
+                    self.fd_r, self.process_data)
         if state != 'ready':
             return
         self.is_printer_ready = True
@@ -110,8 +110,15 @@ class GCodeParser:
             self.toolhead.set_extruder(self.extruder)
         if self.is_fileinput and self.fd_handle is None:
             self.fd_handle = self.reactor.register_fd(self.fd_r, self.process_data)
-        global tx_sequenceno
-        tx_sequenceno += 1
+    def register_fd(self, fd_r, fd_w=None):
+        if self.is_fileinput:
+            return False
+        if self.fd_handle is not None:
+            self.reactor.unregister_fd(self.fd_handle)
+        self.fd_handle = self.reactor.register_fd(fd_r, self.process_data)
+        self.fd_r = fd_r
+        self.fd_w = fd_w
+        return True
     def reset_last_position(self):
         self.last_position = self.position_with_transform()
     def motor_heater_off(self):
@@ -239,23 +246,21 @@ class GCodeParser:
             self.process_commands(script.split('\n'), need_ack=False)
         finally:
             self.need_ack = prev_need_ack
-    def __write_resp(self, msg):
-        global tx_sequenceno
-        tx_sequenceno += 1
+    def write_resp(self, msg):
         os.write(self.fd_w, msg)
     # Response handling
     def ack(self, msg=None):
         if not self.need_ack or self.is_fileinput:
             return
         if msg:
-            self.__write_resp("ok %s\n" % (msg,))
+            self.write_resp("ok %s\n" % (msg,))
         else:
-            self.__write_resp("ok\n")
+            self.write_resp("ok\n")
         self.need_ack = False
     def respond(self, msg):
         if self.is_fileinput:
             return
-        self.__write_resp(msg+"\n")
+        self.write_resp(msg+"\n")
     def respond_info(self, msg):
         self.logger.debug(msg)
         lines = [l.strip() for l in msg.strip().split('\n')]

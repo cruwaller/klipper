@@ -23,6 +23,7 @@ class VirtualSD:
             self.gcode.register_command(cmd, getattr(self, 'cmd_' + cmd))
         for cmd in ['M28', 'M29', 'M30']:
             self.gcode.register_command(cmd, self.cmd_error)
+        self.done_cb = []
     def printer_state(self, state):
         if state == 'shutdown' and self.work_timer is not None:
             self.must_pause_work = True
@@ -40,6 +41,8 @@ class VirtualSD:
         if self.work_timer is not None and self.file_size:
             progress = float(self.file_position) / self.file_size
         return {'progress': progress}
+    def register_done_cb(self, cb):
+        self.done_cb.append(cb)
     # G-Code commands
     def cmd_error(self, params):
         raise self.gcode.error("SD write not supported")
@@ -70,12 +73,11 @@ class VirtualSD:
             raise self.gcode.error("Unable to extract filename")
         if filename.startswith('/'):
             filename = filename[1:]
-        files = self.get_file_list()
-        files_by_lower = { fname.lower(): fname for fname, fsize in files }
         try:
-            fname = files_by_lower[filename.lower()]
-            fname = os.path.join(self.sdcard_dirname, fname)
+            fname = os.path.join(self.sdcard_dirname, filename)
             f = open(fname, 'rb')
+            if f is None:
+                raise
             f.seek(0, os.SEEK_END)
             fsize = f.tell()
             f.seek(0)
@@ -91,6 +93,8 @@ class VirtualSD:
         # Start/resume SD print
         if self.work_timer is not None:
             raise self.gcode.error("SD busy")
+        for cb in self.done_cb:
+            cb('start')
         self.must_pause_work = False
         self.work_timer = self.reactor.register_timer(
             self.work_handler, self.reactor.NOW)
@@ -98,6 +102,8 @@ class VirtualSD:
         # Pause SD print
         if self.work_timer is not None:
             self.must_pause_work = True
+            for cb in self.done_cb:
+                cb('pause')
     def cmd_M26(self, params):
         # Set SD position
         if self.work_timer is not None:
@@ -131,12 +137,16 @@ class VirtualSD:
                 except:
                     logging.exception("virtual_sdcard read")
                     self.gcode.respond_error("Error on virtual sdcard read")
+                    for cb in self.done_cb:
+                        cb('error')
                     break
                 if not data:
                     # End of file
                     self.current_file.close()
                     self.current_file = None
                     self.gcode.respond("Done printing file")
+                    for cb in self.done_cb:
+                        cb('done')
                     break
                 lines = data.split('\n')
                 lines[0] = partial_input + lines[0]
@@ -150,6 +160,8 @@ class VirtualSD:
                     self.reactor.pause(self.reactor.monotonic() + 0.100)
                     continue
             except self.gcode.error as e:
+                for cb in self.done_cb:
+                    cb('error')
                 break
             except:
                 logging.exception("virtual_sdcard dispatch")
