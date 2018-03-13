@@ -5,7 +5,27 @@
 #         - install Tornado using pip ( $pip install tornado )
 #         - or download from https://github.com/tornadoweb/tornado.git
 #           and use environment variable 'export TORNADO_PATH=<path to tornado folder>'
+#     Install opencv
+#         - $sudo apt-get install python-opencv
 #
+'''
+Example config sections:
+
+[virtual_sdcard]
+path: ~/.octoprint/uploads/
+
+[reprapgui]
+name: This is my printer
+user: test
+password: test
+html_root: ~/DuetWebControl/
+http: 80
+; Enable for SSL connection
+;https: 443
+;cert: ~/ssl/server.crt
+;key: ~/ssl/server.key
+
+'''
 import time, sys, os, errno, threading, json, re, logging
 import extruder, util
 
@@ -16,6 +36,65 @@ except KeyError:
     pass
 import tornado.ioloop
 import tornado.web
+
+try:
+    import cv2
+    class VideoCamera(object):
+        def __init__(self, index=0):
+            self.video = cv2.VideoCapture(index)
+        def __del__(self):
+            self.video.release()
+        def get_frame(self):
+            success, image = self.video.read()
+            if image is not None:
+                ret, jpeg = cv2.imencode('.jpg', image)
+                return jpeg.tostring()
+            return ""
+except ImportError:
+    class VideoCamera(object):
+        def __init__(self, index=0):
+            pass
+        def __del__(self):
+            pass
+        def get_frame(self):
+            return ""
+
+
+class MJPEGHandler(tornado.web.RequestHandler):
+    def initialize(self, camera, interval):
+        self.camera = camera
+        self.interval = interval if 0 <= interval else 0
+    @tornado.web.asynchronous
+    @tornado.gen.coroutine
+    def get(self):
+        self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0')
+        self.set_header('Connection', 'close')
+        self.set_header('Content-Type', 'multipart/x-mixed-replace;boundary=--boundarydonotcross')
+        self.set_header('Expires', 'Mon, 3 Jan 2000 12:34:56 GMT')
+        self.set_header('Pragma', 'no-cache')
+
+        if self.interval == 0:
+            img = self.camera.get_frame()
+            self.write("--boundarydonotcross\n")
+            self.write("Content-type: image/jpeg\r\n")
+            self.write("Content-length: %s\r\n\r\n" % len(img))
+            self.write(str(img))
+            return
+
+        ioloop = tornado.ioloop.IOLoop.current()
+        self.served_image_timestamp = time.time()
+        my_boundary = "--boundarydonotcross\n"
+        while True:
+            img = self.camera.get_frame()
+            if self.served_image_timestamp + self.interval < time.time():
+                self.write(my_boundary)
+                self.write("Content-type: image/jpeg\r\n")
+                self.write("Content-length: %s\r\n\r\n" % len(img))
+                self.write(str(img))
+                self.served_image_timestamp = time.time()
+                yield tornado.gen.Task(self.flush)
+            else:
+                yield tornado.gen.Task(ioloop.add_timeout, ioloop.time() + self.interval)
 
 class BaseHandler(tornado.web.RequestHandler):
     def get_current_user(self):
@@ -298,10 +377,10 @@ class rrHandler(tornado.web.RequestHandler):
                         time.strftime("%Y-%m-%dT%H:%M:%S",
                                       time.gmtime(os.path.getmtime(path)))
                 respdata["generatedBy"]      = "unknown"
-                respdata["height"]           = "0.01"
-                respdata["firstLayerHeight"] = "0.02"
-                respdata["layerHeight"]      = "0.22"
-                respdata["filament"]         = [] # TODO: filament needed
+                respdata["height"]           = "NA"
+                respdata["firstLayerHeight"] = "NA"
+                respdata["layerHeight"]      = "NA"
+                respdata["filament"]         = []
 
                 if is_printing is True:
                     respdata["printDuration"] = 1234
@@ -446,6 +525,8 @@ class RepRapGuiModule(object):
             }
         self.user = config.get('user')
         self.passwd = config.get('password')
+        feed_interval = config.getint('feedrate', minval=0., default=0.)
+        camera = VideoCamera()
         # ------------------------------
         # Create paths to virtual SD
         create_dir(os.path.join(self.sd.sdcard_dirname, "gcodes"))
@@ -472,6 +553,8 @@ class RepRapGuiModule(object):
                     tornado.web.url(r"/css/(.*)",   tornado.web.StaticFileHandler,
                                     {"path": os.path.join(htmlroot, "css")}),
                     tornado.web.url(r"/(rr_.*)", rrHandler, {"parent": self}),
+                    tornado.web.url(r"/video", MJPEGHandler,
+                                    {"camera": camera, "interval": feed_interval}),
                 ],
                 cookie_secret="16d35553-3331-4569-b419-8748d22aa599",
                 log_function=self.Tornado_LoggerCb,
@@ -653,9 +736,10 @@ class RepRapGuiModule(object):
         _extrs   = extruder.get_printer_extruders(self.printer)
         num_extruders = len(_extrs)
 
-        coords_extr = [0] * num_extruders
+        coords_extr = [0.0] * num_extruders
         if toolhead.extruder.index != -1:
             coords_extr[toolhead.extruder.index] = curr_pos[3]
+        #coords_extr = [  ]
 
         # _type == 1 is always included
         status_block = {
