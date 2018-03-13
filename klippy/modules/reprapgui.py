@@ -24,7 +24,9 @@ http: 80
 ;https: 443
 ;cert: ~/ssl/server.crt
 ;key: ~/ssl/server.key
-
+; Video feed
+;feedrate: 1.0
+;camera_index: 0
 '''
 import time, sys, os, errno, threading, json, re, logging
 import extruder, util
@@ -525,8 +527,8 @@ class RepRapGuiModule(object):
             }
         self.user = config.get('user')
         self.passwd = config.get('password')
-        feed_interval = config.getint('feedrate', minval=0., default=0.)
-        camera = VideoCamera()
+        feed_interval = config.getfloat('feedrate', minval=0., default=0.)
+        camera = VideoCamera(config.getint('camera_index', default=0.))
         # ------------------------------
         # Create paths to virtual SD
         create_dir(os.path.join(self.sd.sdcard_dirname, "gcodes"))
