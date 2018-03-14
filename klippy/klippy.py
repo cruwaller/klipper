@@ -376,7 +376,8 @@ def main():
         opts.error("Incorrect number of arguments")
     start_args = {'config_file': args[0], 'start_reason': 'startup'}
 
-    status_delay = options.status_delay
+    if options.status_delay:
+        status_delay = options.status_delay
 
     input_fd = bglogger = None
 
