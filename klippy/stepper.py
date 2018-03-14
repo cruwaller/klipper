@@ -294,7 +294,33 @@ class PrinterMultiStepper(PrinterHomingStepper):
     def get_endstops(self):
         return self.endstops
 
+class DummyMcu:
+    def __init__(self):
+        pass
+    def get_commanded_position(self):
+        return 0
+class PrinterDummyStepper:
+    position_min = position_max = 0
+    need_motor_enable = False
+    dummy = True
+    def __init__(self, printer):
+        self.printer = printer
+        self.mcu_stepper = DummyMcu()
+    def set_max_jerk(self, max_halt_velocity, max_accel):
+        pass
+    def set_position(self, pos):
+        pass
+    def motor_enable(self, print_time, enable=0):
+        pass
+    def get_endstops(self):
+        pass
+    def step_const(self, *args, **kwargs):
+        pass
+
+
 def LookupMultiHomingStepper(printer, config):
     if not config.has_section(config.get_name() + '1'):
-        return PrinterHomingStepper(printer, config)
+        if config.has_section(config.get_name()):
+            return PrinterHomingStepper(printer, config)
+        return PrinterDummyStepper(printer)
     return PrinterMultiStepper(printer, config)

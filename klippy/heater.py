@@ -209,9 +209,6 @@ class PrinterHeater:
         with self.lock:
             return self.control.check_busy(eventtime)
     def start_auto_tune(self, degrees):
-        #if degrees and (degrees < self.min_temp or degrees > self.max_temp):
-        #    raise error("Requested temperature (%.1f) out of range (%.1f:%.1f)"
-        #                % (degrees, self.min_temp, self.max_temp))
         with self.lock:
             self.control = ControlAutoTune(self, self.control)
         self.set_temp(0, degrees, auto_tune=True)
