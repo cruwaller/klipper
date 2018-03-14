@@ -1,12 +1,11 @@
 #
 # This module is handling request from DuetWebControl (http://reprap.org/wiki/Duet_Web_Control)
-#     HTML page can be downloaded from https://github.com/chrishamm/DuetWebControl
-#     Using Tornado webserver to run page
+#     Tornado webserver is needed to run page
 #       Note: Tornado version 4.5 is required!
 #         - install Tornado using pip ( $pip install tornado==4.5 )
 #         - or download from https://github.com/tornadoweb/tornado/tree/branch4.5
 #           and use environment variable 'export TORNADO_PATH=<path to tornado folder>'
-#     Install opencv for streaming
+#     Install opencv for video streaming
 #         - $sudo apt-get install python-opencv
 #
 '''
@@ -189,11 +188,10 @@ class rrHandler(tornado.web.RequestHandler):
 
         #### rr_connect?password=XXX&time=YYY
         if "rr_connect" in path:
+            respdata["err"] = 0
             _passwd = self.get_argument('password')
-            if self.parent.passwd == _passwd:
-                respdata["err"] = 0
-            else:
-                respdata["err"] = 1
+            #if self.parent.passwd != _passwd:
+            #    respdata["err"] = 1
             # 0 = success, 1 = wrong passwd, 2 = No more HTTP sessions available
             respdata["sessionTimeout"] = 30000 # ms
             # duetwifi10, duetethernet10, radds15, alligator2, duet06, duet07, duet085, default: unknown
