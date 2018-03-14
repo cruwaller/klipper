@@ -16,15 +16,14 @@ class GCodeParser:
     def __init__(self, printer, fd):
         self.logger = printer.logger.getChild('gcode')
         self.printer = printer
-        self.fd_r = fd
-        self.fd_w = fd
+        self.fd = fd
         # Input handling
         self.reactor = printer.get_reactor()
         self.is_processing_data = False
         self.is_fileinput = not not printer.get_start_args().get("debuginput")
         self.fd_handle = None
         #if not self.is_fileinput:
-        #    self.fd_handle = self.reactor.register_fd(self.fd_r, self.process_data)
+        #    self.fd_handle = self.reactor.register_fd(self.fd, self.process_data)
         self.partial_input = ""
         self.pending_commands = []
         self.bytes_read = 0
@@ -95,7 +94,7 @@ class GCodeParser:
         elif state == 'connect':
             if not self.is_fileinput and self.fd_handle is None:
                 self.fd_handle = self.reactor.register_fd(
-                    self.fd_r, self.process_data)
+                    self.fd, self.process_data)
         if state != 'ready':
             return
         self.is_printer_ready = True
@@ -109,15 +108,14 @@ class GCodeParser:
         if self.extruder is not None:
             self.toolhead.set_extruder(self.extruder)
         if self.is_fileinput and self.fd_handle is None:
-            self.fd_handle = self.reactor.register_fd(self.fd_r, self.process_data)
-    def register_fd(self, fd_r, fd_w=None):
+            self.fd_handle = self.reactor.register_fd(self.fd, self.process_data)
+    def register_fd(self, fd_r):
         if self.is_fileinput:
             return False
         if self.fd_handle is not None:
             self.reactor.unregister_fd(self.fd_handle)
         self.fd_handle = self.reactor.register_fd(fd_r, self.process_data)
-        self.fd_r = fd_r
-        self.fd_w = fd_w
+        self.fd = fd_r
         return True
     def reset_last_position(self):
         self.last_position = self.position_with_transform()
@@ -188,7 +186,7 @@ class GCodeParser:
     m112_r = re.compile('^(?:[nN][0-9]+)?\s*[mM]112(?:\s|$)')
     def process_data(self, eventtime):
         # Read input, separate by newline, and add to pending_commands
-        data = os.read(self.fd_r, 4096)
+        data = os.read(self.fd, 4096)
         self.input_log.append((eventtime, data))
         self.bytes_read += len(data)
         lines = data.split('\n')
@@ -247,7 +245,7 @@ class GCodeParser:
         finally:
             self.need_ack = prev_need_ack
     def write_resp(self, msg):
-        os.write(self.fd_w, msg)
+        os.write(self.fd, msg)
     # Response handling
     def ack(self, msg=None):
         if not self.need_ack or self.is_fileinput:
