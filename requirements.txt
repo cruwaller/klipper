@@ -1,0 +1,8 @@
+virtualenv
+requests
+cffi>=1.6.0
+pyserial>=3.21
+greenlet>=0.4.10
+matplotlib
+opencv-python
+tornado==4.5
