@@ -355,7 +355,7 @@ class MCU_pwm:
 
 class MCU_adc:
     def __init__(self, mcu, pin_params):
-        self._logger = mcu.logger.getChild('temper_adc')
+        self._logger = mcu.logger.getChild('adc')
         self._mcu = mcu
         self._pin = pin_params['pin']
         self._min_sample = self._max_sample = 0.
@@ -408,18 +408,17 @@ class MCU_adc:
 class MCU_thermocouple:
     def __init__(self, mcu, pin_params):
         self._logger = mcu.logger.getChild('thermocouple')
-        self._mcu           = mcu
-        self._pin           = pin_params['pin']
-        self._min_sample    = self._max_sample  = 0.
-        self._read_interval = 0.
-        self._report_time   = 0.
-        self._report_clock  = 0
-        self._callback      = None
-        self._cmd_queue     = mcu.alloc_command_queue()
-        self._max_adc_value = 0
-        self._oid           = self._mcu.create_oid()
-        self._spi_speed     = 4000000
-        self._spi_mode      = 0
+        self._mcu             = mcu
+        self._pin             = pin_params['pin']
+        self._min_sample      = self._max_sample  = 0.
+        self._sample_interval = 0.
+        self._report_time     = 0.
+        self._report_clock    = 0
+        self._callback        = None
+        self._cmd_queue       = mcu.alloc_command_queue()
+        self._oid             = self._mcu.create_oid()
+        self._spi_speed       = 4000000
+        self._spi_mode        = 0
 
     def setup_spi_settings(self, mode, speed):
         # default SPI_MODE0 and 4MHz
@@ -429,16 +428,16 @@ class MCU_thermocouple:
     def get_mcu(self):
         return self._mcu
 
-    def setup_read_command(self, read_cmd, read_bytes, config, fault_mask = 0, fault_cmd = 0):
+    def setup_read_command(self, read_cmd, read_bytes, config,
+                           fault_mask = 0, fault_cmd = 0):
         self._read_cmd   = read_cmd
         self._read_bytes = read_bytes
         self._config     = config
         self._fault_mask = fault_mask
         self._fault_cmd  = fault_cmd
 
-    def setup_minmax(self, read_interval, max_adc, minval, maxval):
-        self._read_interval = read_interval
-        self._max_adc_value = max_adc
+    def setup_minmax(self, sample_interval, minval, maxval):
+        self._sample_interval = sample_interval
         self._min_sample    = minval
         self._max_sample    = maxval
 
@@ -452,7 +451,7 @@ class MCU_thermocouple:
             (self._oid, self._pin, self._spi_mode, self._spi_speed))
 
         clock        = self._mcu.get_query_slot(self._oid)
-        sample_ticks = self._mcu.seconds_to_clock(self._read_interval)
+        sample_ticks = self._mcu.seconds_to_clock(self._sample_interval)
         self._report_clock = self._mcu.seconds_to_clock(self._report_time)
 
         config_cmd = ("config_thermocouple oid=%d cmd=%d clock=%d"

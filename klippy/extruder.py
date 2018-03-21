@@ -249,12 +249,13 @@ class DummyExtruder:
 def add_printer_objects(printer, config):
     printer._extruders = {}
     if config.has_section('extruder'):
-        printer._extruders[0] = PrinterExtruder(
-            printer, config.getsection('extruder'), 0)
+        raise printer.config_error("Extruder section must contain index!")
+        #printer._extruders[0] = PrinterExtruder(
+        #    printer, config.getsection('extruder'), 0)
     else:
         extruders = config.get_prefix_sections('extruder')
         for s in extruders:
-            index = int(s.section[-1:])
+            index = int(s.section[8:])
             printer._extruders[index] = PrinterExtruder(
                 printer, s, index)
 

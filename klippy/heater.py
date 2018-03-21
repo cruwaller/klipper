@@ -12,8 +12,6 @@ import extras.sensors as sensors
 # Heater
 ######################################################################
 
-SAMPLE_TIME = 0.001
-SAMPLE_COUNT = 8
 REPORT_TIME = 0.300
 MAX_HEAT_TIME = 5.0
 AMBIENT_TEMP = 25.
@@ -54,17 +52,20 @@ class PrinterHeater:
         else:
             self.mcu_pwm = pins.setup_pin(printer, 'pwm', heater_pin)
             pwm_cycle_time = config.getfloat(
-                'pwm_cycle_time', 0.100, above=0., maxval=REPORT_TIME)
+                'pwm_cycle_time', 0.100, above=0., maxval=self.sensor.report_time)
             self.mcu_pwm.setup_cycle_time(pwm_cycle_time)
         self.mcu_pwm.setup_max_duration(MAX_HEAT_TIME)
         self.mcu_sensor = self.sensor.get_mcu()
-        self.mcu_sensor.setup_adc_callback(REPORT_TIME, self.adc_callback)
+        self.mcu_sensor.setup_adc_callback(self.sensor.report_time,
+                                           self.adc_callback)
         is_fileoutput = self.mcu_sensor.get_mcu().is_fileoutput()
         self.can_extrude = self.min_extrude_temp <= 0. or is_fileoutput
         self.control = algo(self, config)
         # pwm caching
         self.next_pwm_time = 0.
         self.last_pwm_value = 0.
+        # Load additional modules
+        printer.try_load_module(config, "pid_calibrate")
         # heat check timer
         self.protection_period_heat = \
             config.getfloat('protect_period_heat', 10.0, above=0.0, maxval=120.0)
@@ -161,7 +162,7 @@ class PrinterHeater:
             and abs(value - self.last_pwm_value) < 0.05):
             # No significant change in value - can suppress update
             return
-        pwm_time = read_time + REPORT_TIME + self.sensor.sample_time*self.sensor.sample_count
+        pwm_time = read_time + self.sensor.report_time + self.sensor.sample_time*self.sensor.sample_count
         self.next_pwm_time = pwm_time + 0.75 * MAX_HEAT_TIME
         self.last_pwm_value = value
         self.logger.debug("%s: pwm=%.3f@%.3f (from %.3f@%.3f [%.3f])",
@@ -208,17 +209,12 @@ class PrinterHeater:
     def check_busy(self, eventtime):
         with self.lock:
             return self.control.check_busy(eventtime)
-    def start_auto_tune(self, degrees):
+    def set_control(self, control):
         with self.lock:
-            self.control = ControlAutoTune(self, self.control)
-        self.set_temp(0, degrees, auto_tune=True)
-    def finish_auto_tune(self, old_control):
-        if (type(self.control).__name__ is "ControlAutoTune" and \
-            type(old_control).__name__ is ControlPID):
-            kp, ki, kd = self.control.get_terms();
-            old_control.set_new_terms(kp, ki, kd)
-        self.control = old_control
-        self.set_temp(0, 0)
+            old_control = self.control
+            self.control = control
+            self.target_temp = 0.
+        return old_control
     def stats(self, eventtime):
         with self.lock:
             target_temp = self.target_temp
@@ -232,6 +228,10 @@ class PrinterHeater:
             target_temp = self.target_temp
             last_temp = self.last_temp
         return {'temperature': last_temp, 'target': target_temp}
+    def get_control(self):
+        if hasattr(self.control, "set_terms"):
+            return self.control.set_terms
+        return None
 
 
 ######################################################################
@@ -279,16 +279,6 @@ class ControlPID:
         self.prev_temp_time = 0.
         self.prev_temp_deriv = 0.
         self.prev_temp_integ = 0.
-    def set_new_terms(self, Kp, Ki, Kd):
-        self.Kp = Kp
-        self.Ki = Ki
-        self.Kd = Kd
-        # reset adjustment
-        self.temp_integ_max = self.imax / self.Ki
-        self.prev_temp = AMBIENT_TEMP
-        self.prev_temp_time = 0.
-        self.prev_temp_deriv = 0.
-        self.prev_temp_integ = 0.
     def adc_callback(self, read_time, temp):
         time_diff = read_time - self.prev_temp_time
         # Calculate change of temperature
@@ -318,130 +308,23 @@ class ControlPID:
         temp_diff = self.heater.target_temp - self.heater.last_temp
         return (abs(temp_diff) > PID_SETTLE_DELTA
                 or abs(self.prev_temp_deriv) > PID_SETTLE_SLOPE)
-
-
-######################################################################
-# Ziegler-Nichols PID autotuning
-######################################################################
-
-TUNE_PID_DELTA = 5.0
-
-class ControlAutoTune:
-    Kp = None
-    Ki = None
-    Kd = None
-    def __init__(self, heater, old_control):
-        self.logger = heater.logger.getChild('autotune')
-        self.heater = heater
-        self.old_control = old_control
-        self.heating = False
-        self.peaks = []
-        self.peak = 0.
-        self.peak_time = 0.
-    def adc_callback(self, read_time, temp):
-        if self.heating and temp >= self.heater.target_temp:
-            self.heating = False
-            self.check_peaks()
-        elif (not self.heating
-              and temp <= self.heater.target_temp - TUNE_PID_DELTA):
-            self.heating = True
-            self.check_peaks()
-        if self.heating:
-            self.heater.set_pwm(read_time, self.heater.max_power)
-            if temp < self.peak:
-                self.peak = temp
-                self.peak_time = read_time
-        else:
-            self.heater.set_pwm(read_time, 0.)
-            if temp > self.peak:
-                self.peak = temp
-                self.peak_time = read_time
-    def check_peaks(self):
-        self.peaks.append((self.peak, self.peak_time))
-        if self.heating:
-            self.peak = 9999999.
-        else:
-            self.peak = -9999999.
-        if len(self.peaks) < 4:
-            return
-        self.calc_pid(len(self.peaks)-1)
-    def calc_pid(self, pos):
-        temp_diff = self.peaks[pos][0] - self.peaks[pos-1][0]
-        time_diff = self.peaks[pos][1] - self.peaks[pos-2][1]
-        max_power = self.heater.max_power
-        Ku = 4. * (2. * max_power) / (abs(temp_diff) * math.pi)
-        Tu = time_diff
-
-        Ti = 0.5 * Tu
-        Td = 0.125 * Tu
-        Kp = 0.6 * Ku * PID_PARAM_BASE
-        Ki = Kp / Ti
-        Kd = Kp * Td
-        self.logger.info("Autotune: raw=%f/%f Ku=%f Tu=%f  Kp=%f Ki=%f Kd=%f",
-                     temp_diff, max_power, Ku, Tu, Kp, Ki, Kd)
-        return Kp, Ki, Kd
-    def final_calc(self):
-        cycle_times = [(self.peaks[pos][1] - self.peaks[pos-2][1], pos)
-                       for pos in range(4, len(self.peaks))]
-        midpoint_pos = sorted(cycle_times)[len(cycle_times)/2][1]
-        self.Kp, self.Ki, self.Kd = self.calc_pid(midpoint_pos)
-        logging.info("Autotune: final: Kp=%f Ki=%f Kd=%f", self.Kp, self.Ki, self.Kd)
-        gcode = self.heater.printer.lookup_object('gcode')
-        gcode.respond_info(
-            "PID parameters: pid_Kp=%.3f pid_Ki=%.3f pid_Kd=%.3f\n"
-            "To use these parameters, update the printer config file with\n"
-            "the above and then issue a RESTART command" % (self.Kp, self.Ki, self.Kd))
-    def check_busy(self, eventtime):
-        if self.heating or len(self.peaks) < 12:
-            return True
-        self.final_calc()
-        self.heater.finish_auto_tune(self.old_control)
-        return False
-    def get_terms(self):
-        return self.Kp, self.Ki, self.Kd
-
-######################################################################
-# Tuning information test
-######################################################################
-
-class ControlBumpTest:
-    def __init__(self, heater, old_control):
-        self.heater = heater
-        self.old_control = old_control
-        self.temp_samples = {}
-        self.pwm_samples = {}
-        self.state = 0
-    def set_pwm(self, read_time, value):
-        self.pwm_samples[read_time + 2*REPORT_TIME] = value
-        self.heater.set_pwm(read_time, value)
-    def adc_callback(self, read_time, temp):
-        self.temp_samples[read_time] = temp
-        if not self.state:
-            self.set_pwm(read_time, 0.)
-            if len(self.temp_samples) >= 20:
-                self.state += 1
-        elif self.state == 1:
-            if temp < self.heater.target_temp:
-                self.set_pwm(read_time, self.heater.max_power)
-                return
-            self.set_pwm(read_time, 0.)
-            self.state += 1
-        elif self.state == 2:
-            self.set_pwm(read_time, 0.)
-            if temp <= (self.heater.target_temp + AMBIENT_TEMP) / 2.:
-                self.dump_stats()
-                self.state += 1
-    def dump_stats(self):
-        out = ["%.3f %.1f %d" % (time, temp, self.pwm_samples.get(time, -1.))
-               for time, temp in sorted(self.temp_samples.items())]
-        f = open("/tmp/heattest.txt", "wb")
-        f.write('\n'.join(out))
-        f.close()
-    def check_busy(self, eventtime):
-        if self.state < 3:
-            return True
-        self.heater.finish_auto_tune(self.old_control)
-        return False
+    def set_terms(self, Kp=None, Ki=None, Kd=None):
+        reset = False
+        if Kp is not None:
+            self.Kp = Kp
+            reset = True
+        if Ki is not None:
+            self.Ki = Ki
+            self.temp_integ_max = self.imax / self.Ki
+            reset = True
+        if Kd is not None:
+            self.Kd = Kd
+            reset = True
+        if reset:
+            #self.prev_temp = AMBIENT_TEMP
+            #self.prev_temp_deriv = 0.
+            #self.prev_temp_integ = 0.
+            pass
 
 def load_config(config):
     raise config.get_printer().config_error(

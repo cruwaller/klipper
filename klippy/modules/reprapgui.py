@@ -53,6 +53,7 @@ except KeyError:
 import tornado.ioloop
 import tornado.web
 
+_PARENT = None
 
 def dict_dump_json(data, logger):
     logger.info(json.dumps(data,
@@ -138,7 +139,7 @@ class MainHandler(BaseHandler):
 class LoginHandler(BaseHandler):
     def initialize(self, path, parent):
         self.path = path
-        self.parent = parent
+        self.parent = _PARENT #parent
     @tornado.gen.coroutine
     def get(self):
         incorrect = self.get_secure_cookie("incorrect")
@@ -177,7 +178,7 @@ class LogoutHandler(BaseHandler):
 
 class rrHandler(tornado.web.RequestHandler):
     def initialize(self, parent):
-        self.parent = parent
+        self.parent = _PARENT #parent
         self.sd_path = parent.sd.sdcard_dirname
         self.logger = parent.logger
 
@@ -495,12 +496,14 @@ def create_dir(_dir):
             raise Exception("cannot create directory {}".format(_dir))
 
 
-TORNADO_THREAD = None
+_TORNADO_THREAD = None
 
 class RepRapGuiModule(object):
     htmlroot = None
     def __init__(self, printer, config):
-        global TORNADO_THREAD
+        global _TORNADO_THREAD
+        global _PARENT
+        _PARENT = self;
         self.printer = printer
         self.logger = printer.logger.getChild("DuetWebControl")
         self.logger_tornado = self.logger.getChild("tornado")
@@ -544,7 +547,7 @@ class RepRapGuiModule(object):
         self.sd.register_done_cb(self.sd_print_done)
         # ------------------------------
         # Start tornado webserver
-        if TORNADO_THREAD is None or not TORNADO_THREAD.isAlive():
+        if _TORNADO_THREAD is None or not _TORNADO_THREAD.isAlive():
             application = tornado.web.Application(
                 [
                     tornado.web.url(r"/", MainHandler,
@@ -582,10 +585,10 @@ class RepRapGuiModule(object):
             http_server.start();
 
             # Put tornado to background thread
-            TORNADO_THREAD = threading.Thread(
+            _TORNADO_THREAD = threading.Thread(
                 target=self.Tornado_execute, args=())
-            TORNADO_THREAD.daemon = True
-            TORNADO_THREAD.start()
+            _TORNADO_THREAD.daemon = True
+            _TORNADO_THREAD.start()
 
         # ------------------------------
         fd_r, self.pipe_write = os.pipe() # Change to PTY ?
@@ -604,6 +607,14 @@ class RepRapGuiModule(object):
         printer.add_object("webgui", self)
         self.logger.info("RepRep Web GUI loaded")
 
+    def printer_state(self, state):
+        if state == 'shutdown':
+            pass
+        elif state == 'connect':
+            pass
+        elif state == 'ready':
+            pass
+
     def Tornado_LoggerCb(self, req):
         values  = [req.request.remote_ip, req.request.method, req.request.uri]
         self.logger_tornado.debug(" ".join(values))
@@ -611,13 +622,17 @@ class RepRapGuiModule(object):
     def Tornado_execute(self):
         tornado.ioloop.IOLoop.instance().start()
 
+    send_resp = False
     def printer_write(self, cmd):
         self.logger.debug("GCode command: %s" % (cmd,))
         os.write(self.pipe_write, "%s\n" % cmd)
+        self.send_resp = True
 
     def gcode_resp_handler(self, msg):
         self.logger.debug("GCode resps: %s" % (msg.strip(),))
-        self.gcode_resps.append(msg)
+        if self.send_resp:
+            self.gcode_resps.append(msg)
+            self.send_resp = False
 
     def printer_state(self, state):
         if state == "connect":

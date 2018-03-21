@@ -11,8 +11,7 @@ import collections, ConfigParser, importlib
 sys.path.append(os.path.join(os.path.dirname(__file__), "extras"))
 
 import util, reactor, queuelogger, msgproto
-import gcode, pins, mcu, chipmisc, toolhead, extruder, heater
-
+import gcode, pins, mcu, toolhead, extruder, heater
 
 status_delay = 1.0
 
@@ -189,7 +188,7 @@ class Printer:
             self.logger.info("Stats %.1f: %s", eventtime,
                              ' '.join([s[1] for s in stats]))
         return eventtime + status_delay
-    def _try_load_module(self, config, section):
+    def try_load_module(self, config, section):
         if section in self.objects:
             return
         module_parts = section.split()
@@ -238,9 +237,9 @@ class Printer:
             m.add_printer_objects(self, config)
         self.logger.info("========================================")
         for section in fileconfig.sections():
-            self._try_load_module(config, section)
+            self.try_load_module(config, section)
         self.logger.info("========================================")
-        for m in [chipmisc, toolhead, extruder]:
+        for m in [toolhead, extruder]:
             m.add_printer_objects(self, config)
 
         # Load gcode extensions

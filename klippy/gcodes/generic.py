@@ -4,7 +4,9 @@ class GenericGcode(object):
     def __init__(self, printer):
         self.printer = printer
         self.gcode = printer.lookup_object('gcode')
-        for cmd in ['M0', 'M1', 'M37', 'M118', 'M204', 'M205', 'M302', 'M851', 'M900']:
+        for cmd in ['M0', 'M1', 'M37', 'M118', 'M204', 'M205',
+                    'M301', 'M302', 'M304',
+                    'M851', 'M900']:
             self.gcode.register_command(cmd, getattr(self, 'cmd_' + cmd))
         # just discard
         # TODO : Should discard M206 ?
@@ -99,11 +101,33 @@ class GenericGcode(object):
                     format(h.name, status, temp))
 
     def cmd_M301(self, params):
-        # TODO: M301: Set PID parameters
-        pass
+        # M301: Set PID parameters
+        index = self.gcode.get_int('E', params)
+        if index == -1:
+            index = "bed"
+        try:
+            htr = self.printer.lookup_object('heater %s' % (index))
+            ctrl = htr.get_control()
+            if ctrl is not None:
+                Kp = self.gcode.get_float('P', params, None)
+                Ki = self.gcode.get_float('I', params, None)
+                Kd = self.gcode.get_float('D', params, None)
+                ctrl(Kp=Kp, Ki=Ki, Kd=Kd)
+        except self.printer.config_error as e:
+            raise self.gcode.error("Error: Heater not found!")
+
     def cmd_M304(self, params):
-        # TODO: M304: Set PID parameters - Bed
-        pass
+        # M304: Set PID parameters - Bed
+        try:
+            htr = self.printer.lookup_object('heater bed')
+            ctrl = htr.get_control()
+            if ctrl is not None:
+                Kp = self.gcode.get_float('P', params, None)
+                Ki = self.gcode.get_float('I', params, None)
+                Kd = self.gcode.get_float('D', params, None)
+                ctrl(Kp=Kp, Ki=Ki, Kd=Kd)
+        except self.printer.config_error as e:
+            raise self.gcode.error("Error: Bed is not configured!")
 
     def cmd_M851(self, params):
         # Set X, Y, Z offsets

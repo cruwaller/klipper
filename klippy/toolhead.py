@@ -183,17 +183,23 @@ STALL_TIME = 0.100
 class ToolHead:
     def __init__(self, printer, config):
         self.logger = printer.logger.getChild('toolhead')
-        self.logger.debug("Add toolhead '{}'".format(config.section))
+        self.logger.info("toolhead '{}' created".format(config.section))
         self.printer = printer
         self.reactor = printer.get_reactor()
         self.all_mcus = printer.lookup_module_objects('mcu')
         self.mcu = self.all_mcus[0]
-        self.homing_order = config.get('homing_order', 'XYZ').upper()
         self.max_velocity = config.getfloat('max_velocity', above=0.)
         self.max_accel = config.getfloat('max_accel', above=0.)
-        self.max_accel_to_decel = config.getfloat(
-            'max_accel_to_decel', self.max_accel * 0.5
+        max_accel_to_decel_ratio = config.getfloat(
+            'max_accel_to_decel_ratio', default=1.0, above=0.,
+            maxval=1.)
+        max_accel_to_decel = config.getfloat(
+            'max_accel_to_decel', default=None
             , above=0., maxval=self.max_accel)
+        if max_accel_to_decel is not None:
+            self.max_accel_to_decel = max_accel_to_decel
+        else:
+            self.max_accel_to_decel = self.max_accel * max_accel_to_decel_ratio
         self.junction_deviation = config.getfloat(
             'junction_deviation', 0.02, minval=0.)
         self.move_queue = MoveQueue()
@@ -223,6 +229,7 @@ class ToolHead:
         # Create kinematics class
         self.extruder = extruder.DummyExtruder()
         self.move_queue.set_extruder(self.extruder)
+        self.homing_order = config.get('homing_order', 'XYZ').upper()
         self.require_home_after_motor_off = config.getboolean(
             'require_home_after_motor_off', True)
         self.sw_limit_check_enabled = config.getboolean(
@@ -236,6 +243,8 @@ class ToolHead:
         self.kin = config.getchoice('kinematics', kintypes)(
             self, printer, config)
         self.logger.info("Kinematic created: %s" % self.kin.name)
+        self.logger.info("max_accel: %s" % (self.max_accel))
+        self.logger.info("max_accel_to_decel: %s" % (self.max_accel_to_decel))
     # Print time tracking
     def update_move_time(self, movetime):
         self.print_time += movetime
