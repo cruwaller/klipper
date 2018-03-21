@@ -6,6 +6,8 @@
 import math
 import stepper, homing
 
+HOMING_SLOWDOWN = 5
+
 StepList = (0, 1, 2)
 
 class CoreXYKinematics:
@@ -20,8 +22,16 @@ class CoreXYKinematics:
                 printer, config.getsection('stepper_y')),
             stepper.LookupMultiHomingStepper(
                 printer, config.getsection('stepper_z'))]
-        self.steppers[0].mcu_endstop.add_stepper(self.steppers[1].mcu_stepper)
-        self.steppers[1].mcu_endstop.add_stepper(self.steppers[0].mcu_stepper)
+        self.combined_endstops = config.getboolean('combined_endstops', False)
+        if self.combined_endstops:
+            # endstops are always triggered both
+            #   => no cross connection necessary
+            pass
+        else:
+            # x/y axes also need to stop on each others endstops
+            #   => cross connect endstop and stepper x->y and y->x
+            self.steppers[0].mcu_endstop.add_stepper(self.steppers[1].mcu_stepper)
+            self.steppers[1].mcu_endstop.add_stepper(self.steppers[0].mcu_stepper)
         max_velocity, max_accel = toolhead.get_max_velocity()
         self.max_z_velocity = config.getfloat(
             'max_z_velocity', max_velocity, above=0., maxval=max_velocity)
@@ -87,15 +97,20 @@ class CoreXYKinematics:
             homepos[axis] = s.position_endstop
             coord = [None, None, None, None]
             coord[axis] = pos
-            homing_state.home(coord, homepos, s.get_endstops(), homing_speed,
+            if axis < 2 and self.combined_endstops:
+                endstops = ( self.steppers[0].get_endstops()
+                           + self.steppers[1].get_endstops() )
+            else:
+                endstops = s.get_endstops()
+            homing_state.home(coord, homepos, endstops, homing_speed,
                               init_sensor=sensor_funcs)
             # Retract
             coord[axis] = rpos
             homing_state.retract(coord, homing_speed)
             # Home again
             coord[axis] = r2pos
-            homing_state.home(coord, homepos, s.get_endstops(),
-                              homing_speed/2.0, second_home=True,
+            homing_state.home(coord, homepos, endstops,
+                              homing_speed/HOMING_SLOWDOWN, second_home=True,
                               init_sensor=sensor_funcs)
             if axis == 2:
                 # Support endstop phase detection on Z axis

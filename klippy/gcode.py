@@ -318,8 +318,8 @@ class GCodeParser:
             if heater is not None:
                 cur, target = heater.get_temp(eventtime)
                 out.append("T%d:%.1f /%.1f" % (e.get_index(), cur, target))
-        heater = self.printer.lookup_object('heater bed')
-        if (heater is not None):
+        heater = self.printer.lookup_object('heater bed', None)
+        if heater is not None:
             cur, target = heater.get_temp(eventtime)
             out.append("B:%.1f /%.1f" % (cur, target))
         if not out:

@@ -918,11 +918,17 @@ def error_help(msg):
 
 def add_printer_objects(printer, config):
     reactor = printer.get_reactor()
+    # first configured MCU has mainsync, others get secondary sync
+    # for best results the MCU with xy should be the first
+    # but this is generally symmetric / doesn't really matter
     mainsync = clocksync.ClockSync(reactor)
-    printer.add_object('mcu', MCU(printer, config.getsection('mcu'), mainsync))
-    for s in config.get_prefix_sections('mcu '):
-        printer.add_object(s.section, MCU(
-            printer, s, clocksync.SecondarySync(reactor, mainsync)))
+    first = True
+    for s in sorted(config.get_prefix_sections('mcu'), key=lambda s: s.section):
+        if s.section == 'mcu' or s.section.startswith('mcu '):
+            printer.add_object(s.section, MCU(
+                printer, s,
+                mainsync if first else clocksync.SecondarySync(reactor, mainsync)))
+            first = False
 
 def get_printer_mcu(printer, name):
     if name == 'mcu':
