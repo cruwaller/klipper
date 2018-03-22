@@ -213,7 +213,7 @@ class Printer:
                 mod_path = ".".join([folder, mod_name])
                 mod = importlib.import_module(mod_path)
             except ImportError as e:
-                self.logger.error("module load fail : {}".format(module))
+                self.logger.error("module '%s' load failed : %s " % (mod_name, str(e)))
                 continue
             init_func = getattr(mod, func, None)
             if init_func is not None:
