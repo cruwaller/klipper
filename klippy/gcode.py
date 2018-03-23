@@ -518,7 +518,7 @@ class GCodeParser:
     def cmd_M114(self, params):
         # Get Current Position
         p = [lp - bp for lp, bp in zip(self.last_position, self.base_position)]
-        p[3] /= self.extrude_factor
+        p[3] /= self.extruder.extrude_factor
         self.respond("X:%.3f Y:%.3f Z:%.3f E:%.3f" % tuple(p))
     def cmd_M206(self, params):
         # Set home offset
