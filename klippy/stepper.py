@@ -147,6 +147,7 @@ class PrinterHomingStepper(PrinterStepper):
         self.position_max = config.getfloat(
             'position_max', 0., above=self.position_min)
         # Homing mechanics
+        self.homing_slowdown = config.getfloat('homing_slowdown', 5.0)
         self.homing_speed = config.getfloat('homing_speed', 5.0, above=0.)
         self.homing_retract_dist = config.getfloat(
             'homing_retract_dist', 5., minval=0.)

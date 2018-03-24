@@ -114,7 +114,7 @@ class DeltaKinematics:
         # Home again
         coord[2] -= s.homing_retract_dist
         homing_state.home(coord, homepos, endstops,
-                          homing_speed/2.0, second_home=True,
+                          homing_speed/s.homing_slowdown, second_home=True,
                           init_sensor=sensor_funcs)
         # Set final homed position
         spos = [ep + s.get_homed_offset()

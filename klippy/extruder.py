@@ -27,7 +27,7 @@ class PrinterExtruder:
             'max_extrude_cross_section', 4. * self.nozzle_diameter**2
             , above=0.)
         self.max_extrude_ratio = max_cross_section / self.filament_area
-        toolhead = printer.lookup_object('toolhead')
+        self.toolhead = toolhead = printer.lookup_object('toolhead')
         max_velocity, max_accel = toolhead.get_max_velocity()
         self.max_e_velocity = config.getfloat(
             'max_extrude_only_velocity', max_velocity * self.max_extrude_ratio
@@ -152,6 +152,7 @@ class PrinterExtruder:
     def move(self, print_time, move):
         if self.need_motor_enable:
             self.stepper.motor_enable(print_time, 1)
+            self.toolhead.motor_on(print_time)
             self.need_motor_enable = False
         axis_d = move.axes_d[3]
         axis_r = abs(axis_d) / move.move_d

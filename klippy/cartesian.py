@@ -84,7 +84,7 @@ class CartKinematics:
             # Home again
             coord[axis] = r2pos
             homing_state.home(coord, homepos, s.get_endstops(),
-                              homing_speed/2.0, second_home=True,
+                              homing_speed/s.homing_slowdown, second_home=True,
                               init_sensor=sensor_funcs)
             # Set final homed position
             coord[axis] = s.position_endstop + s.get_homed_offset()

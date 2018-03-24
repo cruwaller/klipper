@@ -365,7 +365,8 @@ class ToolHead:
         self.dwell(STALL_TIME)
         last_move_time = self.get_last_move_time()
         self.kin.motor_off(last_move_time)
-        self.extruder.motor_off(last_move_time) # FIXME : All extruders!
+        for key,e in extruder.get_printer_extruders(self.printer).items():
+            e.motor_off(last_move_time)
         self.dwell(STALL_TIME)
         self.need_motor_off = False
         self.logger.debug('; Max time of %f', last_move_time)

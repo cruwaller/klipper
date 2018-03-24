@@ -6,8 +6,6 @@
 import math
 import stepper, homing
 
-HOMING_SLOWDOWN = 5
-
 StepList = (0, 1, 2)
 
 class CoreXYKinematics:
@@ -110,7 +108,7 @@ class CoreXYKinematics:
             # Home again
             coord[axis] = r2pos
             homing_state.home(coord, homepos, endstops,
-                              homing_speed/HOMING_SLOWDOWN, second_home=True,
+                              homing_speed/s.homing_slowdown, second_home=True,
                               init_sensor=sensor_funcs)
             if axis == 2:
                 # Support endstop phase detection on Z axis
