@@ -16,9 +16,9 @@
 
 #define SERIAL_BUFFER_SIZE 96
 static char receive_buf[SERIAL_BUFFER_SIZE];
-static uint32_t receive_pos = 0;
+static uint32_t receive_pos;
 static char transmit_buf[SERIAL_BUFFER_SIZE];
-static uint32_t transmit_pos = 0, transmit_max = 0;
+static uint32_t transmit_pos, transmit_max;
 
 
 /****************************************************************
@@ -44,8 +44,8 @@ serial_init(void)
                      | UART_MR_CHMODE_NORMAL);
     UART->UART_BRGR = SystemCoreClock / (16 * CONFIG_SERIAL_BAUD);
     UART->UART_IER = UART_IER_RXRDY;
-    NVIC_EnableIRQ(UART_IRQn);
     NVIC_SetPriority(UART_IRQn, 0);
+    NVIC_EnableIRQ(UART_IRQn);
     UART->UART_CR = UART_CR_RXEN | UART_CR_TXEN;
 }
 DECL_INIT(serial_init);
@@ -61,12 +61,13 @@ UART_Handler(void)
         // in case of serial overflow - ignore it as crc error will force retransmit
         if (receive_pos < SERIAL_BUFFER_SIZE)
             receive_buf[receive_pos++] = data;
+        return;
     }
     if (status & UART_SR_TXRDY) {
-        if (transmit_pos >= transmit_max)
-            UART->UART_IDR = UART_IDR_TXRDY;
-        else
+        if (transmit_pos < transmit_max)
             UART->UART_THR = transmit_buf[transmit_pos++];
+        else
+            UART->UART_IDR = UART_IDR_TXRDY;
     }
 }
 

@@ -411,7 +411,6 @@ class MCU_thermocouple:
         self._mcu             = mcu
         self._pin             = pin_params['pin']
         self._min_sample      = self._max_sample  = 0.
-        self._sample_interval = 0.
         self._report_time     = 0.
         self._report_clock    = 0
         self._callback        = None
@@ -436,8 +435,7 @@ class MCU_thermocouple:
         self._fault_mask = fault_mask
         self._fault_cmd  = fault_cmd
 
-    def setup_minmax(self, sample_interval, minval, maxval):
-        self._sample_interval = sample_interval
+    def setup_minmax(self, minval, maxval):
         self._min_sample    = minval
         self._max_sample    = maxval
 
@@ -451,14 +449,13 @@ class MCU_thermocouple:
             (self._oid, self._pin, self._spi_mode, self._spi_speed))
 
         clock        = self._mcu.get_query_slot(self._oid)
-        sample_ticks = self._mcu.seconds_to_clock(self._sample_interval)
         self._report_clock = self._mcu.seconds_to_clock(self._report_time)
 
         config_cmd = ("config_thermocouple oid=%d cmd=%d clock=%d"
-                      " interval=%d min_value=%d max_value=%d"
+                      " min_value=%d max_value=%d"
                       " read_bytes=%d fault_mask=%d rest_ticks=%d fault_cmd=%u cfg=" %
                       (self._oid, self._read_cmd, clock,
-                       sample_ticks, self._min_sample, self._max_sample,
+                       self._min_sample, self._max_sample,
                        self._read_bytes, self._fault_mask, self._report_clock,
                        self._fault_cmd))
 
@@ -508,7 +505,7 @@ class MCU_spibus:
         self.write_cmd = self._mcu.lookup_command(
             "spibus_write oid=%c cmd=%c cfg=%*s")
         self.read_cmd = self._mcu.lookup_command(
-            "spibus_read oid=%c cmd=%c len=%hu")
+            "spibus_read oid=%c cmd=%c len=%c")
 
     def write(self, cmd, val):
         params = self.write_cmd.send_with_response(

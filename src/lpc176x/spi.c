@@ -45,7 +45,7 @@ static const ADC_mapping_t g_pinsSPI[] = {
 };
 
 
-SPI_t spi_basic_config = 0;
+struct spi_config spi_basic_config = {.cfg = 0};
 
 static uint32_t
 spi_get_clock(uint32_t const target_clock)
@@ -85,10 +85,10 @@ spi_init(void)
 }
 DECL_INIT(spi_init);
 
-SPI_t
+struct spi_config
 spi_get_config(uint8_t const mode, uint32_t const clock)
 {
-    SPI_t config = 0;
+    uint32_t config = 0;
     config |= (SPI_MASTER_MODE);
     config |= (SPI_DATA_MSB_FIRST);
     config |= (SPI_DATABIT_8);
@@ -115,33 +115,45 @@ spi_get_config(uint8_t const mode, uint32_t const clock)
     // Calculate SPI prescaler
     config |= (spi_get_clock(clock) << 24);
 
-    return config;
+    return (struct spi_config){.cfg = config};
 }
 
-void
-spi_set_config(SPI_t const config)
-{
-    LPC_SPI->SPCR  = (config & SPI_SPCR_BITMASK);     // Set config
-    LPC_SPI->SPCCR = SPI_SPCCR_COUNTER(config >> 24); // Set SPI clock
+static uint8_t reserved = 0;
+uint8_t spi_set_config(struct spi_config const config) {
+    if (reserved) return 0;
+    LPC_SPI->SPCR  = (config.cfg & SPI_SPCR_BITMASK);     // Set config
+    LPC_SPI->SPCCR = SPI_SPCCR_COUNTER(config.cfg >> 24); // Set SPI clock
+    return ++reserved;
 }
 
-void
-spi_transfer_len(char *data, uint8_t len)
-{
+void spi_set_ready(void) {
+    reserved = 0;
+}
+
+void spi_transfer_len(char *data, uint8_t len) {
     uint16_t i;
     for (i = 0; i < len; i++) {
-        data[i] = spi_transfer(data[i], 0);
+        data[i] = spi_transfer(data[i]);
     }
 }
 
-uint8_t
-spi_transfer(uint8_t const data, uint8_t const last)
-{
-    (void)last;
+uint8_t spi_transfer(uint8_t const data) {
     // write byte with address and end transmission flag
     LPC_SPI->SPDR = (data & SPI_SPDR_BITMASK);
     // wait for transmit register empty
     while (!(LPC_SPI->SPSR & SPI_SPSR_SPIF));
     // get data
     return (uint8_t)(LPC_SPI->SPDR & SPI_SPDR_BITMASK);
+}
+
+void spi_send(uint8_t const data) {
+    while (!(LPC_SPI->SPSR & SPI_SPSR_SPIF));
+    (void)LPC_SPI->SPDR; // empty RX buff
+    LPC_SPI->SPDR = (data & SPI_SPDR_BITMASK);
+}
+uint8_t spi_read(void) {
+    return LPC_SPI->SPDR;
+}
+uint8_t spi_read_rdy(void) {
+    return (!!(LPC_SPI->SPSR & SPI_SPSR_SPIF));
 }

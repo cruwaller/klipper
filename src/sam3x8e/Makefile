@@ -6,7 +6,8 @@ CROSS_PREFIX=arm-none-eabi-
 CFLAGS += -mthumb -mcpu=cortex-m3
 CFLAGS += -D__SAM3X8E__
 CFLAGS += -Ilib/sam3x8e/include -Ilib/cmsis-include
-CFLAGS += -O2 -g
+#CFLAGS += -O2 -g
+CFLAGS += -O3
 CFLAGS += -flto -fwhole-program -fno-use-linker-plugin
 
 CFLAGS_klipper.elf += $(CFLAGS)

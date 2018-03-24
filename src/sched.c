@@ -188,7 +188,9 @@ sched_timer_reset(void)
  * Tasks
  ****************************************************************/
 
+#if (!SCHED_NO_SLEEP)
 static int_fast8_t tasks_status;
+#endif
 
 #define TS_IDLE      -1
 #define TS_REQUESTED 0
@@ -198,14 +200,20 @@ static int_fast8_t tasks_status;
 void
 sched_wake_tasks(void)
 {
+#if (!SCHED_NO_SLEEP)
     tasks_status = TS_REQUESTED;
+#endif
 }
 
 // Check if tasks need to be run
 uint8_t
 sched_tasks_busy(void)
 {
+#if (!SCHED_NO_SLEEP)
     return tasks_status >= TS_REQUESTED;
+#else
+    return 0;
+#endif
 }
 
 // Note that a task is ready to run
@@ -230,11 +238,16 @@ sched_check_wake(struct task_wake *w)
 static void
 run_tasks(void)
 {
+#if (!SCHED_NO_STATS)
     uint32_t start = timer_read_time();
+#endif // (!SCHED_NO_STATS)
     for (;;) {
+#if (!SCHED_NO_SLEEP)
         // Check if can sleep
         if (tasks_status != TS_REQUESTED) {
+#if (!SCHED_NO_STATS)
             start -= timer_read_time();
+#endif // (!SCHED_NO_STATS)
             irq_disable();
             if (tasks_status != TS_REQUESTED) {
                 // Sleep processor (only run timers) until tasks woken
@@ -244,18 +257,23 @@ run_tasks(void)
                 } while (tasks_status != TS_REQUESTED);
             }
             irq_enable();
+#if (!SCHED_NO_STATS)
             start += timer_read_time();
+#endif // (!SCHED_NO_STATS)
         }
         tasks_status = TS_RUNNING;
+#endif // (!SCHED_NO_SLEEP)
 
         // Run all tasks
         extern void ctr_run_taskfuncs(void);
         ctr_run_taskfuncs();
 
+#if (!SCHED_NO_STATS)
         // Update statistics
         uint32_t cur = timer_read_time();
         stats_update(start, cur);
         start = cur;
+#endif //  (!SCHED_NO_STATS)
 
 #ifdef __LPC176x__
         state ^= 1;

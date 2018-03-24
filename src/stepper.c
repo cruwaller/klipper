@@ -26,15 +26,18 @@ struct stepper_move {
     int16_t add;
     uint16_t count;
     struct stepper_move *next;
-    uint8_t flags;
+    uint8_t flags : 8;
 };
 
 enum { MF_DIR=1<<0 };
 
 struct stepper {
     struct timer time;
+    struct gpio_out step_pin, dir_pin;
+    struct stepper_move *first, **plast;
     uint32_t interval;
-    int16_t add;
+    uint32_t position;
+    uint32_t min_stop_interval;
 #if CONFIG_NO_UNSTEP_DELAY
     uint16_t count;
 #define next_step_time time.waketime
@@ -42,10 +45,7 @@ struct stepper {
     uint32_t count;
     uint32_t next_step_time;
 #endif
-    struct gpio_out step_pin, dir_pin;
-    uint32_t position;
-    struct stepper_move *first, **plast;
-    uint32_t min_stop_interval;
+    int16_t add;
     // gcc (pre v6) does better optimization when uint8_t are bitfields
     uint8_t flags : 8;
 };
@@ -104,14 +104,18 @@ stepper_load_next(struct stepper *s, uint32_t min_next_time)
     return SF_RESCHEDULE;
 }
 
-#define UNSTEP_TIME timer_from_us(1) // 2
+#define UNSTEP_TIME timer_from_us(2) // DRV requires >= 1.9us
 
 // Timer callback - step the given stepper.
 uint_fast8_t
 stepper_event(struct timer *t)
 {
     struct stepper *s = container_of(t, struct stepper, time);
-#if CONFIG_NO_UNSTEP_DELAY
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    printf("stepper_event: interval %u, count %u add %d next_step_time %u wakeup_time: %u\n",
+           s->interval, s->count, s->add, s->next_step_time, s->time.waketime);
+#endif
+#if (CONFIG_NO_UNSTEP_DELAY)
         // On slower mcus it is possible to simply step and unstep in
         // the same timer event.
         gpio_out_toggle(s->step_pin);
@@ -127,12 +131,7 @@ stepper_event(struct timer *t)
         uint_fast8_t ret = stepper_load_next(s, 0);
         gpio_out_toggle(s->step_pin);
         return ret;
-#else
-
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-    printf("stepper_event: interval %u, count %u add %d next_step_time %u\n",
-           s->interval, s->count, s->add, s->next_step_time);
-#endif
+#else // (CONFIG_NO_UNSTEP_DELAY)
 
     // On faster mcus, it is necessary to schedule the unstep event
     uint32_t min_next_time = timer_read_time() + UNSTEP_TIME;
@@ -154,13 +153,14 @@ stepper_event(struct timer *t)
 reschedule_min:
     s->time.waketime = min_next_time;
     return SF_RESCHEDULE;
-#endif
+#endif // (CONFIG_NO_UNSTEP_DELAY)
 }
 
 void
 command_config_stepper(uint32_t *args)
 {
     struct stepper *s = oid_alloc(args[0], command_config_stepper, sizeof(*s));
+    s->time.func = NULL;
     if (!CONFIG_INLINE_STEPPER_HACK)
         s->time.func = stepper_event;
     s->flags = args[4] ? SF_INVERT_STEP : 0;
@@ -262,7 +262,7 @@ static uint32_t
 stepper_get_position(struct stepper *s)
 {
     uint32_t position = s->position;
-#if CONFIG_NO_UNSTEP_DELAY
+#if (CONFIG_NO_UNSTEP_DELAY)
     position -= s->count;
 #else
     position -= s->count / 2;

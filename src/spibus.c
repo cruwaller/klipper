@@ -22,9 +22,12 @@ extern int SIMULATOR_MODE;
 #endif
 
 struct spibus_t {
-    SPI_t    spi_config;
+    struct spi_config spi_config;
     struct gpio_out pin;
 };
+
+#define BUFF_SIZE 32u
+static uint8_t spirespbuff[BUFF_SIZE] = {0};
 
 /* Config slave select pin and SPI bus */
 void command_config_spibus_ss_pin(uint32_t *args) {
@@ -45,43 +48,44 @@ DECL_COMMAND(command_config_spibus_ss_pin,
 /* write value to SPI slave */
 void command_spibus_write(uint32_t *args) {
 #if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-    printf("spibus_write oid=%u cmd=%u len=%u\n",
-           args[0], args[1], args[2]);
+    printf("spibus_write oid=%u cmd=%u (0x%X) len=%u\n",
+           args[0], args[1], args[1], args[2]);
 #endif
     struct spibus_t *spi =
         oid_lookup(args[0], command_config_spibus_ss_pin);
 
-    uint8_t  status = 1;
-    uint8_t  cmd = args[1];
-    uint16_t len = args[2];
-    uint16_t iter = 0;
-    uint8_t  resp[32] = {0};
-
-    //shutdown("spibus error!");
+    uint8_t iter = 0;
+    uint8_t status = 1;
+    uint8_t cmd = args[1];
+    uint8_t len = args[2];
 
     /* Write data to SPI slave */
     uint8_t *msg = (uint8_t*)(size_t)args[3];
     if (1 <= len) {
-        spi_set_config(spi->spi_config);
+        while (!spi_set_config(spi->spi_config));
         gpio_out_write(spi->pin, 0); // Enable slave
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-        printf("spibus_write - cmd: 0x%X (%d)\n", cmd, cmd);
-#endif
-        resp[iter++] = spi_transfer(cmd, 0);
+        spirespbuff[iter++] = spi_transfer(cmd);
         while (len--) {
-            uint8_t const data = (uint8_t)(*msg++);
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-            printf("spibus_write - config: 0x%X (%d)\n", data, data);
-#endif
-            resp[iter++] = spi_transfer(data, (len == 0));
+            spirespbuff[iter++] =
+                spi_transfer((uint8_t)(*msg++));
         }
+        spi_set_ready();
         gpio_out_write(spi->pin, 1); // Disable slave
         status = 0;
     }
     sendf("spibus_write_resp oid=%c status=%i data=%*s",
-          args[0], status, iter, resp);
+          args[0], status, iter, spirespbuff);
 #if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-    printf("spibus_write_resp sent [status: %u]!\n", status);
+    len = args[2];
+    msg = (uint8_t*)(size_t)args[3];
+    printf("    sent: ");
+    for (iter = 0; iter < len; iter++)
+        printf("0x%02X,", msg[iter]);
+    printf(" [status: %u]!\n", status);
+    printf("    recv: ");
+    for (iter = 0; iter < (len+1); iter++)
+        printf("0x%02X,", spirespbuff[iter]);
+    printf("\n");
 #endif
 }
 DECL_COMMAND(command_spibus_write,
@@ -90,50 +94,41 @@ DECL_COMMAND(command_spibus_write,
 /* read from SPI slave */
 void command_spibus_read(uint32_t *args) {
 #if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-    printf("spibus_read oid=%u cmd=%u len=%u\n",
-           args[0], args[1], args[2]);
+    printf("spibus_read oid=%u cmd=%u (0x%X) len=%u\n",
+           args[0], args[1], args[1], args[2]);
 #endif
     struct spibus_t *spi =
         oid_lookup(args[0], command_config_spibus_ss_pin);
 
-    uint8_t  status = 1;
-    uint8_t  cmd = args[1];
-    uint8_t  data;
-    uint16_t len = args[2];
-    uint16_t iter = 0;
-    uint8_t  resp[32] = {0};
+    uint8_t iter = 0;
+    uint8_t status = 1;
+    uint8_t cmd = args[1];
+    uint8_t len = args[2];
 
     /* Write data to SPI slave */
-    if (1 <= len && len <= 32) {
-        spi_set_config(spi->spi_config);
+    if (len && len <= BUFF_SIZE) {
+        while (!spi_set_config(spi->spi_config));
         gpio_out_write(spi->pin, 0); // Enable slave
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-        printf("spibus_read - cmd: 0x%X\n", cmd);
-#endif
-        resp[0] = spi_transfer(cmd, 0);
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-            printf("spibus_read - recv: 0x%X\n", resp[0]);
-#endif
-        for (iter = 1; iter < len; iter++) {
-            data = spi_transfer(SPI_READ_CMD, 0);
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-            printf("spibus_read - recv: 0x%X\n", data);
-#endif
-            resp[iter] = data;
+        spirespbuff[iter++] = spi_transfer(cmd);
+        while (len--) {
+            spirespbuff[iter++] = spi_transfer(SPI_READ_CMD);
         }
-        data = spi_transfer(SPI_READ_CMD, 1); // Last part
-        resp[iter++] = data;
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-        printf("spibus_read - recv: 0x%X\n", data);
-#endif
+        spi_set_ready();
         gpio_out_write(spi->pin, 1); // Disable slave
         status = 0;
     }
     sendf("spibus_read_resp oid=%c status=%i data=%*s",
-          args[0], status, iter, resp);
+          args[0], status, iter, spirespbuff);
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    len = iter;
+    printf("    recv: ");
+    for (iter = 0; iter < len; iter++)
+        printf("0x%02X,", spirespbuff[iter]);
+    printf(" [status: %u]!\n", status);
+#endif
 }
 DECL_COMMAND(command_spibus_read,
-             "spibus_read oid=%c cmd=%c len=%hu");
+             "spibus_read oid=%c cmd=%c len=%c");
 
 /* Shutdown task */
 void spibus_shutdown(void) {

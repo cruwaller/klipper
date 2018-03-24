@@ -148,7 +148,7 @@ class Thermocouple(SensorBase):
     def get_read_cmd(self):
         if self.is_k_simple == False:
             return MAX31856_LTCBH_REG
-        return 0x00
+        return 0xFF
     def get_read_bytes(self):
         if self.is_k_simple == False:
             return 3 # 24bit value (MAX31856)

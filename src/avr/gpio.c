@@ -371,7 +371,7 @@ static const uint8_t SS = GPIO('B', 0), SCK = GPIO('B', 1), MOSI = GPIO('B', 2),
 #error "AVR: unexpected SPCR bits"
 #endif
 
-SPI_t spi_basic_config = 0;
+struct spi_config spi_basic_config = {.cfg = 0};
 
 void
 spi_init(void)
@@ -396,10 +396,10 @@ spi_init(void)
 }
 DECL_INIT(spi_init);
 
-SPI_t
+struct spi_config
 spi_get_config(uint8_t const mode, uint32_t const clock)
 {
-    SPI_t config = 0;
+    uint16_t config = 0;
     uint8_t clockDiv;
     if (clock >= CONFIG_CLOCK_FREQ) {
         clockDiv = 0;
@@ -448,19 +448,22 @@ spi_get_config(uint8_t const mode, uint32_t const clock)
     config <<= 8;
     config |= ((clockDiv & 1) || clockDiv == 6) ? 0 : _BV(SPI2X);
 
-    return config;
+    return (struct spi_config){.cfg = config};
 }
 
-void
-spi_set_config(SPI_t const config)
-{
-    SPCR = (uint8_t)(config >> 8);
-    SPSR = (uint8_t)(config & 0xFF);
+static uint8_t reserved = 0;
+uint8_t spi_set_config(struct spi_config const config) {
+    if (reserved) return 0;
+    SPCR = (uint8_t)(config.cfg >> 8);
+    SPSR = (uint8_t)(config.cfg & 0xFF);
+    return ++reserved;
 }
 
-void
-spi_transfer_len(char *data, uint8_t len)
-{
+void spi_set_ready(void) {
+    reserved = 0;
+}
+
+void spi_transfer_len(char *data, uint8_t len) {
     while (len--) {
         SPDR = *data;
         while (!(SPSR & _BV(SPIF))); // Wait ready
@@ -468,10 +471,7 @@ spi_transfer_len(char *data, uint8_t len)
     }
 }
 
-uint8_t
-spi_transfer(uint8_t const data, uint8_t const last)
-{
-    (void)last;
+uint8_t spi_transfer(uint8_t const data) {
 #if (CONFIG_SIMULATOR == 1)
     return data;
 #else
@@ -486,4 +486,16 @@ spi_transfer(uint8_t const data, uint8_t const last)
     while (!(SPSR & _BV(SPIF))); // Wait ready
     return SPDR;
 #endif
+}
+
+void spi_send(uint8_t const data) {
+    asm volatile("nop");
+    while (!(SPSR & _BV(SPIF)));
+    SPDR = data;
+}
+uint8_t spi_read(void) {
+    return SPDR;
+}
+uint8_t spi_read_rdy(void) {
+    return (!!(SPSR & _BV(SPIF)));
 }

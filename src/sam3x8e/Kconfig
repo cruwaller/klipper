@@ -20,6 +20,7 @@ config CLOCK_FREQ
 config SERIAL
     bool
     default y
+
 config SERIAL_BAUD
     depends on SERIAL
     int "Baud rate for serial port"

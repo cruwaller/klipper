@@ -4,6 +4,11 @@
 #include <stdint.h> // uint32_t
 #include "ctr.h" // DECL_CTR
 
+#if __arm__
+#define SCHED_NO_STATS 0
+#define SCHED_NO_SLEEP 1
+#endif
+
 // Declare an init function (called at firmware startup)
 #define DECL_INIT(FUNC) _DECL_CALLLIST(ctr_run_initfuncs, FUNC)
 // Declare a task function (called periodically during normal runtime)

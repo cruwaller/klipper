@@ -34,8 +34,7 @@ class SensorBase(object):
             self.mcu.setup_spi_settings(
                 config.getint('spi_mode', minval=0, maxval=3),
                 config.getint('spi_speed', minval=0))
-            self.mcu.setup_minmax(sample_time,
-                                  minval=min(adc_range),
+            self.mcu.setup_minmax(minval=min(adc_range),
                                   maxval=max(adc_range))
             self.mcu.setup_read_command(
                 self.get_read_cmd(), self.get_read_bytes(),

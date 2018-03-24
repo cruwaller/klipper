@@ -15,9 +15,10 @@ command_send_spi_message(uint32_t *args)
     uint8_t len = args[1];
     char *msg = (void*)(size_t)args[2];
 
-    spi_set_config(spi_basic_config);
+    while (!spi_set_config(spi_basic_config));
     struct gpio_out pin = gpio_out_setup(args[0], 0);
     spi_transfer_len(msg, len);
+    spi_set_ready();
     gpio_out_write(pin, 1);
     sendf("spi_response response=%*s", len, msg);
 }

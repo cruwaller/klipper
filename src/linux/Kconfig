@@ -18,6 +18,13 @@ config CLOCK_FREQ
     int
     default 20000000
 
+config SIMULATOR
+    bool "Compile for target software simulator"
+    default n
+    help
+        Compile the target simulator code. Simulated
+        results are sent back to host.
+
 choice
     prompt "Simulated processor model"
     depends on SIMULATOR

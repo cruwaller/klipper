@@ -2,13 +2,6 @@
 
 mainmenu "Klipper Firmware Configuration"
 
-config SIMULATOR
-    bool "Compile for target software simulator"
-    default n
-    help
-        Compile the target simulator code. Simulated
-        results are sent back to host.
-
 choice
     prompt "Micro-controller Architecture"
     config MACH_AVR
@@ -59,3 +52,7 @@ config INLINE_STEPPER_HACK
     bool
     depends on HAVE_GPIO
     default y
+
+config SIMULATOR
+    bool
+    default n
