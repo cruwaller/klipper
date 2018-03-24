@@ -139,6 +139,7 @@ class DeltaKinematics:
         for i in StepList:
             self.steppers[i].motor_enable(print_time, 1)
         self.need_motor_enable = False
+        self.toolhead.motor_on(print_time)
     def check_move(self, move):
         end_pos = move.end_pos
         xy2 = end_pos[0]**2 + end_pos[1]**2

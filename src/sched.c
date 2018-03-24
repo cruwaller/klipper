@@ -91,8 +91,10 @@ sched_add_timer(struct timer *add)
     if (unlikely(timer_is_before(waketime, timer_list->waketime))) {
         // This timer is before all other scheduled timers
         struct timer *tl = timer_list;
+#if !(CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
         if (timer_is_before(waketime, timer_read_time() + timer_from_us(2000)))
             try_shutdown("Timer too close");
+#endif
         if (tl == &deleted_timer)
             add->next = deleted_timer.next;
         else

@@ -141,6 +141,7 @@ class CoreXYKinematics:
         for i in StepList:
             need_motor_enable |= self.steppers[i].need_motor_enable
         self.need_motor_enable = need_motor_enable
+        self.toolhead.motor_on(print_time)
     def _check_endstops(self, move):
         end_pos = move.end_pos
         for i in StepList:

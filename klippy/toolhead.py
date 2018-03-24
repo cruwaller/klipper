@@ -245,6 +245,11 @@ class ToolHead:
         self.logger.info("Kinematic created: %s" % self.kin.name)
         self.logger.info("max_accel: %s" % (self.max_accel))
         self.logger.info("max_accel_to_decel: %s" % (self.max_accel_to_decel))
+        self.motor_cbs = []
+    def register_cb(self, cb_type, cb):
+        if cb_type == "motor":
+            if not cb in self.motor_cbs:
+                self.motor_cbs.append(cb)
     # Print time tracking
     def update_move_time(self, movetime):
         self.print_time += movetime
@@ -360,10 +365,15 @@ class ToolHead:
         self.dwell(STALL_TIME)
         last_move_time = self.get_last_move_time()
         self.kin.motor_off(last_move_time)
-        self.extruder.motor_off(last_move_time)
+        self.extruder.motor_off(last_move_time) # FIXME : All extruders!
         self.dwell(STALL_TIME)
         self.need_motor_off = False
         self.logger.debug('; Max time of %f', last_move_time)
+        for cb in self.motor_cbs:
+            cb('off', last_move_time);
+    def motor_on(self, print_time):
+        for cb in self.motor_cbs:
+            cb('on', print_time);
     def wait_moves(self):
         self._flush_lookahead()
         if self.mcu.is_fileoutput():

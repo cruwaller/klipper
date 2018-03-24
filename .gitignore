@@ -6,3 +6,6 @@ out
 *.map
 *.pdf
 *.log
+*.elf
+*.bin
+
