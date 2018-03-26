@@ -143,7 +143,7 @@ struct spi_config spi_get_config(uint8_t const mode, uint32_t const speed) {
     (void)mode; (void)speed;
     return spi_basic_config;
 }
-static uint8_t reserved = 0;
+static uint8_t volatile reserved = 0;
 uint8_t spi_set_config(struct spi_config const config) {
     (void)config;
     if (reserved) return 0;
@@ -161,7 +161,7 @@ uint8_t spi_transfer(uint8_t const data) {
 
 /********************************************************************************/
 
-static uint8_t sent_value = 0;
+static uint8_t volatile sent_value = 0;
 void spi_send(uint8_t const data) {
     sent_value = data;
 }
@@ -169,7 +169,9 @@ uint8_t spi_read(void) {
     return sent_value;
 }
 uint8_t spi_read_rdy(void) {
-    return 1;
+    //return 1;
+    sent_value ^= 1;
+    return sent_value;
 }
 
 /********************************************************************************/

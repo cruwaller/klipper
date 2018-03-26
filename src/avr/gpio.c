@@ -451,7 +451,7 @@ spi_get_config(uint8_t const mode, uint32_t const clock)
     return (struct spi_config){.cfg = config};
 }
 
-static uint8_t reserved = 0;
+static uint8_t volatile reserved = 0;
 uint8_t spi_set_config(struct spi_config const config) {
     if (reserved) return 0;
     SPCR = (uint8_t)(config.cfg >> 8);

@@ -110,9 +110,9 @@ void command_spibus_read(uint32_t *args) {
         while (!spi_set_config(spi->spi_config));
         gpio_out_write(spi->pin, 0); // Enable slave
         spirespbuff[iter++] = spi_transfer(cmd);
-        while (len--) {
+        do {
             spirespbuff[iter++] = spi_transfer(SPI_READ_CMD);
-        }
+        } while (--len);
         spi_set_ready();
         gpio_out_write(spi->pin, 1); // Disable slave
         status = 0;

@@ -19,16 +19,18 @@ class MotorFan:
                               self.fan.name.replace(" ", "_"))
             self.toolhead.register_cb('motor', self.callback)
             self.reactor = self.printer.get_reactor()
+            self.set_timer = self.reactor.register_timer(
+                self.reactor_callback)
     def callback(self, event, eventtime):
         if event == 'off':
-            self.power = 0.
+            self._power = 0.
         else:
-            self.power = self.fan_speed
-        self.set_timer = self.reactor.register_timer(self.reactor_callback,
-                                                     self.reactor.NOW)
+            self._power = self.fan_speed
+        self.reactor.update_timer(self.set_timer,
+                                  self.reactor.NOW)
     def reactor_callback(self, eventtime):
         print_time = self.mcu.estimated_print_time(eventtime) + PIN_MIN_TIME
-        self.fan.set_speed(print_time, self.power)
+        self.fan.set_speed(print_time, self._power)
         return self.reactor.NEVER
 
 def load_config(config):
