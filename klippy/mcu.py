@@ -371,7 +371,7 @@ class MCU_adc:
         self._sample_count = sample_count
         self._min_sample = minval
         self._max_sample = maxval
-    def setup_adc_callback(self, report_time, callback):
+    def setup_callback(self, report_time, callback):
         self._report_time = report_time
         self._callback = callback
     def build_config(self):
@@ -439,7 +439,7 @@ class MCU_thermocouple:
         self._min_sample    = minval
         self._max_sample    = maxval
 
-    def setup_adc_callback(self, report_time, callback):
+    def setup_callback(self, report_time, callback):
         self._report_time = report_time
         self._callback    = callback
 

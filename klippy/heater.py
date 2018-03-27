@@ -12,7 +12,6 @@ import extras.sensors as sensors
 # Heater
 ######################################################################
 
-REPORT_TIME = 0.300
 MAX_HEAT_TIME = 5.0
 AMBIENT_TEMP = 25.
 PID_PARAM_BASE = 255.
@@ -36,9 +35,14 @@ class PrinterHeater:
                           format(self.name, self.index, sensor_name))
         self.sensor = sensors.load_sensor(
             config.getsection('sensor %s'%sensor_name))
+        self.sensor.setup_callback(self.temperature_callback)
+        self.report_delta = self.sensor.get_report_delta()
+        self.mcu_sensor = self.sensor.get_mcu()
         self.min_temp, self.max_temp = self.sensor.get_min_max_temp()
         self.min_extrude_temp = 170. # Set by the extruder
         self.min_extrude_temp_disabled = False
+        self.can_extrude = self.min_extrude_temp <= self.min_temp or \
+                           self.mcu_sensor.is_fileoutput()
         self.max_power = config.getfloat('max_power', 1., above=0., maxval=1.)
         self.lock = threading.Lock()
         self.last_temp = 0.
@@ -52,14 +56,9 @@ class PrinterHeater:
         else:
             self.mcu_pwm = pins.setup_pin(printer, 'pwm', heater_pin)
             pwm_cycle_time = config.getfloat(
-                'pwm_cycle_time', 0.100, above=0., maxval=self.sensor.report_time)
+                'pwm_cycle_time', 0.100, above=0., maxval=self.report_delta)
             self.mcu_pwm.setup_cycle_time(pwm_cycle_time)
         self.mcu_pwm.setup_max_duration(MAX_HEAT_TIME)
-        self.mcu_sensor = self.sensor.get_mcu()
-        self.mcu_sensor.setup_adc_callback(self.sensor.report_time,
-                                           self.adc_callback)
-        is_fileoutput = self.mcu_sensor.get_mcu().is_fileoutput()
-        self.can_extrude = self.min_extrude_temp <= 0. or is_fileoutput
         self.control = algo(self, config)
         # pwm caching
         self.next_pwm_time = 0.
@@ -151,10 +150,9 @@ class PrinterHeater:
             raise error("min_extrude_temp {} is not between min_temp {} and max_temp {}!"
                         .format(temp, self.min_temp, self.max_temp))
         self.min_extrude_temp = temp;
-        is_fileoutput = self.mcu_sensor.get_mcu().is_fileoutput()
         self.can_extrude = (self.min_extrude_temp <= self.min_temp) or \
                            self.min_extrude_temp_disabled or \
-                           is_fileoutput
+                           self.mcu_sensor.is_fileoutput()
     def set_pwm(self, read_time, value):
         if self.target_temp <= 0.:
             value = 0.
@@ -162,14 +160,14 @@ class PrinterHeater:
             and abs(value - self.last_pwm_value) < 0.05):
             # No significant change in value - can suppress update
             return
-        pwm_time = read_time + self.sensor.report_time + self.sensor.sample_time*self.sensor.sample_count
+        pwm_time = read_time + self.report_delta
         self.next_pwm_time = pwm_time + 0.75 * MAX_HEAT_TIME
         self.last_pwm_value = value
         self.logger.debug("%s: pwm=%.3f@%.3f (from %.3f@%.3f [%.3f])",
                           self.name, value, pwm_time,
                           self.last_temp, self.last_temp_time, self.target_temp)
         self.mcu_pwm.set_pwm(pwm_time, value)
-    def adc_callback(self, read_time, read_value, fault = 0):
+    def temperature_callback(self, read_time, read_value, fault = 0):
         if (fault):
             self.sensor.check_faults(fault)
         temp = self.sensor.calc_temp(read_value)
@@ -178,7 +176,7 @@ class PrinterHeater:
             self.last_temp_time = read_time
             self.can_extrude = self.min_extrude_temp_disabled or \
                                (temp >= self.min_extrude_temp)
-            self.control.adc_callback(read_time, temp)
+            self.control.temperature_callback(read_time, temp)
         #self.logger.debug("read_time=%.3f read_value=%f temperature=%f",
         #                  read_time, read_value, temp)
     # External commands
@@ -201,7 +199,7 @@ class PrinterHeater:
             self.logger.debug("Temperature protection timer stopped")
 
     def get_temp(self, eventtime):
-        print_time = self.mcu_sensor.get_mcu().estimated_print_time(eventtime) - 5.
+        print_time = self.mcu_sensor.estimated_print_time(eventtime) - 5.
         with self.lock:
             if self.last_temp_time < print_time:
                 return 0., self.target_temp
@@ -244,7 +242,7 @@ class ControlBangBang:
         self.heater = heater
         self.max_delta = config.getfloat('max_delta', 2.0, above=0.)
         self.heating = False
-    def adc_callback(self, read_time, temp):
+    def temperature_callback(self, read_time, temp):
         if self.heating and temp >= self.heater.target_temp+self.max_delta:
             self.heating = False
         elif not self.heating and temp <= self.heater.target_temp-self.max_delta:
@@ -279,7 +277,7 @@ class ControlPID:
         self.prev_temp_time = 0.
         self.prev_temp_deriv = 0.
         self.prev_temp_integ = 0.
-    def adc_callback(self, read_time, temp):
+    def temperature_callback(self, read_time, temp):
         time_diff = read_time - self.prev_temp_time
         # Calculate change of temperature
         temp_diff = temp - self.prev_temp

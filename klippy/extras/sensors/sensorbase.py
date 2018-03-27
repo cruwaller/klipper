@@ -7,7 +7,7 @@ import pins, heater
 
 SAMPLE_TIME_DEFAULT    = 0.001
 SAMPLE_COUNT_DEFAULT   = 8
-REPORT_TIME_DEFAULT    = 0.300 # heater.REPORT_TIME
+REPORT_TIME_DEFAULT    = 0.300
 
 class SensorBase(object):
     def __init__(self,
@@ -47,6 +47,13 @@ class SensorBase(object):
                 sample_time, sample_count,
                 minval=min(adc_range), maxval=max(adc_range))
     def get_mcu(self):
-        return self.mcu
+        return self.mcu.get_mcu()
     def get_min_max_temp(self):
         return self.min_temp, self.max_temp
+    def setup_callback(self, cb):
+        self.mcu.setup_callback(self.report_time, cb)
+    def get_report_delta(self):
+        # MCU reporting preriod already contains samples
+        return self.report_time
+        #return self.report_time + (self.sample_time *
+        #                           self.sample_count)
