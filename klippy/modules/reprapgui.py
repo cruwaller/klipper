@@ -473,14 +473,11 @@ class rrHandler(tornado.web.RequestHandler):
                 if e.errno != errno.EEXIST:
                     pass
             try:
-                output_file = open(path, 'w')
-                # Get file content and mime type
-                if "application/octet-stream" in self.request.headers['Content-Type']:
+                # Write request content to file
+                with open(path, 'w') as output_file:
                     if self.request.body:
                         output_file.write(self.request.body)
-                output_file.close()
-
-                respdata['err'] = 0
+                    respdata['err'] = 0
             except IOError:
                 pass
 
