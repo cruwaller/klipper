@@ -5,4 +5,4 @@ pyserial>=3.2.1
 greenlet>=0.4.10
 matplotlib
 opencv-python
-tornado==4.5
+tornado
