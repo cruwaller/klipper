@@ -24,10 +24,6 @@ void spi_set_ready(void);
 void    spi_transfer_len(char *data, uint8_t len);
 uint8_t spi_transfer(uint8_t const data);
 
-void    spi_send(uint8_t const data);
-uint8_t spi_read(void);
-uint8_t spi_read_rdy(void);
-
 extern struct spi_config spi_basic_config;
 
 #endif // __SPI_H_

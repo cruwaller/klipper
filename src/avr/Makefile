@@ -11,7 +11,7 @@ CFLAGS_klipper.elf += $(CFLAGS)
 src-y += avr/main.c avr/timer.c avr/gpio.c
 src-$(CONFIG_AVR_WATCHDOG) += avr/watchdog.c
 src-$(CONFIG_AVR_USBSERIAL) += avr/usbserial.c ../lib/pjrc_usb_serial/usb_serial.c
-src-$(CONFIG_AVR_SERIAL) += avr/serial.c
+src-$(CONFIG_AVR_SERIAL) += avr/serial.c generic/serial_irq.c
 
 # Suppress broken "misspelled signal handler" warnings on gcc 4.8.1
 CFLAGS_klipper.elf := $(CFLAGS_klipper.elf) $(if $(filter 4.8.1, $(shell $(CC) -dumpversion)), -w)

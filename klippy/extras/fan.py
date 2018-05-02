@@ -3,7 +3,6 @@
 # Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import pins
 
 FAN_MIN_TIME = 0.100
 
@@ -15,15 +14,18 @@ class PrinterFan:
         self.max_power = config.getfloat('max_power', 1., above=0., maxval=1.)
         self.kick_start_time = config.getfloat('kick_start_time', 0.1, minval=0.)
         printer = config.get_printer()
-        self.mcu_fan = pins.setup_pin(printer, 'pwm', config.get('pin'))
+        ppins = printer.lookup_object('pins')
+        self.mcu_fan = ppins.setup_pin('pwm', config.get('pin'))
         self.mcu_fan.setup_max_duration(0.)
         cycle_time = config.getfloat('cycle_time', 0.010, above=0.)
         hardware_pwm = config.getboolean('hardware_pwm', False)
         self.mcu_fan.setup_cycle_time(cycle_time, hardware_pwm)
         self.logger = printer.logger.getChild(self.name.replace(" ", "_"))
         self.logger.debug("fan '{}' initialized".format(self.name))
+    def set_shutdown_speed(self, speed):
+        self.mcu_fan.setup_start_value(0., max(0., min(self.max_power, speed)))
     def set_speed(self, print_time, value):
-        value = max(0., min(self.max_power, value))
+        value = max(0., min(self.max_power, value * self.max_power))
         if value == self.last_fan_value:
             return
         print_time = max(self.last_fan_time + FAN_MIN_TIME, print_time)

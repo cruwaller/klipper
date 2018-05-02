@@ -7,10 +7,8 @@ class MotorFan:
         self.printer = config.get_printer()
         self.fan = fan.PrinterFan(config)
         self.mcu = self.fan.mcu_fan.get_mcu()
-        max_power = self.fan.max_power
-        self.fan_speed = config.getfloat(
-            "fan_speed", max_power, minval=0., maxval=max_power)
-        self.fan.mcu_fan.setup_start_value(0., max_power)
+        self.fan_speed = config.getfloat("fan_speed", 1., minval=0., maxval=1.)
+        self.fan.set_shutdown_speed(1.)
     def printer_state(self, state):
         if state == 'ready':
             self.toolhead = self.printer.lookup_object('toolhead')

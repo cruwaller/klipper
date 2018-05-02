@@ -128,16 +128,3 @@ uint8_t spi_transfer(uint8_t const data) {
     // get data
     return pSpi->SPI_RDR;
 }
-
-void spi_send(uint8_t const data) {
-    Spi* const pSpi = REGPTR;
-    while ((pSpi->SPI_SR & SPI_SR_TDRE) == 0); // TX buff empty
-    (void)pSpi->SPI_RDR; // empty RX buff
-    pSpi->SPI_TDR = data;
-}
-uint8_t spi_read(void) {
-    return REGPTR->SPI_RDR;
-}
-uint8_t spi_read_rdy(void) {
-    return (!!(REGPTR->SPI_SR & SPI_SR_RDRF));
-}

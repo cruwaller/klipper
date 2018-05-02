@@ -3,7 +3,6 @@
 # Copyright (C) 2016,2017  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import pins, heater
 
 SAMPLE_TIME_DEFAULT    = 0.001
 SAMPLE_COUNT_DEFAULT   = 8
@@ -28,9 +27,9 @@ class SensorBase(object):
 
         self.report_time = report_time
 
+        ppins = self.printer.lookup_object('pins')
         if is_spi:
-            self.mcu = pins.setup_pin(
-                self.printer, 'thermocouple', sensor_pin)
+            self.mcu = ppins.setup_pin('thermocouple', sensor_pin)
             self.mcu.setup_spi_settings(
                 config.getint('spi_mode', minval=0, maxval=3),
                 config.getint('spi_speed', minval=0))
@@ -41,8 +40,7 @@ class SensorBase(object):
                 self.get_configs(), self.get_fault_filter())
 
         else:
-            self.mcu = pins.setup_pin(
-                self.printer, 'adc', sensor_pin)
+            self.mcu = ppins.setup_pin('adc', sensor_pin)
             self.mcu.setup_minmax(
                 sample_time, sample_count,
                 minval=min(adc_range), maxval=max(adc_range))
@@ -53,7 +51,7 @@ class SensorBase(object):
     def setup_callback(self, cb):
         self.mcu.setup_callback(self.report_time, cb)
     def get_report_delta(self):
-        # MCU reporting preriod already contains samples
+        # MCU reporting period already contains samples
         return self.report_time
         #return self.report_time + (self.sample_time *
         #                           self.sample_count)

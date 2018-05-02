@@ -4,6 +4,7 @@ class GenericGcode(object):
     def __init__(self, printer):
         self.printer = printer
         self.gcode = printer.lookup_object('gcode')
+        self.toolhead = printer.lookup_object('toolhead')
         for cmd in ['M0', 'M1', 'M37', 'M118', 'M204', 'M205',
                     'M301', 'M302', 'M304',
                     'M851', 'M900']:
@@ -19,6 +20,9 @@ class GenericGcode(object):
                                     self.gcode.cmd_FIRMWARE_RESTART,
                                     when_not_ready=True,
                                     desc="Alias to FIRMWARE_RESTART")
+        self.gcode.register_command("SET_PRESSURE_ADVANCE",
+                                    self.cmd_SET_PRESSURE_ADVANCE,
+                                    desc=self.cmd_SET_PRESSURE_ADVANCE_help)
         self.respond_info = self.gcode.respond # self.gcode.respond_info
         self.axis2pos = self.gcode.axis2pos
         self.logger = self.gcode.logger
@@ -37,7 +41,7 @@ class GenericGcode(object):
 
     def cmd_M0(self, params):
         heaters_on = self.gcode.get_int('H', params, 0)
-        if (heaters_on is 0):
+        if heaters_on is 0:
             self.motor_heater_off()
         elif self.gcode.toolhead is not None:
             self.gcode.toolhead.motor_off()
@@ -144,21 +148,36 @@ class GenericGcode(object):
     def cmd_M900(self, params):
         # Pressure Advance configuration
         index = self.gcode.get_int('T', params, None)
-        extr = extruder.get_printer_extruder(self.printer, index)
+        extr = extruder.get_printer_extruder(
+            self.printer, index, self.gcode.extruder)
         if extr is None:
-            extr = self.gcode.extruder
-        if extr is None:
-            return
+            raise self.gcode.error("Error: Extruder is not configured!")
+        self.toolhead.get_last_move_time()
         pa = self.gcode.get_float('P', params, None)
-        t  = self.gcode.get_float('L', params, None)
-        if pa is not None and 0. <= pa:
+        t = self.gcode.get_float('L', params, None)
+        if 0. <= pa:
             extr.pressure_advance = pa
-            if pa == 0.:
-                t = 0. # disable lookahead as well
-        if t is not None and 0. <= t:
+        if 0. <= t:
             extr.pressure_advance_lookahead_time = t
-        self.respond_info("Pressure Advance %.2f, lookahead time %.3f" % \
-                          (extr.pressure_advance,
+        self.respond_info("%s: pressure advance %.6f, lookahead time %.6f" %
+                          (extr.name, extr.pressure_advance,
+                           extr.pressure_advance_lookahead_time))
+    cmd_SET_PRESSURE_ADVANCE_help = "Set pressure advance parameters"
+    def cmd_SET_PRESSURE_ADVANCE(self, params):
+        index = self.gcode.get_int('EXTRUDER', params, None)
+        extr = extruder.get_printer_extruder(
+            self.printer, index, self.gcode.extruder)
+        if extr is None:
+            raise self.gcode.error("Error: Extruder is not configured!")
+        self.toolhead.get_last_move_time()
+        pa = self.gcode.get_float('ADVANCE', params, None)
+        t = self.gcode.get_float('ADVANCE_LOOKAHEAD_TIME', params, None)
+        if 0. <= pa:
+            extr.pressure_advance = pa
+        if 0. <= t:
+            extr.pressure_advance_lookahead_time = t
+        self.respond_info("%s: pressure advance %.6f, lookahead time %.6f" %
+                          (extr.name, extr.pressure_advance,
                            extr.pressure_advance_lookahead_time))
 
 def load_gcode(printer):

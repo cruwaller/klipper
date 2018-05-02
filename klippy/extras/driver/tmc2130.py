@@ -1,10 +1,9 @@
 # system
-import logging, types, struct
+import types, struct
 import binascii
 from operator import xor
 # project
 from driverbase import DriverBase
-import pins
 
 # Registers:
 REG_GCONF      = 0x00
@@ -101,7 +100,7 @@ class TMC2130(DriverBase):
         spimode    = config.getint('spi_mode', 3, minval=0, maxval=3)
         spispeed   = config.getint('spi_speed', 2000000)
         # setup SPI pins and configure mcu
-        self.mcu_driver = pins.setup_pin(printer, 'spibus', spipin)
+        self.mcu_driver = printer.lookup_object('pins').setup_pin('spibus', spipin)
         self.mcu_driver.set_spi_settings(spimode, spispeed)
 
     '''
@@ -124,25 +123,26 @@ class TMC2130(DriverBase):
     '''
     def __command_read(self, cmd, cnt=4): # 40bits always = 5 x 8bit!
         cmd &= 0x7F # Makesure the MSB is 0
-        self.mcu_driver.read(cmd, cnt) # send command first
-        values = self.mcu_driver.read(cmd, cnt) # read actual result
+        read_cmd = [cmd] + cnt*[0]
+        self.mcu_driver.read(read_cmd) # send command first
+        values = self.mcu_driver.read(read_cmd) # read actual result
         # convert list of bytes to number
         val    = 0
         size   = len(values)
         status = 0
         if 0 < size:
             status = int(values[0])
-            if (status):
-                if (status & 0b0001):
+            if status:
+                if status & 0b0001:
                     self.isReset = True
                     self.logger.warning("Reset has occurred!")
-                if (status & 0b0010):
+                if status & 0b0010:
                     self.isError = True
                     self.logger.error("Driver error detected!")
-                if (status & 0b0100):
+                if status & 0b0100:
                     self.isStallguard = True
                     self.logger.warning("Stallguard active")
-                if (status & 0x1000):
+                if status & 0x1000:
                     self.isStandstill = True
                     self.logger.info("Motor stand still")
             for idx in range(1, size):
@@ -159,14 +159,14 @@ class TMC2130(DriverBase):
     '''
     def __command_write(self, cmd, val=None): # 40bits always = 5 x 8bit!
         if val is not None:
-            if type(val) is not types.ListType:
+            if not isinstance(val, types.ListType):
                 conv = struct.Struct('>I').pack
                 val = list(conv(val))
             if len(val) != 4:
                 raise Exception("TMC2130 internal error! len(val) != 4")
             self.logger.debug("==>> cmd 0x%02X : 0x%s" % (cmd, binascii.hexlify(bytearray(val))))
             cmd |= 0x80 # Make sure command has write bit set
-            self.mcu_driver.write(cmd, val)
+            self.mcu_driver.write([cmd] + val)
 
     def __reset_driver(self):
         # Clear errors by reading GSTAT register
@@ -177,22 +177,22 @@ class TMC2130(DriverBase):
         self.val_COOLCONF   = 0
         self.val_PWMCONF    = 0
         self.val_IHOLD_IRUN = 0 # read only
-        ## reset registers:
-        self.__command_write(REG_GCONF,    self.val_GCONF);
-        self.__command_write(REG_CHOPCONF, self.val_CHOPCONF);
-        self.__command_write(REG_COOLCONF, self.val_COOLCONF);
-        self.__command_write(REG_PWMCONF,  self.val_PWMCONF);
+        # reset registers:
+        self.__command_write(REG_GCONF,    self.val_GCONF)
+        self.__command_write(REG_CHOPCONF, self.val_CHOPCONF)
+        self.__command_write(REG_COOLCONF, self.val_COOLCONF)
+        self.__command_write(REG_PWMCONF,  self.val_PWMCONF)
         self.set_REG_TCOOLTHRS(0)
 
     def __validate_cfg(self):
         self.get_GSTAT() # read and reset status
         # validate readable configurations
-        GCONF      = self.__command_read(REG_GCONF);
-        CHOPCONF   = self.__command_read(REG_CHOPCONF);
-        if (GCONF != self.val_GCONF):
+        GCONF      = self.__command_read(REG_GCONF)
+        CHOPCONF   = self.__command_read(REG_CHOPCONF)
+        if GCONF != self.val_GCONF:
             self.logger.error("GCONF Configuration error! [was 0x%08X expected 0x%08X]" %
                               (GCONF, self.val_GCONF))
-        if (CHOPCONF != self.val_CHOPCONF):
+        if CHOPCONF != self.val_CHOPCONF:
             self.logger.error("CHOPCONF Configuration error! [was 0x%08X expected 0x%08X]" %
                               (CHOPCONF, self.val_CHOPCONF))
 
@@ -223,7 +223,7 @@ class TMC2130(DriverBase):
 
         self.modify_REG_COOLCONF('sg_stall_value', self.sg_stall_value)
 
-        if (self.silent_mode is True):
+        if self.silent_mode is True:
             # stealthChop
             self.modify_REG_GCONF('stealthChop', 1)
             self.modify_REG_PWMCONF('stealth_autoscale', 1)

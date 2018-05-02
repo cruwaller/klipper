@@ -408,16 +408,21 @@ class MCU_adc:
 class MCU_thermocouple:
     def __init__(self, mcu, pin_params):
         self._logger = mcu.logger.getChild('thermocouple')
-        self._mcu             = mcu
-        self._pin             = pin_params['pin']
-        self._min_sample      = self._max_sample  = 0.
-        self._report_time     = 0.
-        self._report_clock    = 0
-        self._callback        = None
-        self._cmd_queue       = mcu.alloc_command_queue()
-        self._oid             = self._mcu.create_oid()
-        self._spi_speed       = 4000000
-        self._spi_mode        = 0
+        self._mcu          = mcu
+        self._pin          = pin_params['pin']
+        self._min_sample   = self._max_sample  = 0.
+        self._report_time  = 0.
+        self._report_clock = 0
+        self._callback     = None
+        self._cmd_queue    = mcu.alloc_command_queue()
+        self._oid          = self._mcu.create_oid()
+        self._spi_speed    = 4000000
+        self._spi_mode     = 0
+        self._read_cmd     = None
+        self._read_bytes   = None
+        self._config       = None
+        self._fault_mask   = None
+        self._fault_cmd    = None
 
     def setup_spi_settings(self, mode, speed):
         # default SPI_MODE0 and 4MHz
@@ -459,7 +464,7 @@ class MCU_thermocouple:
                        self._read_bytes, self._fault_mask, self._report_clock,
                        self._fault_cmd))
 
-        if (len(self._config)):
+        if len(self._config):
             for idx in range(0, len(self._config)):
                 config_cmd += ("%02x" % (self._config[idx]))
         else:
@@ -488,36 +493,27 @@ class MCU_spibus:
         # default SPI_MODE0 and 4MHz
         self._spi_speed     = 4000000
         self._spi_mode      = 0
-
+        self.transfer_cmd = None
     def get_mcu(self):
         return self._mcu
     def get_oid(self):
         return self._oid
-
     def set_spi_settings(self, mode, speed):
         self._spi_speed     = speed
         self._spi_mode      = mode
-
     def build_config(self):
         self._mcu.add_config_cmd(
             "config_spibus_ss_pin oid=%d pin=%s spi_mode=%u spi_speed=%u" %
             (self._oid, self._pin, self._spi_mode, self._spi_speed))
-        self.write_cmd = self._mcu.lookup_command(
-            "spibus_write oid=%c cmd=%c cfg=%*s")
-        self.read_cmd = self._mcu.lookup_command(
-            "spibus_read oid=%c cmd=%c len=%c")
-
-    def write(self, cmd, val):
-        params = self.write_cmd.send_with_response(
-            [self._oid, cmd, val], response='spibus_write_resp', response_oid=self._oid)
-        if params['status'] is 0:
-            return True
-        # TODO raise error!
-        return False
-
-    def read(self, cmd, cnt):
-        params = self.read_cmd.send_with_response(
-            [self._oid, cmd, cnt], response='spibus_read_resp', response_oid=self._oid)
+        self.transfer_cmd = self._mcu.lookup_command(
+            "spibus_transfer oid=%c cmd=%*s")
+    def write(self, cmd):
+        return True if len(self.transfer(cmd)) > 0 else False
+    def read(self, cmd):
+        return self.transfer(cmd)
+    def transfer(self, cmd):
+        params = self.transfer_cmd.send_with_response(
+            [self._oid, cmd], response='spibus_transfer_resp', response_oid=self._oid)
         if params['status'] is 0:
             return list(bytearray(params['data']))
         else:
@@ -554,9 +550,8 @@ class MCU:
         self._emergency_stop_cmd = None
         self._is_shutdown = self._is_timeout = False
         self._shutdown_msg = ""
-        printer.set_rollover_info(self._name, None)
         # Config building
-        pins.get_printer_pins(printer).register_chip(self._name, self)
+        printer.lookup_object('pins').register_chip(self._name, self)
         self._oid_count = 0
         self._config_objects = []
         self._init_cmds = []
@@ -689,7 +684,6 @@ class MCU:
             self._check_restart("CRC mismatch")
             raise error("MCU '%s' CRC does not match config" % (self._name,))
         move_count = config_params['move_count']
-        self.logger.info("Configured MCU '%s' (%d moves)", self._name, move_count)
         msgparser = self._serial.msgparser
         info = [
             "Configured MCU '%s' (%d moves)" % (self._name, move_count),

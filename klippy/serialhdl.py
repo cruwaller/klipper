@@ -57,7 +57,8 @@ class SerialReader:
                 self.logger.exception("Exception in serial callback")
     def connect(self):
         # Initial connection
-        self.logger.info("Starting serial connect")
+        self.logger.info("Connecting to %s @ %s" %
+                         (self.serialport, self.baud))
         while 1:
             starttime = self.reactor.monotonic()
             try:
@@ -88,11 +89,6 @@ class SerialReader:
         msgparser.process_identify(identify_data)
         self.msgparser = msgparser
         self.register_callback(self.handle_unknown, '#unknown')
-        self.logger.info("Loaded %d commands (%s / %s)",
-                         len(msgparser.messages_by_id),
-                         msgparser.version, msgparser.build_versions)
-        self.logger.info("MCU config: %s", " ".join(
-            ["%s=%s" % (k, v) for k, v in msgparser.config.items()]))
         # Setup baud adjust
         mcu_baud = msgparser.get_constant_float('SERIAL_BAUD', None)
         if mcu_baud is not None:

@@ -64,32 +64,6 @@ static uint32_t read_data_len(uint8_t len) {
 static uint_fast8_t thermocouple_event(struct timer *timer) {
     struct thermocouple_spi *spi = container_of(
             timer, struct thermocouple_spi, timer);
-#if 0
-    if (unlikely(!spi_set_config(spi->spi_config))) {
-        spi->timer.waketime += POLL_DELAY;
-        return SF_RESCHEDULE;
-    }
-    gpio_out_write(spi->pin, 0); // Enable slave
-    if (likely(spi->read_cmd != 0xFF))
-        spi_transfer(spi->read_cmd);
-    spi->value = read_data_len(spi->read_bytes);
-
-    if (spi->fault_cmd) {
-        spi_transfer(spi->fault_cmd);
-        spi->fault_value = spi_transfer(0x00);
-    }
-    spi_set_ready();
-    gpio_out_write(spi->pin, 1); // Disable slave
-    // ----------------------------------------
-    /* Trigger task to send result */
-    sched_wake_task(&thermocouple_wake);
-    /* Order next read */
-    spi->next_begin_time += spi->rest_time;
-    spi->timer.waketime = spi->next_begin_time;
-    // ----------------------------------------
-
-#else
-
     uint32_t waketime = spi->timer.waketime + POLL_DELAY;
     if (likely(spi->flag & READY)) {
         spi_set_ready();
@@ -121,7 +95,6 @@ static uint_fast8_t thermocouple_event(struct timer *timer) {
         }
     }
     spi->timer.waketime = waketime;
-#endif
     return SF_RESCHEDULE;
 }
 
@@ -194,7 +167,6 @@ void command_config_thermocouple_ss_pin(uint32_t *args) {
     spi->pin        = gpio_out_setup(args[1], 1); // CS pin
     spi->spi_config = spi_get_config(args[2], args[3]);
 }
-// TODO : Add support for inverted pin!
 DECL_COMMAND(command_config_thermocouple_ss_pin,
              "config_thermocouple_ss_pin oid=%c pin=%u spi_mode=%u spi_speed=%u");
 

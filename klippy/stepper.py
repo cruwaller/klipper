@@ -4,7 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math
-import homing, pins
+import homing
 
 # Tracking of shared stepper enable pins
 class StepperEnablePin:
@@ -21,11 +21,10 @@ class StepperEnablePin:
             if not self.enable_count:
                 self.mcu_enable.set_digital(print_time, 0)
 
-def lookup_enable_pin(printer, pin):
+def lookup_enable_pin(ppins, pin):
     if pin is None:
         return StepperEnablePin(None, 9999)
-    pin_params = pins.get_printer_pins(printer).lookup_pin(
-        'digital_out', pin, 'stepper_enable')
+    pin_params = ppins.lookup_pin('digital_out', pin, 'stepper_enable')
     enable = pin_params.get('class')
     if enable is None:
         mcu_enable = pin_params['chip'].setup_pin(pin_params)
@@ -42,7 +41,7 @@ def calculate_steps(config, microsteps=None):
     else:
         steps_per_mm = config.getfloat('steps_per_mm', default=None, above=0.)
         if steps_per_mm is None:
-            if (microsteps is None):
+            if microsteps is None:
                 return None, None
             motor_deg = config.getfloat('motor_step_angle', above=0.)
             # Calculate base on settings
@@ -81,16 +80,15 @@ class PrinterStepper:
                 driver.step_dist = self.step_dist
                 driver.inv_step_dist = self.inv_step_dist
         # Stepper definition
-        self.mcu_stepper = pins.setup_pin(
-            printer, 'stepper', config.get('step_pin'))
-        dir_pin_params = pins.get_printer_pins(printer).lookup_pin(
-            'digital_out', config.get('dir_pin'))
+        ppins = printer.lookup_object('pins')
+        self.mcu_stepper = ppins.setup_pin('stepper', config.get('step_pin'))
+        dir_pin_params = ppins.lookup_pin('digital_out', config.get('dir_pin'))
         self.mcu_stepper.setup_dir_pin(dir_pin_params)
         self.mcu_stepper.setup_step_distance(self.step_dist)
         self.step = self.mcu_stepper.step
         self.step_const = self.mcu_stepper.step_const
         self.step_delta = self.mcu_stepper.step_delta
-        self.enable = lookup_enable_pin(printer, config.get('enable_pin', None))
+        self.enable = lookup_enable_pin(ppins, config.get('enable_pin', None))
         self.logger.info("steps per mm {} , step in mm {}".
                          format(self.inv_step_dist, self.step_dist))
         printer.add_object(config.get_name(), self) # to get printer_state called
@@ -177,7 +175,7 @@ class PrinterHomingStepper(PrinterStepper):
             else:
                 # max pin
                 endstop_pin = config.get('endstop_max_pin')
-        self.mcu_endstop = pins.setup_pin(printer, 'endstop', endstop_pin)
+        self.mcu_endstop = printer.lookup_object('pins').setup_pin('endstop', endstop_pin)
         self.mcu_endstop.add_stepper(self.mcu_stepper)
         # Endstop stepper phase position tracking
         self.homing_stepper_phases = config.getint(
@@ -271,7 +269,8 @@ class PrinterMultiStepper(PrinterHomingStepper):
             self.all_step_const.append(extra.step_const)
             extraendstop = extraconfig.get('endstop_pin', None)
             if extraendstop is not None:
-                mcu_endstop = pins.setup_pin(printer, 'endstop', extraendstop)
+                ppins = printer.lookup_object('pins')
+                mcu_endstop = ppins.setup_pin('endstop', extraendstop)
                 mcu_endstop.add_stepper(extra.mcu_stepper)
                 self.endstops.append((mcu_endstop, extra.name))
             else:

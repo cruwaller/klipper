@@ -593,6 +593,7 @@ class RepRapGuiModule(object):
         # ------------------------------
         fd_r, self.pipe_write = os.pipe() # Change to PTY ?
         self.gcode.register_fd(fd_r)
+        self.gcode.temperature_auto_report(False)
         self.gcode.register_command('M550',
                                     self.cmd_M550,
                                     when_not_ready=True,

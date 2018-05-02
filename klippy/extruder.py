@@ -4,17 +4,18 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math
-import stepper, heater, homing
+import stepper, homing
 
 EXTRUDE_DIFF_IGNORE = 1.02
 
 
 class PrinterExtruder:
     def __init__(self, printer, config, index):
-        self.name   = config.get_name()
+        self.printer = printer
+        self.name = config.get_name()
         self.logger = printer.logger.getChild(self.name)
         self.config = config
-        self.index  = index
+        self.index = index
         self.heater = printer.lookup_object(config.get('heater'))
         self.heater.set_min_extrude_temp(config.getfloat('min_extrude_temp',
                                                          170.0))
@@ -42,10 +43,8 @@ class PrinterExtruder:
         self.deactivate_gcode = config.get('deactivate_gcode', '')
         self.pressure_advance = config.getfloat(
             'pressure_advance', 0., minval=0.)
-        self.pressure_advance_lookahead_time = 0.
-        if self.pressure_advance:
-            self.pressure_advance_lookahead_time = config.getfloat(
-                'pressure_advance_lookahead_time', 0.010, minval=0.)
+        self.pressure_advance_lookahead_time = config.getfloat(
+            'pressure_advance_lookahead_time', 0.010, minval=0.)
         self.need_motor_enable = True
         self.extrude_pos = 0.
         self.extrude_factor = config.getfloat('extrusion_factor',
@@ -91,7 +90,7 @@ class PrinterExtruder:
                 move.extrude_r = self.max_extrude_ratio
                 return
             area = move.axes_d[3] * self.filament_area / move.move_d
-            self.logger.debug("Overextrude: %s vs %s (area=%.3f dist=%.3f)",
+            self.logger.debug("Over extrude: %s vs %s (area=%.3f dist=%.3f)",
                               move.extrude_r, self.max_extrude_ratio,
                               area, move.move_d)
             raise homing.EndstopError(
@@ -114,7 +113,7 @@ class PrinterExtruder:
         return move.max_cruise_v2
     def lookahead(self, moves, flush_count, lazy):
         lookahead_t = self.pressure_advance_lookahead_time
-        if not lookahead_t:
+        if not self.pressure_advance or not lookahead_t:
             return flush_count
         # Calculate max_corner_v - the speed the head will accelerate
         # to after cornering.
@@ -266,10 +265,10 @@ def get_printer_extruders(printer):
     except AttributeError:
         return {}
 
-def get_printer_extruder(printer, index):
+def get_printer_extruder(printer, index, default=None):
     try:
         if index is None:
             raise KeyError
         return printer._extruders[index]
     except (KeyError, AttributeError):
-        return None
+        return default

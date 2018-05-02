@@ -267,7 +267,8 @@ static const uint8_t adc_pins[] PROGMEM = {
 #endif
 };
 
-static const uint8_t ADMUX_DEFAULT = 0x40;
+enum { ADMUX_DEFAULT = 0x40 };
+enum { ADC_ENABLE = (1<<ADPS0)|(1<<ADPS1)|(1<<ADPS2)|(1<<ADEN)|(1<<ADIF) };
 
 DECL_CONSTANT(ADC_MAX, 1023);
 
@@ -284,7 +285,7 @@ gpio_adc_setup(uint8_t pin)
     }
 
     // Enable ADC
-    ADCSRA = (1<<ADPS0)|(1<<ADPS1)|(1<<ADPS2)|(1<<ADEN);
+    ADCSRA = ADC_ENABLE;
 
     // Disable digital input for this pin
 #ifdef DIDR2
@@ -317,16 +318,18 @@ gpio_adc_sample(struct gpio_adc g)
         goto need_delay;
     last_analog_read = g.chan;
 
+    // Set the channel to sample
 #if defined(ADCSRB) && defined(MUX5)
-    // the MUX5 bit of ADCSRB selects whether we're reading from channels
-    // 0 to 7 (MUX5 low) or 8 to 15 (MUX5 high).
+    // The MUX5 bit of ADCSRB selects whether we're reading from
+    // channels 0 to 7 (MUX5 low) or 8 to 15 (MUX5 high).
     ADCSRB = ((g.chan >> 3) & 0x01) << MUX5;
 #endif
-
     ADMUX = ADMUX_DEFAULT | (g.chan & 0x07);
 
-    // start the conversion
-    ADCSRA |= 1<<ADSC;
+    // Start the sample
+    ADCSRA = ADC_ENABLE | (1<<ADSC);
+
+    // Schedule next attempt after sample is likely to be complete
 need_delay:
     return (13 + 1) * 128 + 200;
 }
@@ -452,18 +455,22 @@ spi_get_config(uint8_t const mode, uint32_t const clock)
 }
 
 static uint8_t volatile reserved = 0;
-uint8_t spi_set_config(struct spi_config const config) {
+
+uint8_t
+spi_set_config(struct spi_config const config) {
     if (reserved) return 0;
     SPCR = (uint8_t)(config.cfg >> 8);
     SPSR = (uint8_t)(config.cfg & 0xFF);
     return ++reserved;
 }
 
-void spi_set_ready(void) {
+void
+spi_set_ready(void) {
     reserved = 0;
 }
 
-void spi_transfer_len(char *data, uint8_t len) {
+void
+spi_transfer_len(char *data, uint8_t len) {
     while (len--) {
         SPDR = *data;
         while (!(SPSR & _BV(SPIF))); // Wait ready
@@ -471,7 +478,8 @@ void spi_transfer_len(char *data, uint8_t len) {
     }
 }
 
-uint8_t spi_transfer(uint8_t const data) {
+uint8_t
+spi_transfer(uint8_t const data) {
 #if (CONFIG_SIMULATOR == 1)
     return data;
 #else
@@ -486,16 +494,4 @@ uint8_t spi_transfer(uint8_t const data) {
     while (!(SPSR & _BV(SPIF))); // Wait ready
     return SPDR;
 #endif
-}
-
-void spi_send(uint8_t const data) {
-    asm volatile("nop");
-    while (!(SPSR & _BV(SPIF)));
-    SPDR = data;
-}
-uint8_t spi_read(void) {
-    return SPDR;
-}
-uint8_t spi_read_rdy(void) {
-    return (!!(SPSR & _BV(SPIF)));
 }
