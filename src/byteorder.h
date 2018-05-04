@@ -3,89 +3,37 @@
 
 #include <stdint.h> // uint32_t
 
-#define swab16(x) __builtin_bswap16(x)
-#define swab32(x) __builtin_bswap32(x)
-#define swab64(x) __builtin_bswap64(x)
-
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 
-static inline uint16_t cpu_to_le16(uint16_t x) {
-    return x;
-}
-static inline uint32_t cpu_to_le32(uint32_t x) {
-    return x;
-}
-static inline uint64_t cpu_to_le64(uint64_t x) {
-    return x;
-}
-static inline uint16_t le16_to_cpu(uint16_t x) {
-    return x;
-}
-static inline uint32_t le32_to_cpu(uint32_t x) {
-    return x;
-}
-static inline uint64_t le64_to_cpu(uint64_t x) {
-    return x;
-}
+#define cpu_to_le16(x) ((uint16_t)(x))
+#define cpu_to_le32(x) ((uint32_t)(x))
+#define cpu_to_le64(x) ((uint64_t)(x))
+#define le16_to_cpu(x) ((uint16_t)(x))
+#define le32_to_cpu(x) ((uint32_t)(x))
+#define le64_to_cpu(x) ((uint64_t)(x))
 
-static inline uint16_t cpu_to_be16(uint16_t x) {
-    return swab16(x);
-}
-static inline uint32_t cpu_to_be32(uint32_t x) {
-    return swab32(x);
-}
-static inline uint64_t cpu_to_be64(uint64_t x) {
-    return swab64(x);
-}
-static inline uint16_t be16_to_cpu(uint16_t x) {
-    return swab16(x);
-}
-static inline uint32_t be32_to_cpu(uint32_t x) {
-    return swab32(x);
-}
-static inline uint64_t be64_to_cpu(uint64_t x) {
-    return swab64(x);
-}
+#define cpu_to_be16(x) __builtin_bswap16(x)
+#define cpu_to_be32(x) __builtin_bswap32(x)
+#define cpu_to_be64(x) __builtin_bswap64(x)
+#define be16_to_cpu(x) __builtin_bswap16(x)
+#define be32_to_cpu(x) __builtin_bswap32(x)
+#define be64_to_cpu(x) __builtin_bswap64(x)
 
 #else // big endian
 
-static inline uint16_t cpu_to_le16(uint16_t x) {
-    return swab16(x);
-}
-static inline uint32_t cpu_to_le32(uint32_t x) {
-    return swab32(x);
-}
-static inline uint64_t cpu_to_le64(uint64_t x) {
-    return swab64(x);
-}
-static inline uint16_t le16_to_cpu(uint16_t x) {
-    return swab16(x);
-}
-static inline uint32_t le32_to_cpu(uint32_t x) {
-    return swab32(x);
-}
-static inline uint64_t le64_to_cpu(uint64_t x) {
-    return swab64(x);
-}
+#define cpu_to_le16(x) __builtin_bswap16(x)
+#define cpu_to_le32(x) __builtin_bswap32(x)
+#define cpu_to_le64(x) __builtin_bswap64(x)
+#define le16_to_cpu(x) __builtin_bswap16(x)
+#define le32_to_cpu(x) __builtin_bswap32(x)
+#define le64_to_cpu(x) __builtin_bswap64(x)
 
-static inline uint16_t cpu_to_be16(uint16_t x) {
-    return x;
-}
-static inline uint32_t cpu_to_be32(uint32_t x) {
-    return x;
-}
-static inline uint64_t cpu_to_be64(uint64_t x) {
-    return x;
-}
-static inline uint16_t be16_to_cpu(uint16_t x) {
-    return x;
-}
-static inline uint32_t be32_to_cpu(uint32_t x) {
-    return x;
-}
-static inline uint64_t be64_to_cpu(uint64_t x) {
-    return x;
-}
+#define cpu_to_be16(x) ((uint16_t)(x))
+#define cpu_to_be32(x) ((uint32_t)(x))
+#define cpu_to_be64(x) ((uint64_t)(x))
+#define be16_to_cpu(x) ((uint16_t)(x))
+#define be32_to_cpu(x) ((uint32_t)(x))
+#define be64_to_cpu(x) ((uint64_t)(x))
 
 #endif
 
