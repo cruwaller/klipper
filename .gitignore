@@ -9,3 +9,4 @@ out
 *.elf
 *.bin
 
+lib/hub-ctrl/hub-ctrl

@@ -42,8 +42,8 @@ class PrinterHeater:
         self.min_temp, self.max_temp = self.sensor.get_min_max_temp()
         self.min_extrude_temp = 170.  # Set by the extruder
         self.min_extrude_temp_disabled = False
-        self.can_extrude = self.min_extrude_temp <= self.min_temp or \
-                           self.mcu_sensor.is_fileoutput()
+        self.can_extrude = (self.min_extrude_temp <= self.min_temp or
+                            self.mcu_sensor.is_fileoutput())
         self.max_power = config.getfloat('max_power', 1., above=0., maxval=1.)
         self.lock = threading.Lock()
         self.last_temp = 0.

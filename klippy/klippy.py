@@ -236,7 +236,8 @@ class Printer:
             m.add_printer_objects(self, config)
         self.logger.info("========================================")
         for section in fileconfig.sections():
-            self.try_load_module(config, section)
+            if "driver" not in section:
+                self.try_load_module(config, section)
         self.logger.info("========================================")
         for m in [toolhead, extruder]:
             m.add_printer_objects(self, config)

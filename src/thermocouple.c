@@ -22,11 +22,15 @@ extern int SIMULATOR_MODE;
 #define SPI_READ_CMD (SIMULATOR_MODE ? 0x40 : 0x00)
 #endif
 
+#define RUN_IN_TASK 1
+
 struct thermocouple_spi {
     struct timer timer;
     uint32_t rest_time;
     uint32_t next_begin_time;     // Start time
+#if (!RUN_IN_TASK)
     volatile uint32_t value;      // Stores the thermocouple/RTD ADC output
+#endif
     uint32_t min_value;           // Min allowed ADC value
     uint32_t max_value;           // Max allowed ADC value
     uint32_t fault_mask;          // Fault check mask
@@ -34,9 +38,13 @@ struct thermocouple_spi {
     uint8_t  read_cmd;            // SPI command to get ADC result
     uint8_t  read_bytes;          // Num of bytes to be read
     uint8_t  fault_cmd;           // SPI command to get fault register (0 = disabled)
+#if (!RUN_IN_TASK)
     uint8_t  fault_value;         // fault register value
+#endif
     struct gpio_out pin;
+#if (!RUN_IN_TASK)
     uint8_t flag : 8;
+#endif
 };
 
 enum {
@@ -48,11 +56,9 @@ enum {
 
 static struct task_wake thermocouple_wake;
 
-
 static uint32_t read_data_len(uint8_t len) {
     uint32_t value = 0;
-    while (len--)
-    {
+    while (len--) {
         value <<= 8;
         value += spi_transfer(SPI_READ_CMD);
     }
@@ -64,6 +70,12 @@ static uint32_t read_data_len(uint8_t len) {
 static uint_fast8_t thermocouple_event(struct timer *timer) {
     struct thermocouple_spi *spi = container_of(
             timer, struct thermocouple_spi, timer);
+#if (RUN_IN_TASK)
+    /* Trigger task to send result */
+    sched_wake_task(&thermocouple_wake);
+    spi->next_begin_time += spi->rest_time;
+    spi->timer.waketime = spi->next_begin_time;
+#else
     uint32_t waketime = spi->timer.waketime + POLL_DELAY;
     if (likely(spi->flag & READY)) {
         spi_set_ready();
@@ -95,6 +107,7 @@ static uint_fast8_t thermocouple_event(struct timer *timer) {
         }
     }
     spi->timer.waketime = waketime;
+#endif
     return SF_RESCHEDULE;
 }
 
@@ -117,8 +130,9 @@ void command_config_thermocouple(uint32_t *args) {
     spi->fault_mask      = args[6];
     spi->rest_time       = args[7];
     spi->fault_cmd       = args[8];
+#if (!RUN_IN_TASK)
     spi->flag = INIT;
-
+#endif
     /* Configure reader here... */
     uint8_t len = args[9];
     uint8_t *msg = (uint8_t*)(size_t)args[10];
@@ -178,12 +192,32 @@ void thermocouple_task(void) {
     uint8_t oid;
     struct thermocouple_spi *spi;
     foreach_oid(oid, spi, command_config_thermocouple) {
+#if (RUN_IN_TASK)
+        irq_disable();
+        uint32_t const next_begin_time = spi->next_begin_time;
+        irq_enable();
+        uint32_t value = 0;
+        uint8_t  fault = 0;
+
+        while (!spi_set_config(spi->spi_config));
+        gpio_out_write(spi->pin, 0); // Enable slave
+        if (likely(spi->read_cmd != 0xFF))
+            spi_transfer(spi->read_cmd);
+        value = read_data_len(spi->read_bytes);
+        if (likely(spi->fault_cmd)) {
+            spi_transfer(spi->fault_cmd);
+            fault = spi_transfer(0x00);
+        }
+        spi_set_ready();
+        gpio_out_write(spi->pin, 1); // Disable slave
+#else
         irq_disable();
         uint32_t const value           = spi->value;
         uint32_t const next_begin_time = spi->next_begin_time;
         uint8_t  const fault           = spi->fault_value;
         spi->flag = INIT;
         irq_enable();
+#endif
 
         // ----------------------------------------
         /* check the faults and stop  */

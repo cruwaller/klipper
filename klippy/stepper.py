@@ -33,25 +33,25 @@ def lookup_enable_pin(ppins, pin):
     return enable
 
 def calculate_steps(config, microsteps=None):
-    step_dist = inv_step_dist = 0.
     # Read config and send to driver
-    step_dist = config.getfloat('step_distance', default=None, above=0.)
-    if step_dist is not None:
-        inv_step_dist = 1. / step_dist
-    else:
-        steps_per_mm = config.getfloat('steps_per_mm', default=None, above=0.)
-        if steps_per_mm is None:
-            if microsteps is None:
-                return None, None
-            motor_deg = config.getfloat('motor_step_angle', above=0.)
-            # Calculate base on settings
-            pitch = config.getfloat('pitch', above=0.)
-            teeth = config.getfloat('teeths', above=0.)
-            ratio = config.getfloat('gear_ratio', above=0., default=1.0)
-            motor_rev = 360. / motor_deg
-            steps_per_mm = motor_rev * microsteps / (pitch * teeth) * ratio
+    steps_per_mm = config.getfloat('steps_per_mm', default=None, above=0.)
+    microsteps = config.getfloat('microsteps', default=microsteps, above=0.)
+    if steps_per_mm is None and microsteps is not None:
+        #if microsteps is None:
+        #    raise config.error("Option 'microsteps' undefined")
+        motor_deg = config.getfloat('motor_step_angle', above=0.)
+        # Calculate base on settings
+        pitch = config.getfloat('pitch', above=0.)
+        teeth = config.getfloat('teeths', above=0.)
+        ratio = config.getfloat('gear_ratio', above=0., default=1.0)
+        motor_rev = 360. / motor_deg
+        steps_per_mm = motor_rev * microsteps / (pitch * teeth) * ratio
+    if steps_per_mm is not None:
         inv_step_dist = steps_per_mm
         step_dist = 1.0 / inv_step_dist
+    else:
+        step_dist = config.getfloat('step_distance', above=0.)
+        inv_step_dist = 1. / step_dist
     return step_dist, inv_step_dist
 
 # Code storing the definitions for a stepper motor
@@ -67,8 +67,13 @@ class PrinterStepper:
             self.logger = logger.getChild('stepper')
         self.need_motor_enable = True
         # get a driver
-        self.driver = driver = printer.lookup_object(
-            'driver %s' % config.get('driver', None), None)
+        driver = None
+        driver_name = config.get('driver', None)
+        if driver_name is not None:
+            driver_section = 'driver %s' % driver_name
+            printer.try_load_module(config, driver_section)
+            driver = printer.lookup_object(driver_section, None)
+        self.driver = driver
         microsteps = None
         if driver is not None:
             microsteps = driver.microsteps
@@ -92,7 +97,8 @@ class PrinterStepper:
         self.logger.info("steps per mm {} , step in mm {}".
                          format(self.inv_step_dist, self.step_dist))
         printer.add_object(config.get_name(), self) # to get printer_state called
-    def _dist_to_time(self, dist, start_velocity, accel):
+    @staticmethod # ok for speed ?
+    def _dist_to_time(dist, start_velocity, accel):
         # Calculate the time it takes to travel a distance with constant accel
         time_offset = start_velocity / accel
         return math.sqrt(2. * dist / accel + time_offset**2) - time_offset

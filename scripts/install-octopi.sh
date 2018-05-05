@@ -8,7 +8,7 @@ PYTHONDIR="${HOME}/klippy-env"
 install_packages()
 {
     # Packages for python cffi
-    PKGLIST="python-virtualenv libffi-dev"
+    PKGLIST="python-virtualenv libffi-dev python-opencv python-dev"
     # kconfig requirements
     PKGLIST="${PKGLIST} libncurses-dev"
     # hub-ctrl
@@ -36,7 +36,7 @@ create_virtualenv()
     [ ! -d ${PYTHONDIR} ] && virtualenv ${PYTHONDIR}
 
     # Install/update dependencies
-    ${PYTHONDIR}/bin/pip install cffi==1.6.0 pyserial==3.2.1 greenlet==0.4.10
+    ${PYTHONDIR}/bin/pip install cffi==1.6.0 pyserial==3.2.1 greenlet==0.4.10 tornado==4.5
 }
 
 # Step 3: Install startup script

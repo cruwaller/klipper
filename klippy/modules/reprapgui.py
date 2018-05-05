@@ -582,7 +582,7 @@ class RepRapGuiModule(object):
             else:
                 http_server.bind(http_port)
                 self.logger.debug("HTTPS port %s" % (http_port))
-            http_server.start();
+            http_server.start()
 
             # Put tornado to background thread
             _TORNADO_THREAD = threading.Thread(

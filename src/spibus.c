@@ -17,9 +17,6 @@ struct spibus_t {
     struct gpio_out pin;
 };
 
-#define BUFF_SIZE 32u
-static uint8_t spirespbuff[BUFF_SIZE] = {0};
-
 /* Config slave select pin and SPI bus */
 void command_config_spibus_ss_pin(uint32_t *args) {
 #if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
@@ -37,44 +34,39 @@ DECL_COMMAND(command_config_spibus_ss_pin,
              "config_spibus_ss_pin oid=%c pin=%u spi_mode=%u spi_speed=%u");
 
 void command_spibus_transfer(uint32_t *args) {
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-    printf("spibus_transfer oid=%u len=%u\n",
-           args[0], args[1]);
-#endif
     struct spibus_t *spi =
         oid_lookup(args[0], command_config_spibus_ss_pin);
-
-    uint8_t iter = 0;
     uint8_t status = 1;
     uint8_t len = args[1];
+    uint8_t *msg = (uint8_t*)(uintptr_t)args[2];
+
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    uint8_t iter;
+    printf("spibus_transfer oid=%u len=%u\n",
+           args[0], args[1]);
+    printf("    sent: ");
+    for (iter = 0; iter < len; iter++)
+        printf("0x%02X,", msg[iter]);
+    printf("\n");
+#endif
 
     /* Read data from SPI slave */
-    uint8_t *msg = (uint8_t*)(uintptr_t)args[2];
-    if (len && len <= BUFF_SIZE) {
+    if (len) {
         while (!spi_set_config(spi->spi_config));
         gpio_out_write(spi->pin, 0); // Enable slave
-        do {
-            spirespbuff[iter++] =
-                spi_transfer((uint8_t)(*msg++));
-        } while (--len);
+        spi_transfer_len((char*)msg, len);
         spi_set_ready();
         gpio_out_write(spi->pin, 1); // Disable slave
         status = 0;
     }
     sendf("spibus_transfer_resp oid=%c status=%i data=%*s",
-          args[0], status, iter, spirespbuff);
+          args[0], status, len, msg);
 #if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
     printf("    status: %u\n", status);
     if (status == 0) {
-        len = args[1];
-        msg = (uint8_t*)(uintptr_t)args[2];
-        printf("    sent: ");
-        for (iter = 0; iter < len; iter++)
-            printf("0x%02X,", msg[iter]);
-        printf("\n");
         printf("    recv: ");
         for (iter = 0; iter < len; iter++)
-            printf("0x%02X,", spirespbuff[iter]);
+            printf("0x%02X,", msg[iter]);
         printf("\n");
     }
 #endif
