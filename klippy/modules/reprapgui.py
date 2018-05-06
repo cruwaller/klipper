@@ -474,10 +474,8 @@ class rrHandler(tornado.web.RequestHandler):
                     pass
             try:
                 output_file = open(path, 'w')
-                # Get file content and mime type
-                if "application/octet-stream" in self.request.headers['Content-Type']:
-                    if self.request.body:
-                        output_file.write(self.request.body)
+                if self.request.body:
+                    output_file.write(self.request.body)
                 output_file.close()
 
                 respdata['err'] = 0
