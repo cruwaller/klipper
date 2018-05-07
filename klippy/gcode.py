@@ -553,7 +553,7 @@ class GCodeParser:
     def cmd_M221(self, params):
         # Set extrude factor override percentage
         new_extrude_factor = self.get_float('S', params, 100., above=0.) / 100.
-        index = extr = None
+        index = None
         # extruder number
         if 'D' in params:
             index = self.get_int('D', params, None)

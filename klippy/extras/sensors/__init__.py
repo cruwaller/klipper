@@ -3,7 +3,6 @@
 # Copyright (C) 2018  Petri Honkala <cruwaller@gmail.com>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-from dummy import ThermistorDummy
 from thermistor import Thermistor, CustomThermistor
 from linear import Linear, CustomLinear
 from thermocouple import Thermocouple
@@ -55,14 +54,7 @@ Sensors = {
     # RTD readers (SPI)
     "MAX31865": {
         'class': RTD},
-
-    # for testing
-    # "dummy25": {
-    #    'class': ThermistorDummy, 't1': 25 },
-    # "dummy100": {
-    #    'class': ThermistorDummy, 't1': 100 },
 }
-
 
 def load_sensor(config):
     sensor_params = config.getchoice('sensor_type', Sensors)

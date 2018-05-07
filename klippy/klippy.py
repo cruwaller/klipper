@@ -4,14 +4,13 @@
 # Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import sys, os, optparse, logging, time, threading
+import sys, os, optparse, logging, time
 import collections, ConfigParser, importlib
+import util, reactor, queuelogger, msgproto
+import gcode, pins, mcu, toolhead, extruder
 
 # Include extras path to search dir
 sys.path.append(os.path.join(os.path.dirname(__file__), "extras"))
-
-import util, reactor, queuelogger, msgproto
-import gcode, pins, mcu, toolhead, extruder, heater
 
 status_delay = 1.0
 
