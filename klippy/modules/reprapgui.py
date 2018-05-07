@@ -501,7 +501,7 @@ class RepRapGuiModule(object):
     def __init__(self, printer, config):
         global _TORNADO_THREAD
         global _PARENT
-        _PARENT = self;
+        _PARENT = self
         self.printer = printer
         self.logger = printer.logger.getChild("DuetWebControl")
         self.logger_tornado = self.logger.getChild("tornado")
@@ -509,11 +509,12 @@ class RepRapGuiModule(object):
         self.gcode = printer.lookup_object('gcode')
         self.toolhead = printer.lookup_object('toolhead')
         self.babysteps = printer.lookup_object('babysteps')
+        printer.try_load_module(config, "virtual_sdcard")
         self.sd = printer.lookup_object('virtual_sdcard')
         self.starttime = time.time()
         self.curr_state = 'C'
         self.gcode_resps = []
-        self.current_file = None # Needed?
+        self.current_file = None
 
         # Read config
         self.name = config.getsection('printer').get(
