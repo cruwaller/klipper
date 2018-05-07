@@ -1,6 +1,6 @@
 # Printer heater support
 #
-# Copyright (C) 2016,2017  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2018  Petri Honkala <cruwaller@gmail.com>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math
@@ -30,10 +30,10 @@ MAX31865_FAULT_RTDINLOW        = 0x08
 MAX31865_FAULT_OVUV            = 0x04
 
 class RTD(SensorBase):
-    rtd_nominal_r   = 100;
-    reference_r     = 430;
-    num_wires       = 2;
-    use_50Hz_filter = False;
+    rtd_nominal_r   = 100
+    reference_r     = 430
+    num_wires       = 2
+    use_50Hz_filter = False
 
     val_a = 0.00390830
     val_b = 0.0000005775
@@ -47,34 +47,30 @@ class RTD(SensorBase):
         self.num_wires       = config.getint('rtd_num_of_wires', 2)
         self.use_50Hz_filter = config.getboolean('rtd_use_50Hz_filter', False)
         SensorBase.__init__(self, config, is_spi = True, sample_count = 1)
-
     def check_faults(self, fault):
-        if (fault & 0x80):
-            raise error("Max31865 RTD input is disconnected")
-        if (fault & 0x40):
-            raise error("Max31865 RTD input is shorted")
-        if (fault & 0x20):
-            raise error("Max31865 VREF- is greater than 0.85 * VBIAS, FORCE- open")
-        if (fault & 0x10):
-            raise error("Max31865 VREF- is less than 0.85 * VBIAS, FORCE- open")
-        if (fault & 0x08):
-            raise error("Max31865 VRTD- is less than 0.85 * VBIAS, FORCE- open")
-        if (fault & 0x04):
-            raise error("Max31865 Overvoltage or undervoltage fault")
-        if (fault & 0x03):
-            raise error("Max31865 Unspecified error")
-
-
+        if fault & 0x80:
+            raise self.error("Max31865 RTD input is disconnected")
+        if fault & 0x40:
+            raise self.error("Max31865 RTD input is shorted")
+        if fault & 0x20:
+            raise self.error("Max31865 VREF- is greater than 0.85 * VBIAS, FORCE- open")
+        if fault & 0x10:
+            raise self.error("Max31865 VREF- is less than 0.85 * VBIAS, FORCE- open")
+        if fault & 0x08:
+            raise self.error("Max31865 VRTD- is less than 0.85 * VBIAS, FORCE- open")
+        if fault & 0x04:
+            raise self.error("Max31865 Overvoltage or undervoltage fault")
+        if fault & 0x03:
+            raise self.error("Max31865 Unspecified error")
     def calc_temp(self, adc):
         adc = adc >> 1 # Scale result
-        R_rtd = (self.reference_r * adc) / 32768.0; # 2^15
+        R_rtd = (self.reference_r * adc) / 32768.0 # 2^15
         temp = ( ( ( -1 * self.rtd_nominal_r ) * self.val_a ) +
                  math.sqrt( ( self.rtd_nominal_r * self.rtd_nominal_r * self.val_a * self.val_a ) -
                             ( 4 * self.rtd_nominal_r * self.val_b * ( self.rtd_nominal_r - R_rtd ) )
                    )
-             ) / (2 * self.rtd_nominal_r * self.val_b);
-        return (temp);
-
+             ) / (2 * self.rtd_nominal_r * self.val_b)
+        return temp
     def calc_adc(self, temp):
         R_rtd = temp * ( 2 * self.rtd_nominal_r * self.val_b )
         R_rtd = math.pow( ( R_rtd + ( self.rtd_nominal_r * self.val_a ) ), 2)
@@ -85,7 +81,6 @@ class RTD(SensorBase):
         # Scale result
         adc = adc << self.scale
         return adc
-
     def get_read_cmd(self):
         return MAX31865_RTDMSB_REG
     def get_read_bytes(self):
@@ -94,11 +89,11 @@ class RTD(SensorBase):
         value = (MAX31865_CONFIG_BIAS |
                  MAX31865_CONFIG_MODEAUTO |
                  MAX31865_CONFIG_FAULTCLEAR)
-        if (self.use_50Hz_filter):
+        if self.use_50Hz_filter:
             value |= MAX31865_CONFIG_FILT50HZ
-        if (self.num_wires == 3):
+        if self.num_wires == 3:
             value |= MAX31865_CONFIG_3WIRE
         cmd = 0x80 + MAX31865_CONFIG_REG
         return [cmd, value]
     def get_fault_filter(self):
-        return 0x0001;
+        return 0x0001

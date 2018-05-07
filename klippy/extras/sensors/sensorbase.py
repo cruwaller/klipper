@@ -1,6 +1,6 @@
 # Printer heater support
 #
-# Copyright (C) 2016,2017  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2018  Petri Honkala <cruwaller@gmail.com>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
@@ -8,7 +8,11 @@ SAMPLE_TIME_DEFAULT    = 0.001
 SAMPLE_COUNT_DEFAULT   = 8
 REPORT_TIME_DEFAULT    = 0.300
 
+class error(Exception):
+    pass
+
 class SensorBase(object):
+    error = error
     def __init__(self,
                  config,
                  is_spi = False,
