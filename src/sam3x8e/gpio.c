@@ -18,6 +18,7 @@
  * Pin mappings
  ****************************************************************/
 
+#define GPIO(PORT, NUM) (((PORT)-'A') * 32 + (NUM))
 #define GPIO2PORT(PIN) ((PIN) / 32)
 #define GPIO2BIT(PIN) (1<<((PIN) % 32))
 

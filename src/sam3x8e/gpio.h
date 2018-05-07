@@ -3,8 +3,6 @@
 
 #include <stdint.h>
 
-#define GPIO(PORT, NUM) (((PORT)-'A') * 32 + (NUM))
-
 void gpio_peripheral(char bank, uint32_t bit, char ptype, uint32_t pull_up);
 
 struct gpio_out {
@@ -29,5 +27,12 @@ struct gpio_adc gpio_adc_setup(uint8_t pin);
 uint32_t gpio_adc_sample(struct gpio_adc g);
 uint16_t gpio_adc_read(struct gpio_adc g);
 void gpio_adc_cancel_sample(struct gpio_adc g);
+
+struct spi_config {
+    uint32_t cfg;
+};
+struct spi_config spi_setup(uint32_t bus, uint8_t mode, uint32_t rate);
+void spi_transfer(struct spi_config config, uint8_t receive_data
+                  , uint8_t len, uint8_t *data);
 
 #endif // gpio.h

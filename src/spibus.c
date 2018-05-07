@@ -1,3 +1,4 @@
+#if 0
 #include "autoconf.h"
 
 #include "board/gpio.h"   // gpio_out_write
@@ -86,3 +87,4 @@ void spibus_shutdown(void) {
     }
 }
 DECL_SHUTDOWN(spibus_shutdown);
+#endif

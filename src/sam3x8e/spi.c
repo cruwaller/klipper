@@ -1,7 +1,13 @@
+// SPI transmissions on sam3x8e
+//
+// Copyright (C) 2018  Petri Honkala <cruwaller@gmail.com>
+//
+// This file may be distributed under the terms of the GNU GPLv3 license.
+
 #include <stddef.h>   // NULL
 #include "autoconf.h"
+#include "command.h" // shutdown
 #include "gpio.h"
-#include "generic/spi.h"
 #include "sched.h"
 #include <sam3x8e.h>
 #include <string.h>
@@ -11,13 +17,7 @@
 
 #define CHANNEL    0 // Use same channel for all
 
-#define SPCK  GPIO('A', 27)
-#define MOSI  GPIO('A', 26)
-#define MISO  GPIO('A', 25)
-
-struct spi_config spi_basic_config = {.cfg = 0};
-
-void
+static void
 spi_init(void)
 {
     /* Configure SCK, MISO and MOSI */
@@ -48,25 +48,29 @@ spi_init(void)
     REGPTR->SPI_CSR[2] = 0;
     REGPTR->SPI_CSR[3] = 0;
 
-    spi_basic_config = spi_get_config(0, 4000000);
     /* Set basic channel config */
-    REGPTR->SPI_CSR[CHANNEL] = spi_basic_config.cfg;
+    REGPTR->SPI_CSR[CHANNEL] = 0;
     /* Enable SPI */
     REGPTR->SPI_CR = SPI_CR_SPIEN;
 }
-DECL_INIT(spi_init);
 
 struct spi_config
-spi_get_config(uint8_t const mode, uint32_t const clock)
+spi_setup(uint32_t bus, uint8_t mode, uint32_t rate)
 {
+    if (bus != CHANNEL || mode > 3)
+        shutdown("Invalid spi_setup parameters");
+
+    // Make sure bus is enabled
+    spi_init();
+
     uint32_t config = 0;
     uint32_t clockDiv;
-    if (clock < (CHIP_FREQ_CPU_MAX / 255)) {
+    if (rate < (CHIP_FREQ_CPU_MAX / 255)) {
         clockDiv = 255;
-    } else if (clock >= (CHIP_FREQ_CPU_MAX / 2)) {
+    } else if (rate >= (CHIP_FREQ_CPU_MAX / 2)) {
         clockDiv = 2;
     } else {
-        clockDiv = (CHIP_FREQ_CPU_MAX / (clock + 1)) + 1;
+        clockDiv = (CHIP_FREQ_CPU_MAX / (rate + 1)) + 1;
     }
 
     /****** Will be written to SPI_CSRx register ******/
@@ -94,37 +98,26 @@ spi_get_config(uint8_t const mode, uint32_t const clock)
     return (struct spi_config){.cfg = config};
 }
 
-
-static uint8_t volatile reserved = 0;
-uint8_t spi_set_config(struct spi_config const config) {
-    if (!!reserved) return 0;
+void
+spi_transfer(struct spi_config config, uint8_t receive_data
+             , uint8_t len, uint8_t *data)
+{
     REGPTR->SPI_CSR[CHANNEL] = config.cfg;
-    return ++reserved;
-}
 
-void spi_set_ready(void) {
-    reserved = 0;
-}
-
-void spi_transfer_len(char *data, uint8_t len) __attribute__ ((cold));
-void spi_transfer_len(char *data, uint8_t len) {
     Spi* const pSpi = REGPTR;
-    while (len--) {
-        pSpi->SPI_TDR = *data;
-        // wait for receive register
-        while (!(pSpi->SPI_SR & SPI_SR_RDRF)) { asm volatile("nop"); };
-        // get data
-        *data++ = pSpi->SPI_RDR;
+    if (receive_data) {
+        while (len--) {
+            pSpi->SPI_TDR = *data;
+            // wait for receive register
+            while (!(pSpi->SPI_SR & SPI_SR_RDRF)) { asm volatile("nop"); };
+            // get data
+            *data++ = pSpi->SPI_RDR;
+        }
+    } else {
+        while (len--) {
+            pSpi->SPI_TDR = *data++;
+            // wait for receive register
+            while (!(pSpi->SPI_SR & SPI_SR_RDRF)) { asm volatile("nop"); };
+        }
     }
-}
-
-uint8_t spi_transfer(uint8_t const data) __attribute__ ((cold));
-uint8_t spi_transfer(uint8_t const data) {
-    /* DMA is not best for one byte. */
-    Spi* const pSpi = REGPTR;
-    pSpi->SPI_TDR = data;
-    // wait for receive register
-    while (!(pSpi->SPI_SR & SPI_SR_RDRF)) { asm volatile("nop"); };
-    // get data
-    return pSpi->SPI_RDR;
 }

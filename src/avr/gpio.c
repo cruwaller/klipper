@@ -11,9 +11,7 @@
 #include "irq.h" // irq_save
 #include "pgm.h" // PROGMEM
 #include "sched.h" // DECL_INIT
-#include "generic/spi.h"
 
-#include <avr/io.h>
 
 /****************************************************************
  * General Purpose Input Output (GPIO) pins
@@ -362,66 +360,59 @@ gpio_adc_cancel_sample(struct gpio_adc g)
 
 #if CONFIG_MACH_atmega168 || CONFIG_MACH_atmega168p || \
     CONFIG_MACH_atmega328 || CONFIG_MACH_atmega328p
-static const uint8_t SS = GPIO('B', 2), SCK = GPIO('B', 5), MOSI = GPIO('B', 3), MISO = GPIO('B', 4);
+static const uint8_t SS = GPIO('B', 2), SCK = GPIO('B', 5);
+static const uint8_t MOSI = GPIO('B', 3), MISO = GPIO('B', 4);
 #elif CONFIG_MACH_atmega644p || CONFIG_MACH_atmega1284p
-static const uint8_t SS = GPIO('B', 4), SCK = GPIO('B', 7), MOSI = GPIO('B', 5), MISO = GPIO('B', 6);
+static const uint8_t SS = GPIO('B', 4), SCK = GPIO('B', 7);
+static const uint8_t MOSI = GPIO('B', 5), MISO = GPIO('B', 6);
 #elif CONFIG_MACH_at90usb1286 || CONFIG_MACH_atmega1280 || CONFIG_MACH_atmega2560
-static const uint8_t SS = GPIO('B', 0), SCK = GPIO('B', 1), MOSI = GPIO('B', 2), MISO = GPIO('B', 3);
+static const uint8_t SS = GPIO('B', 0), SCK = GPIO('B', 1);
+static const uint8_t MOSI = GPIO('B', 2), MISO = GPIO('B', 3);
 #endif
 
-// make sure SPCR rate is in expected bits
-#if (SPR0 != 0 || SPR1 != 1)
-#error "AVR: unexpected SPCR bits"
-#endif
-
-struct spi_config spi_basic_config = {.cfg = 0};
-
-void
+static void
 spi_init(void)
 {
-    // SS Must be configured as OUT even not used
     gpio_out_setup(SS, 1);
     gpio_out_setup(SCK, 0);
     gpio_out_setup(MOSI, 0);
     gpio_in_setup(MISO, 0);
 
-    // Power Reduction SPI bit must be written to "0"
-#ifdef PRR
-    PRR  &= ~_BV(PRSPI);
-#elif defined(PRR0)
-    PRR0 &= ~_BV(PRSPI);
-#endif
-
-    SPCR = _BV(MSTR) | _BV(SPE);
+    SPCR = (1<<MSTR) | (1<<SPE);
     SPSR = 0;
-
-    spi_basic_config = spi_get_config(0, 4000000);
 }
-DECL_INIT(spi_init);
 
 struct spi_config
-spi_get_config(uint8_t const mode, uint32_t const clock)
+spi_setup(uint32_t bus, uint8_t mode, uint32_t rate)
 {
-    uint16_t config = 0;
-    uint8_t clockDiv;
-    if (clock >= CONFIG_CLOCK_FREQ) {
-        clockDiv = 0;
-    } else if (clock >= (CONFIG_CLOCK_FREQ / 2)) {
-        clockDiv = 1;
-    } else if (clock >= (CONFIG_CLOCK_FREQ / 4)) {
-        clockDiv = 2;
-    } else if (clock >= (CONFIG_CLOCK_FREQ / 8)) {
-        clockDiv = 3;
-    } else if (clock >= (CONFIG_CLOCK_FREQ / 16)) {
-        clockDiv = 4;
-    } else if (clock >= (CONFIG_CLOCK_FREQ / 32)) {
-        clockDiv = 5;
-    } else /*if (clock >= (CONFIG_CLOCK_FREQ / 64))*/ {
-        clockDiv = 6;
+    if (bus || mode > 3)
+        shutdown("Invalid spi_setup parameters");
+
+    // Make sure the SPI interface is enabled
+    spi_init();
+
+    // Setup rate
+    struct spi_config config = {0, 0};
+    if (rate >= (CONFIG_CLOCK_FREQ / 2)) {
+        config.spsr = (1<<SPI2X);
+    } else if (rate >= (CONFIG_CLOCK_FREQ / 4)) {
+        config.spcr = 0;
+    } else if (rate >= (CONFIG_CLOCK_FREQ / 8)) {
+        config.spcr = 1;
+        config.spsr = (1<<SPI2X);
+    } else if (rate >= (CONFIG_CLOCK_FREQ / 16)) {
+        config.spcr = 1;
+    } else if (rate >= (CONFIG_CLOCK_FREQ / 32)) {
+        config.spcr = 2;
+        config.spsr = (1<<SPI2X);
+    } else if (rate >= (CONFIG_CLOCK_FREQ / 64)) {
+        config.spcr = 2;
+    } else {
+        config.spcr = 3;
     }
 
-    /* Set SPCR command */
-    config |= _BV(SPE) | _BV(MSTR);
+    // Setup mode
+    config.spcr |= (1<<SPE) | (1<<MSTR);
     switch(mode) {
         case 0: {
             // MODE 0 - CPOL=0, CPHA=0
@@ -429,70 +420,43 @@ spi_get_config(uint8_t const mode, uint32_t const clock)
         }
         case 1: {
             // MODE 1 - CPOL=0, CPHA=1
-            config |= _BV(CPHA);
+            config.spcr |= (1<<CPHA);
             break;
         }
         case 2: {
             // MODE 2 - CPOL=1, CPHA=0
-            config |= _BV(CPOL);
+            config.spcr |= (1<<CPOL);
             break;
         }
         case 3: {
             // MODE 3 - CPOL=1, CPHA=1
-            config |= _BV(CPOL);
-            config |= _BV(CPHA);
+            config.spcr |= (1<<CPOL) | (1<<CPHA);
             break;
         }
     }
 
-    config |= (clockDiv >> 1);
-
-    /* Set SPSR command */
-    config <<= 8;
-    config |= ((clockDiv & 1) || clockDiv == 6) ? 0 : _BV(SPI2X);
-
-    return (struct spi_config){.cfg = config};
-}
-
-static uint8_t volatile reserved = 0;
-
-uint8_t
-spi_set_config(struct spi_config const config) {
-    if (reserved) return 0;
-    SPCR = (uint8_t)(config.cfg >> 8);
-    SPSR = (uint8_t)(config.cfg & 0xFF);
-    return ++reserved;
+    return config;
 }
 
 void
-spi_set_ready(void) {
-    reserved = 0;
-}
+spi_transfer(struct spi_config config, uint8_t receive_data
+             , uint8_t len, uint8_t *data)
+{
+    SPCR = config.spcr;
+    SPSR = config.spsr;
 
-void
-spi_transfer_len(char *data, uint8_t len) {
-    while (len--) {
-        SPDR = *data;
-        asm volatile("nop");
-        while (!(SPSR & _BV(SPIF))); // Wait ready
-        *data++ = SPDR;
+    if (receive_data) {
+        while (len--) {
+            SPDR = *data;
+            while (!(SPSR & (1<<SPIF)))
+                ;
+            *data++ = SPDR;
+        }
+    } else {
+        while (len--) {
+            SPDR = *data++;
+            while (!(SPSR & (1<<SPIF)))
+                ;
+        }
     }
-}
-
-uint8_t
-spi_transfer(uint8_t const data) {
-#if (CONFIG_SIMULATOR == 1)
-    return data;
-#else
-    SPDR = data;
-    /*
-     * The following NOP introduces a small delay that can prevent the wait
-     * loop form iterating when running at the maximum speed. This gives
-     * about 10% more speed, even if it seems counter-intuitive. At lower
-     * speeds it is unnoticed.
-     */
-    asm volatile("nop");
-    while (!(SPSR & _BV(SPIF))); // Wait ready
-    return SPDR;
-#endif
 }
