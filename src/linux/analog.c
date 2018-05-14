@@ -13,7 +13,6 @@
 #include "gpio.h" // gpio_adc_setup
 #include "internal.h" // report_errno
 #include "sched.h" // sched_shutdown
-#include "generic/spi.h"
 
 #if (CONFIG_SIMULATOR == 1)
 #include <stdio.h>

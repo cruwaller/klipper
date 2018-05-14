@@ -14,30 +14,31 @@
 struct spidev_s {
     struct spi_config spi_config;
     struct gpio_out pin;
-    uint8_t flags;
+    uint8_t flags:8;
     uint8_t shutdown_msg_len;
     uint8_t shutdown_msg[];
 };
 
 enum {
     SF_HAVE_PIN = 1,
+    SF_CS_INVERTED = 1 << 1
 };
 
 void
 command_config_spi(uint32_t *args)
 {
-    uint8_t shutdown_msg_len = args[5];
+    uint8_t shutdown_msg_len = args[6];
     struct spidev_s *spi = oid_alloc(args[0], command_config_spi
                                      , sizeof(*spi) + shutdown_msg_len);
-    spi->pin = gpio_out_setup(args[2], 1);
-    spi->flags = SF_HAVE_PIN;
-    spi->spi_config = spi_setup(args[1], args[3], args[4]);
+    spi->pin = gpio_out_setup(args[2], !args[3]);
+    spi->flags = SF_HAVE_PIN | (args[4] * SF_CS_INVERTED);
+    spi->spi_config = spi_setup(args[1], args[4], args[5]);
     spi->shutdown_msg_len = shutdown_msg_len;
-    uint8_t *shutdown_msg = (void*)(size_t)args[6];
+    uint8_t *shutdown_msg = (void*)(size_t)args[7];
     memcpy(spi->shutdown_msg, shutdown_msg, shutdown_msg_len);
 }
 DECL_COMMAND(command_config_spi,
-             "config_spi oid=%c bus=%u pin=%u mode=%u rate=%u shutdown_msg=%*s");
+             "config_spi oid=%c bus=%c pin=%c inverted=%c mode=%c rate=%u shutdown_msg=%*s");
 
 void
 command_config_spi_without_cs(uint32_t *args)
@@ -65,9 +66,9 @@ spidev_transfer(struct spidev_s *spi, uint8_t receive_data
                 , uint8_t data_len, uint8_t *data)
 {
     if (spi->flags & SF_HAVE_PIN) {
-        gpio_out_write(spi->pin, 0);
+        gpio_out_write(spi->pin, !!(spi->flags & SF_CS_INVERTED));
         spi_transfer(spi->spi_config, receive_data, data_len, data);
-        gpio_out_write(spi->pin, 1);
+        gpio_out_write(spi->pin, !(spi->flags & SF_CS_INVERTED));
     } else {
         spi_transfer(spi->spi_config, receive_data, data_len, data);
     }
@@ -104,7 +105,7 @@ spidev_shutdown(void)
     struct spidev_s *spi;
     foreach_oid(oid, spi, command_config_spi) {
         if (spi->flags & SF_HAVE_PIN)
-            gpio_out_write(spi->pin, 1);
+            gpio_out_write(spi->pin, !!(spi->flags & SF_CS_INVERTED));
     }
 
     // Send shutdown messages

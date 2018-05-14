@@ -3,6 +3,7 @@
 // Copyright (C) 2017  Kevin O'Connor <kevin@koconnor.net>
 //
 // This file may be distributed under the terms of the GNU GPLv3 license.
+#include "autoconf.h"
 
 #include <fcntl.h> // open
 #include <stdio.h> // snprintf
@@ -51,19 +52,29 @@ spi_open(uint32_t bus, uint32_t dev)
 struct spi_config
 spi_setup(uint32_t bus, uint8_t mode, uint32_t rate)
 {
+    (void)mode, (void)rate;
+#if (!CONFIG_SIMULATOR)
     int bus_id = (bus >> 8) & 0xff, dev_id = bus & 0xff;
     int fd = spi_open(bus_id, dev_id);
     return (struct spi_config) { fd };
+#else
+    (void)bus;
+    return (struct spi_config) { 0 };
+#endif
 }
 
 void
 spi_transfer(struct spi_config config, uint8_t receive_data
              , uint8_t len, uint8_t *data)
 {
+    (void)receive_data;
+#if (!CONFIG_SIMULATOR)
     int ret = write(config.fd, data, len);
     if (ret < 0) {
         report_errno("write spi", ret);
         shutdown("Unable to write to spi");
     }
+#else
+    (void)config, (void)len, (void)data;
+#endif
 }
-
