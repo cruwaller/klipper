@@ -22,8 +22,8 @@ class ad5206:
                 channels[i] = int(val * 256. / scale + .5)
         oid = mcu.create_oid()
         mcu.add_config_cmd(
-            "config_spi oid=%d bus=%d pin=%s mode=%u rate=%u shutdown_msg=" % (
-                oid, 0, pin, 0, 25000000))
+            "config_spi oid=%d bus=%d pin=%s inverted=%u mode=%u rate=%u shutdown_msg=" % (
+                oid, 0, pin, False, 0, 25000000))
         for i, val in enumerate(channels):
             if val is not None:
                 mcu.add_config_cmd(

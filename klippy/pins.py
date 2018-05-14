@@ -40,7 +40,8 @@ def lpc_arm_port_pins(port_count, bit_count=32):
 def esp_pins(port_count):
     pins = {}
     for port in range(port_count):
-        pins['P%u' % port] = port
+        pins['GPIO%u' % port] = port
+    pins['GPIO_NA'] = 0xFF
     return pins
 
 
@@ -59,7 +60,7 @@ MCU_PINS = {
     "pru": beaglebone_pins(),
     "linux": {"analog%d" % i: i for i in range(8)}, # XXX
     "lpc176x": lpc_arm_port_pins(5, 32),
-    "esp32": esp_pins(32),
+    "esp32": esp_pins(40),
 }
 
 
@@ -221,7 +222,7 @@ class PrinterPins:
         self.chips = {}
         self.active_pins = {}
     def lookup_pin(self, pin_type, pin_desc, share_type=None):
-        can_invert = pin_type in ['stepper', 'endstop', 'digital_out', 'pwm', 'thermocouple', 'spibus']
+        can_invert = pin_type in ['stepper', 'endstop', 'digital_out', 'pwm']
         can_pullup = pin_type == 'endstop'
         desc = pin_desc
         pullup = invert = 0
@@ -230,7 +231,7 @@ class PrinterPins:
         if can_invert and '!' in desc:
             invert = 1
         #desc = desc.translate(None, '^!').strip()
-        desc = re.sub('\^|\!', '', desc).strip()
+        desc = re.sub('[\^!]', '', desc).strip()
         if ':' not in desc:
             chip_name, pin = 'mcu', desc
         else:
@@ -247,7 +248,7 @@ class PrinterPins:
                         "Format is: %s[chip_name:] pin_name" % (
                             pin_desc, format))
         share_name = "%s:%s" % (chip_name, pin)
-        if share_name in self.active_pins:
+        if share_name in self.active_pins and '_NA' not in share_name:
             pin_params = self.active_pins[share_name]
             if share_type is None or share_type != pin_params['share_type']:
                 raise error("pin %s used multiple times in config" % (pin,))
@@ -270,4 +271,3 @@ class PrinterPins:
 
 def add_printer_objects(printer, config):
     printer.add_object('pins', PrinterPins())
-

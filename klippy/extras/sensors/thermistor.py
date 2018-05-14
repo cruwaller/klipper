@@ -68,24 +68,22 @@ class Thermistor(SensorBase):
             ln_r = (inv_t - self.c1) / self.c2
         r = math.exp(ln_r)
         return r / (self.pullup + r)
-    def check_faults(self, fault):
-        pass
 
 # Custom defined thermistors from the config file
 class CustomThermistor(Thermistor):
-    def __init__(self, config):
+    def __init__(self, config, params):
         self.name = " ".join(config.get_name().split()[1:])
         t1 = config.getfloat("temperature1", minval=KELVIN_TO_CELCIUS)
         r1 = config.getfloat("resistance1", minval=0.)
         beta = config.getfloat("beta", None, above=0.)
         if beta is not None:
             self.params = {'t1': t1, 'r1': r1, 'beta': beta}
-            return
-        t2 = config.getfloat("temperature2", minval=KELVIN_TO_CELCIUS)
-        r2 = config.getfloat("resistance2", minval=0.)
-        t3 = config.getfloat("temperature3", minval=KELVIN_TO_CELCIUS)
-        r3 = config.getfloat("resistance3", minval=0.)
-        (t1, r1), (t2, r2), (t3, r3) = sorted([(t1, r1), (t2, r2), (t3, r3)])
-        self.params = {'t1': t1, 'r1': r1, 't2': t2, 'r2': r2,
-                       't3': t3, 'r3': r3}
-        Thermistor.__init__(config, self.params)
+        else:
+            t2 = config.getfloat("temperature2", minval=KELVIN_TO_CELCIUS)
+            r2 = config.getfloat("resistance2", minval=0.)
+            t3 = config.getfloat("temperature3", minval=KELVIN_TO_CELCIUS)
+            r3 = config.getfloat("resistance3", minval=0.)
+            (t1, r1), (t2, r2), (t3, r3) = sorted([(t1, r1), (t2, r2), (t3, r3)])
+            self.params = {'t1': t1, 'r1': r1, 't2': t2, 'r2': r2,
+                           't3': t3, 'r3': r3}
+        Thermistor.__init__(self, config, self.params)

@@ -5,6 +5,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math
 import homing
+import extras.driver as driver_base
 
 # Tracking of shared stepper enable pins
 class StepperEnablePin:
@@ -71,9 +72,7 @@ class PrinterStepper:
         driver_name = config.get('driver', None)
         if driver_name is not None:
             driver_section = 'driver %s' % driver_name
-            printer.try_load_module(config, driver_section)
-            driver = printer.lookup_object(driver_section, None)
-        self.driver = driver
+            driver = driver_base.load_driver(config.getsection(driver_section))
         microsteps = None
         if driver is not None:
             microsteps = driver.microsteps
@@ -97,8 +96,7 @@ class PrinterStepper:
         self.logger.info("steps per mm {} , step in mm {}".
                          format(self.inv_step_dist, self.step_dist))
         printer.add_object(config.get_name(), self) # to get printer_state called
-    @staticmethod # ok for speed ?
-    def _dist_to_time(dist, start_velocity, accel):
+    def _dist_to_time(self, dist, start_velocity, accel):
         # Calculate the time it takes to travel a distance with constant accel
         time_offset = start_velocity / accel
         return math.sqrt(2. * dist / accel + time_offset**2) - time_offset
@@ -116,13 +114,6 @@ class PrinterStepper:
         if self.need_motor_enable != (not enable):
             self.enable.set_enable(print_time, enable)
         self.need_motor_enable = not enable
-    def printer_state(self, state):
-        if state == 'ready':
-            if self.mcu_stepper.get_mcu().is_shutdown():
-                return
-            init = getattr(self.driver, "init_driver", None)
-            if init is not None:
-                init()
 
 # Support for stepper controlled linear axis with an endstop
 class PrinterHomingStepper(PrinterStepper):

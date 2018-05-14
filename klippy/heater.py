@@ -42,8 +42,6 @@ class PrinterHeater:
         self.min_temp, self.max_temp = self.sensor.get_min_max_temp()
         self.min_extrude_temp = 170.  # Set by the extruder
         self.min_extrude_temp_disabled = False
-        self.can_extrude = (self.min_extrude_temp <= self.min_temp or
-                            self.mcu_sensor.is_fileoutput())
         self.max_power = config.getfloat('max_power', 1., above=0., maxval=1.)
         self.lock = threading.Lock()
         self.last_temp = 0.
@@ -61,6 +59,9 @@ class PrinterHeater:
                 'pwm_cycle_time', 0.100, above=0., maxval=self.report_delta)
             self.mcu_pwm.setup_cycle_time(pwm_cycle_time)
         self.mcu_pwm.setup_max_duration(MAX_HEAT_TIME)
+        self.is_fileoutput = self.mcu_pwm.get_mcu().is_fileoutput()
+        self.can_extrude = (self.min_extrude_temp <= self.min_temp or
+                            self.is_fileoutput)
         self.control = algo(self, config)
         # pwm caching
         self.next_pwm_time = 0.
@@ -151,7 +152,7 @@ class PrinterHeater:
         self.min_extrude_temp = temp
         self.can_extrude = ((self.min_extrude_temp <= self.min_temp) or
                             self.min_extrude_temp_disabled or
-                            self.mcu_sensor.is_fileoutput())
+                            self.is_fileoutput)
     def set_pwm(self, read_time, value):
         if self.target_temp <= 0.:
             value = 0.
@@ -166,9 +167,7 @@ class PrinterHeater:
                           self.name, value, pwm_time,
                           self.last_temp, self.last_temp_time, self.target_temp)
         self.mcu_pwm.set_pwm(pwm_time, value)
-    def temperature_callback(self, read_time, read_value, fault=0):
-        if fault:
-            self.sensor.check_faults(fault)
+    def temperature_callback(self, read_time, read_value):
         temp = self.sensor.calc_temp(read_value)
         with self.lock:
             self.last_temp = temp

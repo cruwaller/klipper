@@ -55,12 +55,10 @@ class Linear(SensorBase):
                       + [len(temps) - 1])
         gain, offset = self.slope_samples[pos]
         return (temp - offset) / gain
-    def check_faults(self, fault):
-        pass
 
 # Custom defined sensors from the config file
 class CustomLinear(Linear):
-    def __init__(self, config):
+    def __init__(self, config, params):
         self.name = " ".join(config.get_name().split()[1:])
         self.params = []
         for i in range(1, 1000):

@@ -14,5 +14,12 @@ mapping = { 'DEFAULT' : DriverBase,
             'TMC2100' : DriverBase,
             'TMC2130' : TMC2130 }
 
-def load_config_prefix(config):
-    return mapping[config.get('type', 'default').upper()](config)
+#def load_config_prefix(config):
+#    return mapping[config.get('type', 'default').upper()](config)
+
+def load_driver(config):
+    section = config.get_name()
+    printer = config.get_printer()
+    driver = mapping[config.get('type', 'default').upper()](config)
+    printer.add_object(section, driver)
+    return driver
