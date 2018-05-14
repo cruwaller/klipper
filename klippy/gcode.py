@@ -67,9 +67,15 @@ class GCodeParser:
         if not (len(cmd) >= 2 and not cmd[0].isupper() and cmd[1].isdigit()):
             origfunc = func
             func = lambda params: origfunc(self.get_extended_params(params))
-        self.ready_gcode_handlers[cmd] = func
+        if cmd in self.ready_gcode_handlers:
+            self.ready_gcode_handlers[cmd].append(func)
+        else:
+            self.ready_gcode_handlers[cmd] = [func]
         if when_not_ready:
-            self.base_gcode_handlers[cmd] = func
+            if cmd in self.base_gcode_handlers:
+                self.base_gcode_handlers[cmd].append(func)
+            else:
+                self.base_gcode_handlers[cmd] = [func]
         if desc is not None:
             self.gcode_help[cmd] = desc
     def set_move_transform(self, transform):
@@ -170,9 +176,10 @@ class GCodeParser:
             params['#command'] = cmd = parts[0] + parts[1].strip()
             # Invoke handler for command
             self.need_ack = need_ack
-            handler = self.gcode_handlers.get(cmd, self.cmd_default)
+            handlers = self.gcode_handlers.get(cmd, [self.cmd_default])
             try:
-                handler(params)
+                for handler in handlers:
+                    handler(params)
             except error as e:
                 self.respond_error(str(e))
                 self.reset_last_position()
