@@ -207,6 +207,9 @@ class ToolHead:
             self.max_accel_to_decel = self.max_accel * max_accel_to_decel_ratio
         self.junction_deviation = config.getfloat(
             'junction_deviation', 0.02, minval=0.)
+        self.config_max_velocity = self.max_velocity
+        self.config_max_accel = self.max_accel
+        self.config_junction_deviation = self.junction_deviation
         self.move_queue = MoveQueue()
         self.commanded_pos = [0., 0., 0., 0.]
         # Print time tracking
