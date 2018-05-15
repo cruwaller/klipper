@@ -105,6 +105,12 @@ struct gpio_out gpio_out_setup(uint8_t pin, uint8_t val) {
 #endif
     return (struct gpio_out){.fd = pin, .val = val};
 }
+void gpio_out_toggle_noirq(struct gpio_out g) {
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    //printf("gpio_out_toggle_noirq: pin %d\n", g.fd);
+#endif
+    (void)g;
+}
 void gpio_out_toggle(struct gpio_out g) {
 #if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
     //printf("gpio_out_toggle: pin %d\n", g.fd);

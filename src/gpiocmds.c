@@ -130,7 +130,7 @@ soft_pwm_toggle_event(struct timer *timer)
 #if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
     printf("SoftPWM toggle event\n");
 #endif
-    gpio_out_toggle(s->pin);
+    gpio_out_toggle_noirq(s->pin);
     s->flags ^= SPF_ON;
     uint32_t waketime = s->timer.waketime;
     if (s->flags & SPF_ON)
