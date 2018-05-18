@@ -7,8 +7,12 @@
 FAN_MIN_TIME = 0.100
 
 class PrinterFan:
+<<<<<<< HEAD
     def __init__(self, config):
         self.name = config.get_name()
+=======
+    def __init__(self, config, default_shutdown_speed=0.):
+>>>>>>> 2740838... fan: Allow the fan shutdown_speed to be configured
         self.last_fan_value = 0.
         self.last_fan_time = 0.
         self.max_power = config.getfloat('max_power', 1., above=0., maxval=1.)
@@ -20,10 +24,17 @@ class PrinterFan:
         cycle_time = config.getfloat('cycle_time', 0.010, above=0.)
         hardware_pwm = config.getboolean('hardware_pwm', False)
         self.mcu_fan.setup_cycle_time(cycle_time, hardware_pwm)
+<<<<<<< HEAD
         self.logger = printer.logger.getChild(self.name.replace(" ", "_"))
         self.logger.debug("fan '{}' initialized".format(self.name))
     def set_shutdown_speed(self, speed):
         self.mcu_fan.setup_start_value(0., max(0., min(self.max_power, speed)))
+=======
+        shutdown_speed = config.getfloat(
+            'shutdown_speed', default_shutdown_speed, minval=0., maxval=1.)
+        self.mcu_fan.setup_start_value(
+            0., max(0., min(self.max_power, shutdown_speed)))
+>>>>>>> 2740838... fan: Allow the fan shutdown_speed to be configured
     def set_speed(self, print_time, value):
         value = max(0., min(self.max_power, value * self.max_power))
         if value == self.last_fan_value:
