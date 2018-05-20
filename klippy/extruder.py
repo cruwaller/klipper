@@ -50,6 +50,14 @@ class PrinterExtruder:
         self.extrude_factor = config.getfloat('extrusion_factor',
                                               1.0,
                                               minval=0.1)
+        gcode = self.printer.lookup_object('gcode')
+        if self.name in ('extruder', 'extruder0'):
+            gcode.register_mux_command("SET_PRESSURE_ADVANCE", "EXTRUDER", None,
+                                       self.cmd_default_SET_PRESSURE_ADVANCE,
+                                       desc=self.cmd_SET_PRESSURE_ADVANCE_help)
+        gcode.register_mux_command("SET_PRESSURE_ADVANCE", "EXTRUDER", self.name,
+                                   self.cmd_SET_PRESSURE_ADVANCE,
+                                   desc=self.cmd_SET_PRESSURE_ADVANCE_help)
         self.logger.debug("index={}, heater={}".
                           format(self.index, self.heater.name))
     def get_index(self):
@@ -230,6 +238,25 @@ class PrinterExtruder:
             step_const(move_time, start_pos, -retract_d, retract_v, accel)
             start_pos -= retract_d
         self.extrude_pos = start_pos
+    cmd_SET_PRESSURE_ADVANCE_help = "Set pressure advance parameters"
+    def cmd_default_SET_PRESSURE_ADVANCE(self, params):
+        extruder = self.printer.lookup_object('toolhead').get_extruder()
+        extruder.cmd_SET_PRESSURE_ADVANCE(params)
+    def cmd_SET_PRESSURE_ADVANCE(self, params):
+        self.printer.lookup_object('toolhead').get_last_move_time()
+        gcode = self.printer.lookup_object('gcode')
+        pressure_advance = gcode.get_float(
+            'ADVANCE', params, self.pressure_advance, minval=0.)
+        pressure_advance_lookahead_time = gcode.get_float(
+            'ADVANCE_LOOKAHEAD_TIME', params,
+            self.pressure_advance_lookahead_time, minval=0.)
+        self.pressure_advance = pressure_advance
+        self.pressure_advance_lookahead_time = pressure_advance_lookahead_time
+        msg = ("pressure_advance: %.6f\n"
+               "pressure_advance_lookahead_time: %.6f" % (
+                   pressure_advance, pressure_advance_lookahead_time))
+        self.printer.set_rollover_info(self.name, "%s: %s" % (self.name, msg))
+        gcode.respond_info(msg)
 
 # Dummy extruder class used when a printer has no extruder at all
 class DummyExtruder:
