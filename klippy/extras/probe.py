@@ -162,15 +162,10 @@ class ProbePointsHelper:
             self.probe = self.printer.lookup_object('probe')
             self.lift_speed = min(self.speed, self.probe.speed)
             self.probe_z_offset = self.probe.z_offset
-            if self.horizontal_move_z < self.probe_z_offset:
-                raise config.error("horizontal_move_z can't be less than probe's"
-                                   " z_offset in %s" % (config.get_name()))
         # Internal probing state
         self.results = []
         self.busy = False
         self.gcode = self.toolhead = None
-    def get_lift_speed(self):
-        return self.lift_speed
     def start_probe(self):
         # Begin probing
         self.toolhead = self.printer.lookup_object('toolhead')
