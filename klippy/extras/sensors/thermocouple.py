@@ -85,7 +85,7 @@ class Thermocouple(SensorBase):
         else:
             self.val_a = 0.25
             self.scale = 18
-        SensorBase.__init__(self, config, is_spi = True, sample_count = 1)
+        SensorBase.__init__(self, config, sample_count = 1, chip_type=chip_type)
     def _check_faults_simple(self, val):
         if not self.chip_type == "MAX31856":
             if val & 0x1:

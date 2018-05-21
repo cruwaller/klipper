@@ -36,12 +36,12 @@ VAL_ADC_MAX = 32768.0 # 2^15
 
 class RTD(SensorBase):
     def __init__(self, config, params):
-        self.chip_type = config.get('sensor_type')
+        chip_type = config.get('sensor_type')
         self.rtd_nominal_r = config.getint('rtd_nominal_r', 100)
         self.reference_r = config.getfloat('rtd_reference_r', 430., above=0.)
         self.num_wires  = config.getint('rtd_num_of_wires', 2)
         self.use_50Hz_filter = config.getboolean('rtd_use_50Hz_filter', False)
-        SensorBase.__init__(self, config, is_spi = True, sample_count = 1)
+        SensorBase.__init__(self, config, sample_count = 1, chip_type=chip_type)
     def check_faults(self, fault):
         if fault & 0x80:
             raise self.error("Max31865 RTD input is disconnected")

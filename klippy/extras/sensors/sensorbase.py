@@ -21,11 +21,11 @@ class SensorBase(object):
     error = error
     def __init__(self,
                  config,
-                 is_spi = False,
                  sample_time  = SAMPLE_TIME_DEFAULT,
                  sample_count = SAMPLE_COUNT_DEFAULT,
-                 report_time  = REPORT_TIME_DEFAULT):
-        self.is_spi = is_spi
+                 report_time  = REPORT_TIME_DEFAULT,
+                 chip_type    = None):
+        self.oid = None
         self.sample_time = sample_time
         self.sample_count = sample_count
         self.report_time = report_time
@@ -39,7 +39,7 @@ class SensorBase(object):
         self.max_sample_value = max(adc_range)
         self._report_clock = 0
         ppins = config.get_printer().lookup_object('pins')
-        if is_spi:
+        if chip_type is not None:
             pin_params = ppins.lookup_pin('digital_out', sensor_pin)
             self.mcu = mcu = pin_params['chip']
             pin = pin_params['pin']
@@ -59,8 +59,8 @@ class SensorBase(object):
             self.oid = oid = mcu.create_oid()
             mcu.add_config_cmd(
                 "config_thermocouple oid=%u spi_oid=%u chip_type=%u" % (
-                    oid, spi_oid, VALID_SPI_SENSORS[self.chip_type]))
-            mcu.register_msg(self._handle_spi_response,
+                    oid, spi_oid, VALID_SPI_SENSORS[chip_type]))
+            mcu.register_msg(self._handle_thermocouple_result,
                 "thermocouple_result", oid)
             mcu.add_config_object(self)
         else:
@@ -69,22 +69,18 @@ class SensorBase(object):
                 sample_time, sample_count,
                 minval=min(adc_range), maxval=max(adc_range))
     def get_mcu(self):
-        if self.is_spi:
+        if self.oid is not None:
             return self.mcu
         return self.mcu.get_mcu()
     def get_min_max_temp(self):
         return self.min_temp, self.max_temp
     def setup_callback(self, cb):
-        if self.is_spi:
+        if self.oid is not None:
             self._callback = cb
         else:
             self.mcu.setup_callback(self.report_time, cb)
     def get_report_delta(self):
-        # MCU reporting period already contains samples
         return self.report_time
-        #return self.report_time + (self.sample_time *
-        #                           self.sample_count)
-
     def build_config(self):
         clock = self.mcu.get_query_slot(self.oid)
         self._report_clock = self.mcu.seconds_to_clock(self.report_time)
@@ -93,7 +89,7 @@ class SensorBase(object):
             " min_value=%u max_value=%u" % (
                 self.oid, clock, self._report_clock,
                 self.min_sample_value, self.max_sample_value))
-    def _handle_spi_response(self, params):
+    def _handle_thermocouple_result(self, params):
         last_value      = params['value']
         next_clock      = self.mcu.clock32_to_clock64(params['next_clock'])
         last_read_clock = next_clock - self._report_clock
@@ -101,3 +97,10 @@ class SensorBase(object):
         self.check_faults(params['fault'])
         if self._callback is not None:
             self._callback(last_read_time, last_value)
+    # ============ VIRTUAL ===============
+    def check_faults(self, fault):
+        pass
+    def calc_adc(self, min_temp):
+        raise NotImplementedError("calc_adc must to be implemented in parent class")
+    def get_configs(self):
+        raise NotImplementedError("calc_adc must to be implemented in parent class")

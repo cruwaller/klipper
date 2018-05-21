@@ -18,6 +18,8 @@
 #include <stdio.h>
 #endif
 
+#define USE_FAULTS 0
+
 enum {
     TS_CHIP_MAX31855 = 1 << 0,
     TS_CHIP_MAX31856 = 1 << 1,
@@ -147,7 +149,9 @@ thermocouple_handle_max31856(struct thermocouple_spi *spi
     // Read faults
     msg[0] = MAX31856_SR_REG;
     msg[1] = 0x00;
+#if (USE_FAULTS)
     spidev_transfer(spi->spi, 1, 2, msg);
+#endif
     thermocouple_respond(spi, next_begin_time, value, msg[1], oid);
 }
 
@@ -170,7 +174,9 @@ thermocouple_handle_max31865(struct thermocouple_spi *spi
     // Read faults
     msg[0] = MAX31865_FAULTSTAT_REG;
     msg[1] = 0x00;
+#if (USE_FAULTS)
     spidev_transfer(spi->spi, 1, 2, msg);
+#endif
     thermocouple_respond(spi, next_begin_time, value, msg[1], oid);
     // Kill after data send, host decode an error
     if (value & 0x0001)
