@@ -4,6 +4,7 @@
 //
 // This file may be distributed under the terms of the GNU GPLv3 license.
 
+#include "autoconf.h" // CONFIG_*
 #include <string.h> // memset
 #include "basecmd.h" // oid_lookup
 #include "board/irq.h" // irq_save
@@ -11,7 +12,9 @@
 #include "board/pgm.h" // READP
 #include "command.h" // DECL_COMMAND
 #include "sched.h" // sched_clear_shutdown
-
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+#include <stdio.h>
+#endif
 
 /****************************************************************
  * Low level allocation
@@ -149,8 +152,13 @@ static uint8_t oid_count = 0;
 void *
 oid_lookup(uint8_t oid, void *type)
 {
-    if (oid >= oid_count || type != oids[oid].type)
+    if (oid >= oid_count || type != oids[oid].type) {
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+        printf("oid_count %u <= oid %u\n", oid_count, oid);
+        printf("type %p != oids[oid].type %p\n", type, oids[oid].type);
+#endif
         shutdown("Invalid oid type");
+    }
     return oids[oid].data;
 }
 
