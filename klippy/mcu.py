@@ -24,6 +24,7 @@ class MCU_stepper:
         self._min_stop_interval = 0.
         self._reset_cmd_id = self._get_position_cmd = None
         self._ffi_lib = self._stepqueue = None
+        self._stepcompress_push_const = self._stepcompress_push_delta = None
     def get_mcu(self):
         return self._mcu
     def setup_dir_pin(self, pin_params):
@@ -61,6 +62,7 @@ class MCU_stepper:
             self._invert_dir, self._oid),
                                       self._ffi_lib.stepcompress_free)
         self._mcu.register_stepqueue(self._stepqueue)
+        self.set_ignore_move(False)
     def get_oid(self):
         return self._oid
     def get_step_dist(self):
@@ -76,6 +78,13 @@ class MCU_stepper:
         if mcu_pos >= 0.:
             return int(mcu_pos + 0.5)
         return int(mcu_pos - 0.5)
+    def set_ignore_move(self, ignore_move):
+        if ignore_move:
+            self._stepcompress_push_const = (lambda *args: 0)
+            self._stepcompress_push_delta = (lambda *args: 0)
+        else:
+            self._stepcompress_push_const = self._ffi_lib.stepcompress_push_const
+            self._stepcompress_push_delta = self._ffi_lib.stepcompress_push_delta
     def note_homing_start(self, homing_clock):
         ret = self._ffi_lib.stepcompress_set_homing(
             self._stepqueue, homing_clock)
@@ -112,7 +121,7 @@ class MCU_stepper:
         step_offset = 0
         if core is False:
             step_offset = self._commanded_pos - start_pos * inv_step_dist
-        count = self._ffi_lib.stepcompress_push_const(
+        count = self._stepcompress_push_const(
             self._stepqueue, print_time, step_offset, dist * inv_step_dist,
             start_v * inv_step_dist, accel * inv_step_dist)
         if count == STEPCOMPRESS_ERROR_RET:
@@ -122,7 +131,7 @@ class MCU_stepper:
                    , height_base, startxy_d, arm_d, movez_r):
         inv_step_dist = self._inv_step_dist
         height = self._commanded_pos - height_base * inv_step_dist
-        count = self._ffi_lib.stepcompress_push_delta(
+        count = self._stepcompress_push_delta(
             self._stepqueue, print_time, dist * inv_step_dist,
             start_v * inv_step_dist, accel * inv_step_dist,
             height, startxy_d * inv_step_dist, arm_d * inv_step_dist, movez_r)
