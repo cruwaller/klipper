@@ -20,9 +20,9 @@ class GenericGcode(object):
                                     self.gcode.cmd_FIRMWARE_RESTART,
                                     when_not_ready=True,
                                     desc="Alias to FIRMWARE_RESTART")
-        self.gcode.register_command("SET_PRESSURE_ADVANCE",
-                                    self.cmd_SET_PRESSURE_ADVANCE,
-                                    desc=self.cmd_SET_PRESSURE_ADVANCE_help)
+        #self.gcode.register_command("SET_PRESSURE_ADVANCE",
+        #                            self.cmd_SET_PRESSURE_ADVANCE,
+        #                            desc=self.cmd_SET_PRESSURE_ADVANCE_help)
         self.respond_info = self.gcode.respond # self.gcode.respond_info
         self.axis2pos = self.gcode.axis2pos
         self.logger = self.gcode.logger
@@ -162,6 +162,7 @@ class GenericGcode(object):
         self.respond_info("%s: pressure advance %.6f, lookahead time %.6f" %
                           (extr.name, extr.pressure_advance,
                            extr.pressure_advance_lookahead_time))
+    '''
     cmd_SET_PRESSURE_ADVANCE_help = "Set pressure advance parameters"
     def cmd_SET_PRESSURE_ADVANCE(self, params):
         index = self.gcode.get_int('EXTRUDER', params, None)
@@ -179,6 +180,7 @@ class GenericGcode(object):
         self.respond_info("%s: pressure advance %.6f, lookahead time %.6f" %
                           (extr.name, extr.pressure_advance,
                            extr.pressure_advance_lookahead_time))
+    '''
 
 def load_gcode(printer):
     GenericGcode(printer)
