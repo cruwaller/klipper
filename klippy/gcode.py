@@ -453,7 +453,6 @@ class GCodeParser:
             raise error(str(e))
         self.extruder = e
         self.reset_last_position()
-        self.extrude_factor = 1.
         self.base_position[3] = self.last_position[3]
         self.run_script(self.extruder.get_activate_gcode(True))
     def cmd_mux(self, params):
