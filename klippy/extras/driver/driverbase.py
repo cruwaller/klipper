@@ -7,6 +7,10 @@
 class DriverBase(object):
     __inv_step_dist = __step_dist = microsteps = None
     def __init__(self, config):
+        printer = config.get_printer()
+        name = config.get_name()[7:]
+        self.name = name #.upper()
+        self.logger = printer.logger.getChild("driver.%s" % name)
         self.microsteps = config.getint('microsteps', None)
         # Driver class can override existing stepper config steps
         self.step_dist = config.getfloat('step_distance', default=None, above=0.)
@@ -35,9 +39,6 @@ class SpiDriver(DriverBase):
     def __init__(self, config):
         DriverBase.__init__(self, config)
         printer = config.get_printer()
-        name = config.get_name()[7:]
-        self.name = name.upper()
-        self.logger = printer.logger.getChild("driver.%s" % name)
         # ========== SPI config ==========
         cs_pin = config.get('ss_pin')
         spi_mode = config.getint('spi_mode', 3, minval=0, maxval=3)

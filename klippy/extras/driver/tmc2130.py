@@ -67,6 +67,8 @@ class TMC2130(SpiDriver):
                                        above=MIN_CURRENT, maxval=MAX_CURRENT)
         self.Rsense = config.getfloat('sense_R', 0.11, above=0.09)
         self.hold_multip = config.getfloat('hold_multiplier', 0.5, above=0., maxval=1.0)
+        self.hold_delay = config.getint('hold_delay', 0, minval=0., maxval=15)
+        self.t_power_down = config.getint('power_down_delay', 128, minval=0., maxval=255)
         self.interpolate = config.getboolean('interpolate', True)
         self.sensor_less_homing = config.getboolean('sensor_less_homing', False)
         # option to manually set a hybrid threshold
@@ -99,36 +101,32 @@ class TMC2130(SpiDriver):
         self.silent_mode = config.getchoice('mode', mode, default='stealthChop')
         # register command handlers
         self.gcode = gcode = printer.lookup_object('gcode')
-        cmds = ["DRV_STATUS", "DRV_CURRENT", "DRV_SG"]
+        cmds = ["DRV_STATUS", "DRV_CURRENT", "DRV_STALLGUARD"]
         for cmd in cmds:
-            gcode.register_command(
-                cmd,
+            gcode.register_mux_command(
+                cmd, "DRIVER", self.name,
                 getattr(self, 'cmd_' + cmd),
                 desc=getattr(self, 'cmd_' + cmd + '_help', None))
-
-    cmd_DRV_STATUS_help = "args: name=driver_name"
+    cmd_DRV_STATUS_help = "args: DRIVER=driver_name"
     def cmd_DRV_STATUS(self, params):
-        if self.name == self.gcode.get_str('NAME', params, None):
-            self.gcode.respond(self.status())
-    cmd_DRV_CURRENT_help = "args: name=driver_name current=current_in_A"
+        self.gcode.respond(self.status())
+    cmd_DRV_CURRENT_help = "args: DRIVER=driver_name CURRENT=current_in_A"
     def cmd_DRV_CURRENT(self, params):
-        if self.name == self.gcode.get_str('NAME', params, None):
-            current = self.gcode.get_float(
-                'CURRENT', params, None)
-            if current is not None:
-                msg = self.set_current(current*1000.)
-            else:
-                msg = "Current is %.3f A" % (self.current / 1000.)
-            self.gcode.respond(msg)
-    cmd_DRV_SG_help = "args: name=driver_name sg=stall_guard_value"
-    def cmd_DRV_SG(self, params):
-        if self.name == self.gcode.get_str('NAME', params, None):
-            sg = self.gcode.get_float('SG', params, None)
-            if sg is not None:
-                msg = self.set_stallguard(sg)
-            else:
-                msg = "SG value is %d" % self.sg_stall_value
-            self.gcode.respond(msg)
+        current = self.gcode.get_float(
+            'CURRENT', params, None)
+        if current is not None:
+            msg = self.set_current(current*1000.)
+        else:
+            msg = "Current is %.3f A" % (self.current / 1000.)
+        self.gcode.respond(msg)
+    cmd_DRV_SG_help = "args: DRIVER=driver_name SG=value"
+    def cmd_DRV_STALLGUARD(self, params):
+        sg = self.gcode.get_float('SG', params, None)
+        if sg is not None:
+            msg = self.set_stallguard(sg)
+        else:
+            msg = "SG value is %d" % self.sg_stall_value
+        self.gcode.respond(msg)
 
     #**************************************************************************
     # PUBLIC METHODS
@@ -291,7 +289,7 @@ class TMC2130(SpiDriver):
         self.__calc_rms_current(self.current, self.Rsense,
                                 self.hold_multip, init=True)
         # Motor power down time after last movement (iHOLD current is used)
-        self.__set_REG_TPOWERDOWN(128)
+        self.__set_REG_TPOWERDOWN(self.t_power_down)
 
         self.__modify_REG_CHOPCONF('microsteps', self.microsteps, send=False)
         self.__modify_REG_CHOPCONF('blank_time', 24, send=False)
@@ -389,7 +387,7 @@ class TMC2130(SpiDriver):
 
         iRun  = int(CS)
         iHold = int(CS * multip_for_holding_current)
-        iHoldDelay = 7 # was 0
+        iHoldDelay = self.hold_delay
         self.__modify_REG_IHOLD_IRUN('IRUN', iRun, send=False)
         self.__modify_REG_IHOLD_IRUN('IHOLD', iHold, send=False)
         self.__modify_REG_IHOLD_IRUN('IHOLDDELAY', iHoldDelay, send=True)

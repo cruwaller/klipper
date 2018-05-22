@@ -1,6 +1,6 @@
 # Parse gcode commands
 #
-# Copyright (C) 2016,2017  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import os, re, collections
@@ -70,15 +70,9 @@ class GCodeParser:
         if not (len(cmd) >= 2 and not cmd[0].isupper() and cmd[1].isdigit()):
             origfunc = func
             func = lambda params: origfunc(self.get_extended_params(params))
-        if cmd in self.ready_gcode_handlers:
-            self.ready_gcode_handlers[cmd].append(func)
-        else:
-            self.ready_gcode_handlers[cmd] = [func]
+        self.ready_gcode_handlers[cmd] = func
         if when_not_ready:
-            if cmd in self.base_gcode_handlers:
-                self.base_gcode_handlers[cmd].append(func)
-            else:
-                self.base_gcode_handlers[cmd] = [func]
+            self.base_gcode_handlers[cmd] = func
         if desc is not None:
             self.gcode_help[cmd] = desc
     def register_mux_command(self, cmd, key, value, func, desc=None):
@@ -92,7 +86,7 @@ class GCodeParser:
                 cmd, key, value, prev_key))
         if value in prev_values:
             raise error("mux command %s %s %s already registered (%s)" % (
-                cmd, key, value))
+                cmd, key, value, prev_values))
         prev_values[value] = func
     def set_move_transform(self, transform):
         if self.move_transform is not None:
@@ -152,9 +146,8 @@ class GCodeParser:
         for fan in self.printer.lookup_module_objects('fan'):
             fan.set_speed(print_time, 0.0)
     def dump_debug(self):
-        out = []
-        out.append("Dumping gcode input %d blocks" % (
-            len(self.input_log),))
+        out = ["Dumping gcode input %d blocks" % (
+            len(self.input_log),)]
         for eventtime, data in self.input_log:
             out.append("Read %f: %s" % (eventtime, repr(data)))
         try:
@@ -192,10 +185,9 @@ class GCodeParser:
             params['#command'] = cmd = parts[0] + parts[1].strip()
             # Invoke handler for command
             self.need_ack = need_ack
-            handlers = self.gcode_handlers.get(cmd, [self.cmd_default])
+            handler = self.gcode_handlers.get(cmd, self.cmd_default)
             try:
-                for handler in handlers:
-                    handler(params)
+                handler(params)
             except error as e:
                 self.respond_error(str(e))
                 self.reset_last_position()
@@ -577,7 +569,10 @@ class GCodeParser:
     def cmd_M114(self, params):
         # Get Current Position
         p = [lp - bp for lp, bp in zip(self.last_position, self.base_position)]
-        p[3] /= self.extruder.extrude_factor
+        try:
+            p[3] /= self.extruder.extrude_factor
+        except AttributeError:
+            pass
         self.respond("X:%.3f Y:%.3f Z:%.3f E:%.3f" % tuple(p))
     def cmd_M220(self, params):
         # Set speed factor override percentage

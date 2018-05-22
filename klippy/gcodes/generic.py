@@ -10,9 +10,8 @@ class GenericGcode(object):
                     'M851', 'M900']:
             self.gcode.register_command(cmd, getattr(self, 'cmd_' + cmd))
         # just discard
-        # TODO : Should discard M206 ?
         for cmd in ['M120', 'M121', 'M122', "M141",
-                    'M206', 'M291', 'M292',
+                    'M291', 'M292',
                     'M752', 'M753', 'M754', 'M755', 'M756','M997']:
             self.gcode.register_command(cmd, self.gcode.cmd_IGNORE)
         # M999 to reset
