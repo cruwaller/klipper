@@ -197,7 +197,12 @@ class CoreXYKinematics:
             axis_r = abs(axis_d) / move.move_d
             accel = move.accel * axis_r
             cruise_v = move.cruise_v * axis_r
-
+            # Generate move
+            if self.steppers[i].step_move:
+                self.steppers[i].step_move(
+                    print_time, start_pos,
+                    axis_d, accel, (move.start_v * axis_r), cruise_v)
+                continue
             # Acceleration steps
             if move.accel_r:
                 accel_d = move.accel_r * axis_d

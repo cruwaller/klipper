@@ -18,13 +18,14 @@ class DeltaKinematics:
         self.logger = printer.logger.getChild(self.name)
         stepper_configs = [config.getsection('stepper_' + n)
                            for n in ['a', 'b', 'c']]
-        stepper_a = stepper.PrinterHomingStepper(printer, stepper_configs[0])
+        stepper_a = stepper.PrinterHomingStepper(
+            printer, stepper_configs[0], need_position_minmax=False)
         stepper_b = stepper.PrinterHomingStepper(
-            printer, stepper_configs[1],
-            default_position=stepper_a.position_endstop)
+            printer, stepper_configs[1], need_position_minmax = False,
+            default_position_endstop=stepper_a.position_endstop)
         stepper_c = stepper.PrinterHomingStepper(
-            printer, stepper_configs[2],
-            default_position=stepper_a.position_endstop)
+            printer, stepper_configs[2], need_position_minmax = False,
+            default_position_endstop=stepper_a.position_endstop)
         self.steppers = [stepper_a, stepper_b, stepper_c]
         self.need_motor_enable = self.need_home = True
         self.radius = radius = config.getfloat('delta_radius', above=0.)
@@ -64,6 +65,7 @@ class DeltaKinematics:
         # tower movement
         half_min_step_dist = min([s.step_dist for s in self.steppers]) * .5
         min_arm_length = min(arm_lengths)
+
         def ratio_to_dist(ratio):
             return (ratio * math.sqrt(min_arm_length**2 / (ratio**2 + 1.)
                                       - half_min_step_dist**2)
@@ -205,7 +207,13 @@ class DeltaKinematics:
             tangentxy_d2 = towerx_d**2 + towery_d**2 - vt_startxy_d**2
             vt_arm_d = math.sqrt(self.arm2[i] - tangentxy_d2)
             vt_startz = origz
-
+            # Generate move
+            if self.steppers[i].step_move:
+                # TODO: Check params!
+                self.steppers[i].step_move(
+                    print_time, vt_startz,
+                    vt_startxy_d, accel, move.start_v, cruise_v)
+                continue
             # Generate steps
             step_delta = self.steppers[i].step_delta
             move_time = print_time
@@ -227,7 +235,7 @@ class DeltaKinematics:
     # Helper functions for DELTA_CALIBRATE script
     def get_stable_position(self):
         return [int((ep - s.mcu_stepper.get_commanded_position())
-                    /  s.mcu_stepper.get_step_dist() + .5)
+                    / s.mcu_stepper.get_step_dist() + .5)
                 * s.mcu_stepper.get_step_dist()
                 for ep, s in zip(self.endstops, self.steppers)]
     def get_calibrate_params(self):

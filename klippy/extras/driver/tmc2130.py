@@ -51,6 +51,7 @@ REG_LOST_STEPS = 0x73
 # Constants:
 MIN_CURRENT = 100.
 MAX_CURRENT = 1400.
+DEFAULT_SENSE_R = 0.11
 
 class TMC2130(SpiDriver):
     # Error flags
@@ -65,7 +66,7 @@ class TMC2130(SpiDriver):
         printer = config.get_printer()
         self.current = config.getfloat('current', 1000.0,
                                        above=MIN_CURRENT, maxval=MAX_CURRENT)
-        self.Rsense = config.getfloat('sense_R', 0.11, above=0.09)
+        self.sense_r = config.getfloat('sense_R', DEFAULT_SENSE_R, above=0.09)
         self.hold_multip = config.getfloat('hold_multiplier', 0.5, above=0., maxval=1.0)
         self.hold_delay = config.getint('hold_delay', 0, minval=0., maxval=15)
         self.t_power_down = config.getint('power_down_delay', 128, minval=0., maxval=255)
@@ -112,29 +113,32 @@ class TMC2130(SpiDriver):
         self.gcode.respond(self.status())
     cmd_DRV_CURRENT_help = "args: DRIVER=driver_name CURRENT=current_in_A"
     def cmd_DRV_CURRENT(self, params):
-        current = self.gcode.get_float(
-            'CURRENT', params, None)
-        if current is not None:
-            msg = self.set_current(current*1000.)
-        else:
-            msg = "Current is %.3f A" % (self.current / 1000.)
+        current = self.gcode.get_float('CURRENT', params,
+                                       default=None,
+                                       minval=(MIN_CURRENT/1000.),
+                                       maxval=(MAX_CURRENT / 1000.))
+        hold = self.gcode.get_float('HOLD_MULTIPLIER', params,
+                                    default=self.hold_multip,
+                                    minval=0., maxval=1.)
+        delay = self.gcode.get_int('HOLD_DELAY', params,
+                                   default=self.hold_delay,
+                                   minval = 0, maxval = 15)
+        self.__calc_rms_current(current, hold, delay)
+        msg = "Current is %.3fA, hold current %.3fA, hold delay %s" % (
+            self.current, (self.hold_multip * self.current), self.hold_delay)
         self.gcode.respond(msg)
     cmd_DRV_SG_help = "args: DRIVER=driver_name SG=value"
     def cmd_DRV_STALLGUARD(self, params):
-        sg = self.gcode.get_float('SG', params, None)
-        if sg is not None:
-            msg = self.set_stallguard(sg)
-        else:
-            msg = "SG value is %d" % self.sg_stall_value
-        self.gcode.respond(msg)
+        sg = self.gcode.get_float('SG', params, default=None)
+        self.gcode.respond(self.set_stallguard(sg))
 
     #**************************************************************************
     # PUBLIC METHODS
     #**************************************************************************
 
     def status(self):
-        res = ["name: %s" % self.name]
-        current = "Current, mA: %d" % self.get_current()
+        res = ["NAME: %s" % self.name]
+        current = "RMS current: %.3fA" % self.__get_rms_current()
         self.logger.info(current)
         res.append(current)
         self.__get_GSTAT(log=res)
@@ -159,22 +163,15 @@ class TMC2130(SpiDriver):
     def clear_faults(self):
         self.isReset = self.isError = False
         self.isStallguard = self.isStandstill = False
-    def set_current(self, current):
-        if current < 20.:
-            # convert A to mA
-            current = current * 1000.
-        if MIN_CURRENT <= current <= MAX_CURRENT :
-            self.__calc_rms_current(current, self.Rsense, self.hold_multip)
-            return "Current is now %.3f A" % (current / 1000.)
-        return "Current out of range (%.3f A <= current <= %.3f A)" % (MIN_CURRENT/1000., MAX_CURRENT/1000.)
     def get_current(self):
-        return self.__get_rms_current()
-    def set_stallguard(self, sg):
-        if -64 <= sg <= 63:
+        return self.__get_rms_current() * 1000.
+    def set_stallguard(self, sg=None):
+        if sg is not None:
+            if sg < -64 or 63 < sg:
+                raise self.gcode.error("SG out of range (min: -64, max: 63)")
             self.sg_stall_value = sg
             self.__modify_REG_COOLCONF('sg_stall_value', sg)
-            return "SG value is now %d" % sg
-        return "SG out of range (-64 <= SG <= 63)"
+        return "Stallguard is %d" % self.sg_stall_value
     def get_stallguard(self):
         return self.sg_stall_value
     def get_stall_status(self, *args, **kwargs):
@@ -286,8 +283,8 @@ class TMC2130(SpiDriver):
         self.__reset_driver()
 
         # Set RMS Current
-        self.__calc_rms_current(self.current, self.Rsense,
-                                self.hold_multip, init=True)
+        self.__calc_rms_current(self.current, self.hold_multip,
+                                self.hold_delay, init=True)
         # Motor power down time after last movement (iHOLD current is used)
         self.__set_REG_TPOWERDOWN(self.t_power_down)
 
@@ -367,32 +364,40 @@ class TMC2130(SpiDriver):
         self.logger.debug("Init ready")
 
     def __calc_rms_current(self,
-                           current = 1000.,
-                           sense_r = 0.11,
-                           multip_for_holding_current = 0.5,
+                           current = None,
+                           multip_for_holding_current = None,
+                           hold_delay = None,
                            init=False):
-        CS = 32.0 * 1.41421 * current / 1000.0 * (sense_r + 0.02) / 0.325 - 1.
-
-        # If Current Scale is too low, turn on high sensitivity R_sense and calculate again
-        if CS < 16:
-            self.__modify_REG_CHOPCONF('vsense', 1, send=(not init))
-            CS = 32.0 * 1.41421 * current / 1000.0 * (sense_r + 0.02) / 0.180 - 1.
-        else:
-            # If CS >= 16, turn off high_sense_r if it's currently ON
-            self.__modify_REG_CHOPCONF('vsense', 0, send=(not init))
-
-        self.current     = current
-        self.Rsense      = sense_r
-        self.hold_multip = multip_for_holding_current
-
-        iRun  = int(CS)
-        iHold = int(CS * multip_for_holding_current)
-        iHoldDelay = self.hold_delay
-        self.__modify_REG_IHOLD_IRUN('IRUN', iRun, send=False)
-        self.__modify_REG_IHOLD_IRUN('IHOLD', iHold, send=False)
-        self.__modify_REG_IHOLD_IRUN('IHOLDDELAY', iHoldDelay, send=True)
-        self.logger.debug("RMS current %.3f => IHold=%u, IRun=%u, IHoldDelay=%u" % (
-            current, iHold, iRun, iHoldDelay))
+        CS = None
+        if current:
+            if MIN_CURRENT < current:
+                current /= 1000.
+            sense_r = self.sense_r
+            CS = 32.0 * 1.41421 * current * (sense_r + 0.02) / 0.325 - 1.
+            # If Current Scale is too low, turn on high sensitivity R_sense and calculate again
+            if CS < 16:
+                self.__modify_REG_CHOPCONF('vsense', 1, send=(not init))
+                CS = 32.0 * 1.41421 * current * (sense_r + 0.02) / 0.180 - 1.
+            else:
+                # If CS >= 16, turn off high_sense_r if it's currently ON
+                self.__modify_REG_CHOPCONF('vsense', 0, send=(not init))
+            self.__modify_REG_IHOLD_IRUN('IRUN', int(CS), send=False)
+            self.current = current
+        if multip_for_holding_current:
+            if CS is None:
+                CS = self.__read_REG_IHOLD_IRUN('IRUN')
+            iHold = int(CS * multip_for_holding_current)
+            self.__modify_REG_IHOLD_IRUN('IHOLD', iHold, send=False)
+            self.hold_multip = multip_for_holding_current
+        if hold_delay:
+            self.__modify_REG_IHOLD_IRUN('IHOLDDELAY', hold_delay, send=False)
+            self.hold_delay = hold_delay
+        self.__set_REG_IHOLD_IRUN(self.val_IHOLD_IRUN)
+        self.logger.debug("RMS current %.3fA => IHold=%u, IRun=%u, IHoldDelay=%u" % (
+            self.current,
+            self.__read_REG_IHOLD_IRUN('IHOLD'),
+            self.__read_REG_IHOLD_IRUN('IRUN'),
+            self.__read_REG_IHOLD_IRUN('IHOLDDELAY')))
 
     def __get_rms_current(self):
         vsense = self.__read_REG_CHOPCONF('vsense')
@@ -400,7 +405,7 @@ class TMC2130(SpiDriver):
         V_fs   = 0.325
         if vsense is 1:
             V_fs = 0.180
-        return ( CS + 1. ) / 32.0 * V_fs / (self.Rsense + 0.02) / 1.41421 * 1000.;
+        return ( CS + 1. ) / 32.0 * V_fs / (self.sense_r + 0.02) / 1.41421
 
     #**************************************************************************
     # GENERAL CONFIGURATION REGISTERS (0x00..0x0F)
@@ -469,7 +474,7 @@ class TMC2130(SpiDriver):
         return self.read_reg(self.GCONF_reg_def[name], self.val_GCONF)
 
     #==================== GSTAT ====================
-    def __get_GSTAT(self, log=[]):
+    def __get_GSTAT(self, log=list()):
         # R+C
         status = self._command_read(REG_GSTAT)
         if status:
@@ -637,31 +642,31 @@ class TMC2130(SpiDriver):
     #**************************************************************************
     # SPI MODE REGISTER SET
     #**************************************************************************
-    def __set_REG_XDRIRECT(self, coil_A_current, coil_B_current):
+    def __set_REG_XDRIRECT(self, coil_a_current, coil_b_current):
         """
         255..+255
         Specifies Motor coil currents and polarity directly
         programmed via the serial interface. In this mode,
         the current is scaled by IHOLD setting.
         """
-        if coil_A_current < -255:
-            coil_A_current = -255
-        elif 255 < coil_A_current:
-            coil_A_current = 255
-        if coil_B_current < -255:
-            coil_B_current = -255
-        elif 255 < coil_B_current:
-            coil_B_current = 255
+        if coil_a_current < -255:
+            coil_a_current = -255
+        elif 255 < coil_a_current:
+            coil_a_current = 255
+        if coil_b_current < -255:
+            coil_b_current = -255
+        elif 255 < coil_b_current:
+            coil_b_current = 255
         val = 0
-        if coil_B_current < 0:
+        if coil_b_current < 0:
             val |= 1 << 8
-            coil_B_current = -coil_B_current
-        val |= -coil_B_current
+            coil_b_current = -coil_b_current
+        val |= -coil_b_current
         val <<= 16
-        if coil_A_current < 0:
+        if coil_a_current < 0:
             val |= 1 << 8
-            coil_A_current = -coil_A_current
-        val |= coil_A_current
+            coil_a_current = -coil_a_current
+        val |= coil_a_current
         self._command_write(REG_XDIRECT, val)
 
     #**************************************************************************
@@ -847,7 +852,7 @@ class TMC2130(SpiDriver):
         return self.read_reg(self.COOLCONF_reg_def[name], self.val_COOLCONF)
 
     #==================== DRV_STATUS ====================
-    def __get_REG_DRV_STATUS(self, log=[], check=True):
+    def __get_REG_DRV_STATUS(self, log=list(), check=True):
         val = self._command_read(REG_DRV_STATUS)
 
         if check:
@@ -975,7 +980,7 @@ class TMC2130(SpiDriver):
         return self.read_reg(self.PWMCONF_reg_def[name], self.val_PWMCONF)
 
     #========================================
-    def __get_LOST_STEPS(self, log=[]):
+    def __get_LOST_STEPS(self, log=list()):
         val = self._command_read(REG_LOST_STEPS)
         if val:
             dump = "Lost steps: {}".format(val)
