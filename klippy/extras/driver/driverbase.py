@@ -49,11 +49,11 @@ class SpiDriver(DriverBase):
         if cs_pin_params['invert']:
             raise config.error("Cannot invert pin")
         self.mcu = mcu = cs_pin_params['chip']
-        pin = cs_pin_params['pin']
         self._oid = oid = mcu.create_oid()
         mcu.add_config_cmd(
             "config_spi oid=%d bus=%d pin=%s inverted=%u mode=%u rate=%u shutdown_msg=" % (
-                oid, 0, pin, False, spi_mode, spi_speed))
+                oid, 0, cs_pin_params['pin'], cs_pin_params['invert'], spi_mode, spi_speed))
+        self._transfer = (lambda *args: 0)
         self.transfer_cmd = None
         mcu.add_config_object(self)
     # ============ SETUP ===============
@@ -70,6 +70,7 @@ class SpiDriver(DriverBase):
     def build_config(self):
         self.transfer_cmd = self.mcu.lookup_command(
             "spi_transfer oid=%c data=%*s")
+        self._transfer = self.__transfer
     def get_mcu(self):
         return self.mcu
     def get_oid(self):
@@ -96,7 +97,7 @@ class SpiDriver(DriverBase):
             val += ((reg >> offset) & mask)
         return val
     # ============ SPI ===============
-    def _transfer(self, cmd):
+    def __transfer(self, cmd):
         params = self.transfer_cmd.send_with_response(
             [self._oid, cmd], response='spi_transfer_response', response_oid=self._oid)
         return list(bytearray(params['response']))
