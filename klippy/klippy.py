@@ -249,12 +249,12 @@ class Printer:
         '''
         # Validate that there are no undefined parameters in the config file
         valid_sections = { s: 1 for s, o in self.all_config_options }
-        for section in fileconfig.sections():
-            section = section.lower()
+        for section_name in fileconfig.sections():
+            section = section_name.lower()
             if section not in valid_sections and section not in self.objects:
                 raise self.config_error(
                     "Section '%s' is not a valid config section" % (section,))
-            for option in fileconfig.options(section):
+            for option in fileconfig.options(section_name):
                 option = option.lower()
                 if (section, option) not in self.all_config_options:
                     raise self.config_error(
