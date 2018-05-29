@@ -738,7 +738,7 @@ class RepRapGuiModule(object):
         }
         curr_pos = toolhead.get_position()
         fans     = [ fan.last_fan_value * 100.0 for fan in self.printer.lookup_module_objects("fan") ]
-        heatbed  = self.printer.lookup_object('heater bed')
+        heatbed  = self.printer.lookup_object('heater bed', None)
         _heaters = self.printer.lookup_module_objects("heater")
         total_htrs = len(_heaters)
         _extrs   = extruder.get_printer_extruders(self.printer)
