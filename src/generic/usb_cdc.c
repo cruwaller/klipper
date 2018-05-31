@@ -316,7 +316,7 @@ usb_state_xfer(void)
             ret = usb_send_setup(usb_xfer, xs);
         else
             ret = usb_read_setup(usb_xfer, xs);
-        if (ret == xs) {
+        if ((uint_fast8_t)ret == xs) {
             // Success
             usb_xfer += xs;
             usb_xfer_size -= xs;
@@ -368,6 +368,7 @@ usb_req_set_address(struct usb_ctrlrequest *req)
 static void
 usb_req_set_configuration(struct usb_ctrlrequest *req)
 {
+    (void)req;
     usb_set_configure();
     usb_send_setup(NULL, 0);
     usb_notify_bulk_in();
@@ -378,6 +379,7 @@ static struct usb_cdc_line_coding line_coding;
 static void
 usb_req_set_line_coding(struct usb_ctrlrequest *req)
 {
+    (void)req;
     usb_state = US_READ;
     usb_xfer = &line_coding;
     usb_xfer_size = sizeof(line_coding);
@@ -386,6 +388,7 @@ usb_req_set_line_coding(struct usb_ctrlrequest *req)
 static void
 usb_req_get_line_coding(struct usb_ctrlrequest *req)
 {
+    (void)req;
     usb_state = US_SEND;
     usb_xfer = &line_coding;
     usb_xfer_size = sizeof(line_coding);
@@ -394,6 +397,7 @@ usb_req_get_line_coding(struct usb_ctrlrequest *req)
 static void
 usb_req_line_state(struct usb_ctrlrequest *req)
 {
+    (void)req;
     usb_send_setup(NULL, 0);
 }
 

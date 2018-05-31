@@ -141,7 +141,7 @@ struct gpio_adc
 gpio_adc_setup(uint8_t pin)
 {
     // Find pin in adc_pins table
-    int chan;
+    uint8_t chan;
     for (chan=0; ; chan++) {
         if (chan >= ARRAY_SIZE(adc_pins))
             shutdown("Not a valid ADC pin");
@@ -197,6 +197,7 @@ need_delay:
 uint16_t
 gpio_adc_read(struct gpio_adc g)
 {
+    (void)g;
     adc_status = 0;
     return (LPC_ADC->ADGDR >> 4) & 0x0fff;
 }
