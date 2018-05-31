@@ -41,7 +41,16 @@ def esp_pins(port_count):
     pins = {}
     for port in range(port_count):
         pins['GPIO%u' % port] = port
-    pins['GPIO_NA'] = 0xFF
+    return pins
+
+def esp_pins_io_expanders():
+    # Native pins
+    pins = esp_pins(40)
+    # IO Expanders
+    #   index = (port - 100 / 32)
+    #   pin = (port - 100) % 32
+    for port in range(100, (100 + 3*32)):
+        pins['GPIO%u' % port] = port
     return pins
 
 
@@ -60,7 +69,7 @@ MCU_PINS = {
     "pru": beaglebone_pins(),
     "linux": {"analog%d" % i: i for i in range(8)}, # XXX
     "lpc176x": lpc_arm_port_pins(5, 32),
-    "esp32": esp_pins(40),
+    "esp32": esp_pins_io_expanders(),
 }
 
 
@@ -230,7 +239,6 @@ class PrinterPins:
             pullup = 1
         if can_invert and '!' in desc:
             invert = 1
-        #desc = desc.translate(None, '^!').strip()
         desc = re.sub('[\^!]', '', desc).strip()
         if ':' not in desc:
             chip_name, pin = 'mcu', desc
@@ -248,7 +256,7 @@ class PrinterPins:
                         "Format is: %s[chip_name:] pin_name" % (
                             pin_desc, format))
         share_name = "%s:%s" % (chip_name, pin)
-        if share_name in self.active_pins and '_NA' not in share_name:
+        if share_name in self.active_pins:
             pin_params = self.active_pins[share_name]
             if share_type is None or share_type != pin_params['share_type']:
                 raise error("pin %s used multiple times in config" % (pin,))
