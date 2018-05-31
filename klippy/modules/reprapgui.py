@@ -473,12 +473,11 @@ class rrHandler(tornado.web.RequestHandler):
                 if e.errno != errno.EEXIST:
                     pass
             try:
-                output_file = open(path, 'w')
-                if self.request.body:
-                    output_file.write(self.request.body)
-                output_file.close()
-
-                respdata['err'] = 0
+                # Write request content to file
+                with open(path, 'w') as output_file:
+                    if self.request.body:
+                        output_file.write(self.request.body)
+                    respdata['err'] = 0
             except IOError:
                 pass
 
@@ -525,14 +524,6 @@ class RepRapGuiModule(object):
         if not os.path.exists(os.path.join(htmlroot, 'reprap.htm')):
             raise self.printer.config_error("DuetWebControl files not found '%s'" % htmlroot)
         self.logger.debug("html root: %s" % (htmlroot,))
-        http_port = config.getint('http', default=80)
-        https_port = config.getint('https', default=None)
-        ssl_options = None
-        if https_port is not None:
-            ssl_options = {
-                "certfile": os.path.normpath(os.path.expanduser(config.get('cert'))),
-                "keyfile": os.path.normpath(os.path.expanduser(config.get('key'))),
-            }
         self.user = config.get('user')
         self.passwd = config.get('password')
         feed_interval = config.getfloat('feedrate', minval=0., default=0.)
@@ -572,20 +563,9 @@ class RepRapGuiModule(object):
                 login_url = "/login",
                 xsrf_cookies = False)
 
-            http_server = tornado.httpserver.HTTPServer(
-                application,
-                ssl_options=ssl_options)
-            if https_port is not None:
-                http_server.bind(https_port)
-                self.logger.debug("HTTPS port %s" % (https_port))
-            else:
-                http_server.bind(http_port)
-                self.logger.debug("HTTPS port %s" % (http_port))
-            http_server.start()
-
             # Put tornado to background thread
             _TORNADO_THREAD = threading.Thread(
-                target=self.Tornado_execute, args=())
+                target=self.Tornado_execute, args=(config, application))
             _TORNADO_THREAD.daemon = True
             _TORNADO_THREAD.start()
 
@@ -619,8 +599,26 @@ class RepRapGuiModule(object):
         values  = [req.request.remote_ip, req.request.method, req.request.uri]
         self.logger_tornado.debug(" ".join(values))
 
-    def Tornado_execute(self):
-        tornado.ioloop.IOLoop.instance().start()
+    def Tornado_execute(self, config, application):
+        http_port = config.getint('http', default=80)
+        https_port = config.getint('https', None)
+        port = http_port
+        ssl_options = None
+
+        if https_port is not None:
+            port = https_port
+            ssl_options = {
+                "certfile": os.path.normpath(os.path.expanduser(config.get('cert'))),
+                "keyfile": os.path.normpath(os.path.expanduser(config.get('key'))),
+            }
+            self.logger.debug("HTTPS port %s" % (https_port))
+        else:
+            self.logger.debug("HTTP port %s" % (http_port))
+
+        http_server = tornado.httpserver.HTTPServer(application,
+                                                    ssl_options=ssl_options)
+        http_server.listen(port)
+        tornado.ioloop.IOLoop.current().start()
 
     send_resp = False
     def printer_write(self, cmd):
