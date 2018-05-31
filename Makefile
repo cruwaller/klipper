@@ -83,6 +83,7 @@ objects-y := $(objects-y:%.cpp=$(OUT)src/%.o)
 objects-y := $(objects-y:%.S=$(OUT)src/%.o)
 objects-y := $(objects-y:%.s=$(OUT)src/%.o)
 objects-y += $(asm-y:%.s=$(OUT)src/%.o)
+objects-y := $(objects-y:%.S=$(OUT)src/%.o)
 
 # parse only c/cpp files
 c-files := $(filter %.c %.cpp,$(src-y))
@@ -105,6 +106,10 @@ $(OUT)%.o: %.cpp $(OUT)autoconf.h $(OUT)board-link
 $(OUT)%.o: %.s $(OUT)autoconf.h $(OUT)board-link
 	@echo "  Compiling ASM $@"
 	$(Q)$(AS) $(ASFLAGS) -c $< -o $@
+
+$(OUT)%.o: %.S $(OUT)autoconf.h $(OUT)board-link
+	@echo "  Compiling ASM $@"
+	$(Q)$(AS) -c $< -o $@
 
 ################ Main build rules
 
