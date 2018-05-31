@@ -4,14 +4,13 @@
 # Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import sys, os, optparse, logging, time, threading
+import sys, os, optparse, logging, time
 import collections, ConfigParser, importlib
+import util, reactor, queuelogger, msgproto
+import gcode, pins, mcu, toolhead, extruder
 
 # Include extras path to search dir
 sys.path.append(os.path.join(os.path.dirname(__file__), "extras"))
-
-import util, reactor, queuelogger, msgproto
-import gcode, pins, mcu, toolhead, extruder, heater
 
 status_delay = 1.0
 
@@ -112,8 +111,8 @@ class ConfigWrapper:
         c = self.get(option, default)
         if c not in choices:
             raise self.error(
-                "Option '%s' in section '%s' is not a valid choice" % (
-                    option, self.section))
+                "Choice '%s' for option '%s' in section '%s'"
+                " is not a valid choice" % (c, option, self.section))
         return choices[c]
     def getsection(self, section):
         return ConfigWrapper(self.printer, self.fileconfig, section)
@@ -141,8 +140,6 @@ class Printer:
         self.logger = logging.getLogger('printer')
         self.bglogger = bglogger
         self.start_args = start_args
-        if bglogger is not None:
-            bglogger.set_rollover_info("config", None)
         self.reactor = reactor.Reactor()
         gc = gcode.GCodeParser(self, input_fd)
         self.objects = collections.OrderedDict({'gcode': gc})
@@ -180,6 +177,7 @@ class Printer:
             return [self.objects[module_name]] + objs
         return objs
     def set_rollover_info(self, name, info):
+        self.logger.info(info)
         if self.bglogger is not None:
             self.bglogger.set_rollover_info(name, info)
     def _stats(self, eventtime, force_output=False):
@@ -237,7 +235,8 @@ class Printer:
             m.add_printer_objects(self, config)
         self.logger.info("========================================")
         for section in fileconfig.sections():
-            self.try_load_module(config, section)
+            if "driver" not in section:
+                self.try_load_module(config, section)
         self.logger.info("========================================")
         for m in [toolhead, extruder]:
             m.add_printer_objects(self, config)
@@ -253,13 +252,13 @@ class Printer:
         for section in fileconfig.sections():
             section = section.lower()
             if section not in valid_sections and section not in self.objects:
-                raise self.config_error("Unknown config file section '%s'" % (
-                    section,))
+                raise self.config_error(
+                    "Section '%s' is not a valid config section" % (section,))
             for option in fileconfig.options(section):
                 option = option.lower()
                 if (section, option) not in self.all_config_options:
                     raise self.config_error(
-                        "Unknown option '%s' in section '%s'" % (
+                        "Option '%s' is not valid in section '%s'" % (
                             option, section))
         '''
         # Determine which printer objects have stats/state callbacks
@@ -400,16 +399,18 @@ def main():
     logging.info("Starting Klippy...")
     start_args['software_version'] = util.get_git_version()
     if bglogger is not None:
-        lines = ["Args: %s" % (sys.argv,),
-                 "Git version: %s" % (repr(start_args['software_version']),),
-                 "CPU: %s" % (util.get_cpu_info(),),
-                 "Python: %s" % (repr(sys.version),)]
-        lines = "\n".join(lines)
-        logging.info(lines)
-        bglogger.set_rollover_info('versions', lines)
+        versions = "\n".join([
+            "Args: %s" % (sys.argv,),
+            "Git version: %s" % (repr(start_args['software_version']),),
+            "CPU: %s" % (util.get_cpu_info(),),
+            "Python: %s" % (repr(sys.version),)])
+        logging.info(versions)
 
     # Start Printer() class
     while 1:
+        if bglogger is not None:
+            bglogger.clear_rollover_info()
+            bglogger.set_rollover_info('versions', versions)
         printer = Printer(input_fd, bglogger, start_args)
         res = printer.run()
         if res == 'exit':

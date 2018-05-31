@@ -17,8 +17,10 @@ arranges for includes of "board/somefile.h" to first look in the
 current architecture directory (eg, src/avr/somefile.h) and then in
 the generic directory (eg, src/generic/somefile.h).
 
-The **klippy/** directory contains the C and Python source for the
-host part of the software.
+The **klippy/** directory contains the host software. Most of the host
+software is written in Python, however the **klippy/chelper/**
+directory contains some C code helpers. The **klippy/extras/**
+directory contains the host code extensible "modules".
 
 The **lib/** directory contains external 3rd-party library code that
 is necessary to build some targets.
@@ -28,6 +30,8 @@ files.
 
 The **scripts/** directory contains build-time scripts useful for
 compiling the micro-controller code.
+
+The **test/** directory contains automated test cases.
 
 During compilation, the build may create an **out/** directory. This
 contains temporary build time objects. The final micro-controller
@@ -77,7 +81,7 @@ interrupts disabled.
 Much of the functionality of the micro-controller involves working
 with General-Purpose Input/Output pins (GPIO). In order to abstract
 the low-level architecture specific code from the high-level task
-code, all GPIO events are implemented in architectures specific
+code, all GPIO events are implemented in architecture specific
 wrappers (eg, **src/avr/gpio.c**). The code is compiled with gcc's
 "-flto -fwhole-program" optimization which does an excellent job of
 inlining functions across compilation units, so most of these tiny
@@ -103,9 +107,9 @@ DECL_COMMAND macro in the micro-controller code).
 
 There are four threads in the Klippy host code. The main thread
 handles incoming gcode commands. A second thread (which resides
-entirely in the **klippy/serialqueue.c** C code) handles low-level IO
-with the serial port. The third thread is used to process response
-messages from the micro-controller in the Python code (see
+entirely in the **klippy/chelper/serialqueue.c** C code) handles
+low-level IO with the serial port. The third thread is used to process
+response messages from the micro-controller in the Python code (see
 **klippy/serialhdl.py**). The fourth thread writes debug messages to
 the log (see **klippy/queuelogger.py**) so that the other threads
 never block on log writes.
@@ -183,34 +187,104 @@ provides further information on the mechanics of moves.
   relative to when the micro-controller was last powered up.
 
 * The next major step is to compress the steps: `stepcompress_flush()
-  -> compress_bisect_add()` (in stepcompress.c). This code generates
-  and encodes a series of micro-controller "queue_step" commands that
-  correspond to the list of stepper step times built in the previous
-  stage. These "queue_step" commands are then queued, prioritized, and
-  sent to the micro-controller (via stepcompress.c:steppersync and
-  serialqueue.c:serialqueue).
+  -> compress_bisect_add()` (in klippy/chelper/stepcompress.c). This
+  code generates and encodes a series of micro-controller "queue_step"
+  commands that correspond to the list of stepper step times built in
+  the previous stage. These "queue_step" commands are then queued,
+  prioritized, and sent to the micro-controller (via
+  stepcompress.c:steppersync and serialqueue.c:serialqueue).
 
 * Processing of the queue_step commands on the micro-controller starts
-  in command.c which parses the command and calls
-  `command_queue_step()`. The command_queue_step() code (in stepper.c)
-  just appends the parameters of each queue_step command to a per
-  stepper queue. Under normal operation the queue_step command is
-  parsed and queued at least 100ms before the time of its first
-  step. Finally, the generation of stepper events is done in
-  `stepper_event()`. It's called from the hardware timer interrupt at
-  the scheduled time of the first step. The stepper_event() code
-  generates a step pulse and then reschedules itself to run at the
-  time of the next step pulse for the given queue_step parameters. The
-  parameters for each queue_step command are "interval", "count", and
-  "add". At a high-level, stepper_event() runs the following, 'count'
-  times: `do_step(); next_wake_time = last_wake_time + interval;
-  interval += add;`
+  in src/command.c which parses the command and calls
+  `command_queue_step()`. The command_queue_step() code (in
+  src/stepper.c) just appends the parameters of each queue_step
+  command to a per stepper queue. Under normal operation the
+  queue_step command is parsed and queued at least 100ms before the
+  time of its first step. Finally, the generation of stepper events is
+  done in `stepper_event()`. It's called from the hardware timer
+  interrupt at the scheduled time of the first step. The
+  stepper_event() code generates a step pulse and then reschedules
+  itself to run at the time of the next step pulse for the given
+  queue_step parameters. The parameters for each queue_step command
+  are "interval", "count", and "add". At a high-level, stepper_event()
+  runs the following, 'count' times: `do_step(); next_wake_time =
+  last_wake_time + interval; interval += add;`
 
 The above may seem like a lot of complexity to execute a
 movement. However, the only really interesting parts are in the
 ToolHead and kinematic classes. It's this part of the code which
 specifies the movements and their timings. The remaining parts of the
 processing is mostly just communication and plumbing.
+
+Adding a host module
+====================
+
+The Klippy host code has a dynamic module loading capability. If a
+config section named "[my_module]" is found in the printer config file
+then the software will automatically attempt to load the python module
+klippy/extras/my_module.py . This module system is the preferred
+method for adding new functionality to Klipper.
+
+The easiest way to add a new module is to use an existing module as a
+reference - see **klippy/extras/servo.py** as an example.
+
+The following may also be useful:
+* Execution of the module starts in the module level `load_config()`
+  function (for config sections of the form [my_module]) or in
+  `load_config_prefix()` (for config sections of the form
+  [my_module my_name]). This function is passed a "config" object and
+  it must return a new "printer object" associated with the given
+  config section.
+* During the process of instantiating a new printer object, the config
+  object can be used to read parameters from the given config
+  section. This is done using `config.get()`, `config.getfloat()`,
+  `config.getint()`, etc. methods. Be sure to read all values from the
+  config during the construction of the printer object - if the user
+  specifies a config parameter that is not read during this phase then
+  it will be assumed it is a typo in the config and an error will be
+  raised.
+* Use the `config.get_printer()` method to obtain a reference to the
+  main "printer" class. This "printer" class stores references to all
+  the "printer objects" that have been instantiated. Use the
+  `printer.lookup_object()` method to find references to other printer
+  objects. Almost all functionality (even core kinematic modules) are
+  encapsulated in one of these printer objects. Note, though, that
+  when a new module is instantiated, not all other printer objects
+  will have been instantiated. The "gcode" and "pins" modules will
+  always be available, but for other modules it is a good idea to
+  defer the lookup.
+* Define a `printer_state()` method if the code needs to be called
+  during printer setup and/or shutdown. This method is called twice
+  during setup (with "connect" and then "ready") and may also be
+  called at run-time (with "shutdown" or "disconnect"). It is common
+  to perform "printer object" lookup during the "connect" and "ready"
+  phases.
+* If there is an error in the user's config, be sure to raise it
+  during the `load_config()` or `printer_state("connect")` phases. Use
+  either `raise config.error("my error")` or `raise
+  printer.config_error("my error")` to report the error.
+* Use the "pins" module to configure a pin on a micro-controller. This
+  is typically done with something similar to
+  `printer.lookup_object("pins").setup_pin("pwm",
+  config.get("my_pin"))`. The returned object can then be commanded at
+  run-time.
+* If the module needs access to system timing or external file
+  descriptors then use `printer.get_reactor()` to obtain access to the
+  global "event reactor" class. This reactor class allows one to
+  schedule timers, wait for input on file descriptors, and to "sleep"
+  the host code.
+* Do not use global variables. All state should be stored in the
+  printer object returned from the `load_config()` function. This is
+  important as otherwise the RESTART command may not perform as
+  expected. Also, for similar reasons, if any external files (or
+  sockets) are opened then be sure to close them from the
+  `printer_state("disconnect")` callback.
+* Avoid accessing the internal member variables (or calling methods
+  that start with an underscore) of other printer objects. Observing
+  this convention makes it easier to manage future changes.
+* If submitting the module for inclusion in the main Klipper code, be
+  sure to place a copyright notice at the top of the module. See the
+  existing modules for the preferred format.
 
 Adding new kinematics
 =====================
@@ -223,8 +297,9 @@ should only need to update the host software (which is written in
 Python).
 
 Useful steps:
-1. Start by studying the [above section](#code-flow-of-a-move-command)
-   and the [Kinematics document](Kinematics.md).
+1. Start by studying the
+   "[code flow of a move](#code-flow-of-a-move-command)" section and
+   the [Kinematics document](Kinematics.md).
 2. Review the existing kinematic classes in cartesian.py, corexy.py,
    and delta.py. The kinematic classes are tasked with converting a
    move in cartesian coordinates to the movement on each stepper. One
@@ -352,8 +427,8 @@ Some things to be aware of when reviewing the code:
   conversion is never ambiguous. The host converts from 64bit clocks
   to 32bit clocks by simply truncating the high-order bits. To ensure
   there is no ambiguity in this conversion, the
-  **klippy/serialqueue.c** code will buffer messages until they are
-  within 2^31 clock ticks of their target time.
+  **klippy/chelper/serialqueue.c** code will buffer messages until
+  they are within 2^31 clock ticks of their target time.
 * Multiple micro-controllers: The host software supports using
   multiple micro-controllers on a single printer. In this case, the
   "MCU clock" of each micro-controller is tracked separately. The

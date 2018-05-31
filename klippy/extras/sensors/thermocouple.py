@@ -1,6 +1,6 @@
 # Printer heater support
 #
-# Copyright (C) 2016,2017  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2018  Petri Honkala <cruwaller@gmail.com>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math
@@ -55,112 +55,85 @@ MAX31856_FAULT_TCLOW       = 0x04  # Thermocouple Low
 MAX31856_FAULT_OVUV        = 0x02  # Under Over Voltage
 MAX31856_FAULT_OPEN        = 0x01
 
+
 class Thermocouple(SensorBase):
-    tc_type         = 100;
-    use_50Hz_filter = False;
-    average_count   = 1;
-
-    types = {
-        "B" : 0b0000,
-        "E" : 0b0001,
-        "J" : 0b0010,
-        "K" : 0b0011,
-        "N" : 0b0100,
-        "R" : 0b0101,
-        "S" : 0b0110,
-        "T" : 0b0111,
-    }
-
-    averages = {
-        1  : MAX31856_CR1_AVGSEL1,
-        2  : MAX31856_CR1_AVGSEL2,
-        4  : MAX31856_CR1_AVGSEL4,
-        8  : MAX31856_CR1_AVGSEL8,
-        16 : MAX31856_CR1_AVGSEL16
-    }
-
-    is_k_simple = False # Check faults
-
     def __init__(self, config, params):
-        self.tc_type         = types[config.get('tc_type', "K")]
+        self.chip_type = chip_type = config.get('sensor_type')
+        types = {
+            "B" : 0b0000,
+            "E" : 0b0001,
+            "J" : 0b0010,
+            "K" : 0b0011,
+            "N" : 0b0100,
+            "R" : 0b0101,
+            "S" : 0b0110,
+            "T" : 0b0111,
+        }
+        self.tc_type = config.getchoice('tc_type', types, default="K")
         self.use_50Hz_filter = config.getboolean('tc_use_50Hz_filter', False)
-        self.average_count   = averages[config.getint('tc_averaging_count', 1)]
-        self.is_k_simple     = params["simple"]
-
-        if (self.is_k_simple): # MAX6675/MAX31855
-            self.val_a = 0.25
-            self.scale = 18
-        else:
+        averages = {
+            "1"  : MAX31856_CR1_AVGSEL1,
+            "2"  : MAX31856_CR1_AVGSEL2,
+            "4"  : MAX31856_CR1_AVGSEL4,
+            "8"  : MAX31856_CR1_AVGSEL8,
+            "16" : MAX31856_CR1_AVGSEL16
+        }
+        self.average_count = config.getchoice('tc_averaging_count', averages, "1")
+        if chip_type == "MAX31856":
             self.val_a = 0.0078125
             self.scale = 5
-        SensorBase.__init__(self, config, is_spi = True, sample_count = 1)
-
-    def _check_faults_simple(self, val):
-        if self.is_k_simple:
-            if (val & 0x1):
-                raise error("MAX6675/MAX31855 : Open Circuit")
-            if (val & 0x2):
-                raise error("MAX6675/MAX31855 : Short to GND")
-            if (val & 0x4):
-                raise error("MAX6675/MAX31855 : Short to Vcc")
         else:
-            if (val & 0x1):
-                pass
-
+            self.val_a = 0.25
+            self.scale = 18
+        SensorBase.__init__(self, config, sample_count = 1, chip_type=chip_type)
+    def _check_faults_simple(self, val):
+        if not self.chip_type == "MAX31856":
+            if val & 0x1:
+                raise self.error("MAX6675/MAX31855 : Open Circuit")
+            if val & 0x2:
+                raise self.error("MAX6675/MAX31855 : Short to GND")
+            if val & 0x4:
+                raise self.error("MAX6675/MAX31855 : Short to Vcc")
     def check_faults(self, fault):
-        if self.is_k_simple == False:
-            if (fault & MAX31856_FAULT_CJRANGE):
-                raise error("Max31856: Cold Junction Range Fault")
-            if (fault & MAX31856_FAULT_TCRANGE):
-                raise error("Max31856: Thermocouple Range Fault")
-            if (fault & MAX31856_FAULT_CJHIGH):
-                raise error("Max31856: Cold Junction High Fault")
-            if (fault & MAX31856_FAULT_CJLOW):
-                raise error("Max31856: Cold Junction Low Fault")
-            if (fault & MAX31856_FAULT_TCHIGH):
-                raise error("Max31856: Thermocouple High Fault")
-            if (fault & MAX31856_FAULT_TCLOW):
-                raise error("Max31856: Thermocouple Low Fault")
-            if (fault & MAX31856_FAULT_OVUV):
-                raise error("Max31856: Over/Under Voltage Fault")
-            if (fault & MAX31856_FAULT_OPEN):
-                raise error("Max31856: Thermocouple Open Fault")
-
+        if self.chip_type == "MAX31856":
+            if fault & MAX31856_FAULT_CJRANGE:
+                raise self.error("Max31856: Cold Junction Range Fault")
+            if fault & MAX31856_FAULT_TCRANGE:
+                raise self.error("Max31856: Thermocouple Range Fault")
+            if fault & MAX31856_FAULT_CJHIGH:
+                raise self.error("Max31856: Cold Junction High Fault")
+            if fault & MAX31856_FAULT_CJLOW:
+                raise self.error("Max31856: Cold Junction Low Fault")
+            if fault & MAX31856_FAULT_TCHIGH:
+                raise self.error("Max31856: Thermocouple High Fault")
+            if fault & MAX31856_FAULT_TCLOW:
+                raise self.error("Max31856: Thermocouple Low Fault")
+            if fault & MAX31856_FAULT_OVUV:
+                raise self.error("Max31856: Over/Under Voltage Fault")
+            if fault & MAX31856_FAULT_OPEN:
+                raise self.error("Max31856: Thermocouple Open Fault")
     def calc_temp(self, adc):
-        if self.is_k_simple:
-            self._check_faults_simple(adc)
+        self._check_faults_simple(adc)
         adc = adc >> self.scale
         # Fix sign bit:
-        if self.is_k_simple:
-            if (adc & 0x2000):
-                adc = ((adc & 0x1FFF) + 1) * -1
-        else:
-            if (adc & 0x40000):
+        if self.chip_type == "MAX31856":
+            if adc & 0x40000:
                 adc = ((adc & 0x3FFFF) + 1) * -1
-        temp = self.val_a * adc;
-        return (temp);
-
+        else:
+            if adc & 0x2000:
+                adc = ((adc & 0x1FFF) + 1) * -1
+        temp = self.val_a * adc
+        return temp
     def calc_adc(self, temp):
         adc = int ( ( temp / self.val_a ) + 0.5 ) # convert to ADC value
         adc = adc << self.scale
         return adc
-
-    def get_read_cmd(self):
-        if self.is_k_simple == False:
-            return MAX31856_LTCBH_REG
-        return 0xFF
-    def get_read_bytes(self):
-        if self.is_k_simple == False:
-            return 3 # 24bit value (MAX31856)
-        return 4 # 32bit (MAX6675 / MAX31855)
     def get_configs(self):
         cmds = []
-        if self.is_k_simple == False:
+        if self.chip_type == "MAX31856":
             value = MAX31856_CR0_AUTOCONVERT
-            if (self.use_50Hz_filter):
+            if self.use_50Hz_filter:
                 value |= MAX31856_CR0_FILT50HZ
-            if (self.num_wires == 3):
-                value |= MAX31865_CONFIG_3WIRE
             cmds.append(0x80 + MAX31856_CR0_REG)
             cmds.append(value)
 
@@ -174,7 +147,3 @@ class Thermocouple(SensorBase):
             cmds.append(0x80 + MAX31856_MASK_REG)
             cmds.append(value)
         return cmds
-    def get_fault_filter(self):
-        if self.is_k_simple:
-            return 0x4;
-        return 0;

@@ -10,7 +10,7 @@
 #include "command.h" // shutdown
 #include "compiler.h" // ARRAY_SIZE
 #include "gpio.h" // gpio_out_setup
-#include <sam3x8e.h> // Pio
+#include "sam3x8e.h" // Pio
 #include "sched.h" // sched_shutdown
 
 
@@ -18,6 +18,7 @@
  * Pin mappings
  ****************************************************************/
 
+#define GPIO(PORT, NUM) (((PORT)-'A') * 32 + (NUM))
 #define GPIO2PORT(PIN) ((PIN) / 32)
 #define GPIO2BIT(PIN) (1<<((PIN) % 32))
 
@@ -34,16 +35,15 @@ void
 gpio_peripheral(char bank, uint32_t bit, char ptype, uint32_t pull_up)
 {
     Pio *regs = digital_regs[bank - 'A'];
-    regs->PIO_IDR = bit;
     if (ptype == 'A')
         regs->PIO_ABSR &= ~bit;
     else
         regs->PIO_ABSR |= bit;
-    regs->PIO_PDR = bit;
     if (pull_up)
         regs->PIO_PUER = bit;
     else
         regs->PIO_PUDR = bit;
+    regs->PIO_PDR = bit;
 }
 
 
@@ -127,8 +127,7 @@ static const uint8_t adc_pins[] = {
     GPIO('B', 19), GPIO('B', 20)
 };
 
-#define ADC_FREQ_MAX 20000000 // 20MHz
-
+#define ADC_FREQ_MAX 20000000
 DECL_CONSTANT(ADC_MAX, 4095);
 
 struct gpio_adc
@@ -176,7 +175,7 @@ gpio_adc_sample(struct gpio_adc g)
     // Conversion ready
     return 0;
 need_delay:
-    return ADC_FREQ_MAX * 1000ULL / CONFIG_CLOCK_FREQ; // =476
+    return ADC_FREQ_MAX * 1000ULL / CONFIG_CLOCK_FREQ;
 }
 
 // Read a value; use only after gpio_adc_sample() returns zero

@@ -31,7 +31,8 @@ OBJDUMP = $(GCC_PATH)objdump
 STRIP   = $(GCC_PATH)strip
 PYTHON  = python2
 
-STD-c   = -std=gnu99
+#STD-c   = -std=gnu99
+STD-c   = -std=gnu11
 STD-cpp = -std=gnu++11
 
 # Source files

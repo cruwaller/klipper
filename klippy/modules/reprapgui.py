@@ -500,7 +500,7 @@ class RepRapGuiModule(object):
     def __init__(self, printer, config):
         global _TORNADO_THREAD
         global _PARENT
-        _PARENT = self;
+        _PARENT = self
         self.printer = printer
         self.logger = printer.logger.getChild("DuetWebControl")
         self.logger_tornado = self.logger.getChild("tornado")
@@ -508,11 +508,12 @@ class RepRapGuiModule(object):
         self.gcode = printer.lookup_object('gcode')
         self.toolhead = printer.lookup_object('toolhead')
         self.babysteps = printer.lookup_object('babysteps')
+        printer.try_load_module(config, "virtual_sdcard")
         self.sd = printer.lookup_object('virtual_sdcard')
         self.starttime = time.time()
         self.curr_state = 'C'
         self.gcode_resps = []
-        self.current_file = None # Needed?
+        self.current_file = None
 
         # Read config
         self.name = config.getsection('printer').get(
@@ -571,6 +572,7 @@ class RepRapGuiModule(object):
         # ------------------------------
         fd_r, self.pipe_write = os.pipe() # Change to PTY ?
         self.gcode.register_fd(fd_r)
+        self.gcode.temperature_auto_report(False)
         self.gcode.register_command('M550',
                                     self.cmd_M550,
                                     when_not_ready=True,
@@ -734,7 +736,7 @@ class RepRapGuiModule(object):
         }
         curr_pos = toolhead.get_position()
         fans     = [ fan.last_fan_value * 100.0 for fan in self.printer.lookup_module_objects("fan") ]
-        heatbed  = self.printer.lookup_object('heater bed')
+        heatbed  = self.printer.lookup_object('heater bed', None)
         _heaters = self.printer.lookup_module_objects("heater")
         total_htrs = len(_heaters)
         _extrs   = extruder.get_printer_extruders(self.printer)

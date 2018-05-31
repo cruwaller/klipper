@@ -37,6 +37,23 @@ def lpc_arm_port_pins(port_count, bit_count=32):
             pins['P%u.%u' % (port, portbit)] = (port * bit_count) + portbit
     return pins
 
+def esp_pins(port_count):
+    pins = {}
+    for port in range(port_count):
+        pins['GPIO%u' % port] = port
+    return pins
+
+def esp_pins_io_expanders():
+    # Native pins
+    pins = esp_pins(40)
+    # IO Expanders
+    #   index = (port - 100 / 32)
+    #   pin = (port - 100) % 32
+    for port in range(100, (100 + 3*32)):
+        pins['GPIO%u' % port] = port
+    return pins
+
+
 MCU_PINS = {
     "atmega168": port_pins(5),
     "atmega168p": port_pins(5),
@@ -48,9 +65,11 @@ MCU_PINS = {
     "atmega1280": port_pins(12),
     "atmega2560": port_pins(12),
     "sam3x8e": port_pins(4, 32),
+    "stm32f103": port_pins(5, 16),
     "pru": beaglebone_pins(),
     "linux": {"analog%d" % i: i for i in range(8)}, # XXX
     "lpc176x": lpc_arm_port_pins(5, 32),
+    "esp32": esp_pins_io_expanders(),
 }
 
 
@@ -105,6 +124,10 @@ Arduino_Due_analog = [
     "PB19", "PB20"
 ]
 
+Arduino_ESP_32 = [
+]
+Arduino_ESP_32_analog = [
+]
 
 Arduino_from_mcu = {
     "atmega168": (Arduino_standard, Arduino_analog_standard),
@@ -208,7 +231,7 @@ class PrinterPins:
         self.chips = {}
         self.active_pins = {}
     def lookup_pin(self, pin_type, pin_desc, share_type=None):
-        can_invert = pin_type in ['stepper', 'endstop', 'digital_out', 'pwm', 'thermocouple', 'spibus']
+        can_invert = pin_type in ['stepper', 'endstop', 'digital_out', 'pwm']
         can_pullup = pin_type == 'endstop'
         desc = pin_desc
         pullup = invert = 0
@@ -216,7 +239,7 @@ class PrinterPins:
             pullup = 1
         if can_invert and '!' in desc:
             invert = 1
-        desc = desc.translate(None, '^!').strip()
+        desc = re.sub('[\^!]', '', desc).strip()
         if ':' not in desc:
             chip_name, pin = 'mcu', desc
         else:
@@ -256,9 +279,3 @@ class PrinterPins:
 
 def add_printer_objects(printer, config):
     printer.add_object('pins', PrinterPins())
-
-def get_printer_pins(printer):
-    return printer.lookup_object('pins')
-
-def setup_pin(printer, pin_type, pin_desc):
-    return get_printer_pins(printer).setup_pin(pin_type, pin_desc)

@@ -8,7 +8,7 @@
 #include "board/misc.h" // timer_read_time
 #include "board/timer_irq.h" // timer_dispatch_many
 #include "command.h" // DECL_SHUTDOWN
-#include <sam3x8e.h> // TC0
+#include "sam3x8e.h" // TC0
 #include "sched.h" // DECL_INIT
 
 // Set the next irq time
@@ -29,7 +29,7 @@ timer_read_time(void)
 void
 timer_kick(void)
 {
-    timer_set(timer_read_time() + 50); // 50 ~= 1.2us
+    timer_set(timer_read_time() + 50);
     TC0->TC_CHANNEL[0].TC_SR; // read to clear irq pending
 }
 

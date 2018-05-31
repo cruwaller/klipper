@@ -4,17 +4,18 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math
-import stepper, heater, homing
+import stepper, homing
 
 EXTRUDE_DIFF_IGNORE = 1.02
 
 
 class PrinterExtruder:
     def __init__(self, printer, config, index):
-        self.name   = config.get_name()
+        self.printer = printer
+        self.name = config.get_name()
         self.logger = printer.logger.getChild(self.name)
         self.config = config
-        self.index  = index
+        self.index = index
         self.heater = printer.lookup_object(config.get('heater'))
         self.heater.set_min_extrude_temp(config.getfloat('min_extrude_temp',
                                                          170.0))
@@ -42,15 +43,21 @@ class PrinterExtruder:
         self.deactivate_gcode = config.get('deactivate_gcode', '')
         self.pressure_advance = config.getfloat(
             'pressure_advance', 0., minval=0.)
-        self.pressure_advance_lookahead_time = 0.
-        if self.pressure_advance:
-            self.pressure_advance_lookahead_time = config.getfloat(
-                'pressure_advance_lookahead_time', 0.010, minval=0.)
+        self.pressure_advance_lookahead_time = config.getfloat(
+            'pressure_advance_lookahead_time', 0.010, minval=0.)
         self.need_motor_enable = True
         self.extrude_pos = 0.
         self.extrude_factor = config.getfloat('extrusion_factor',
                                               1.0,
                                               minval=0.1)
+        gcode = self.printer.lookup_object('gcode')
+        if self.name in ('extruder', 'extruder0'):
+            gcode.register_mux_command("SET_PRESSURE_ADVANCE", "EXTRUDER", None,
+                                       self.cmd_default_SET_PRESSURE_ADVANCE,
+                                       desc=self.cmd_SET_PRESSURE_ADVANCE_help)
+        gcode.register_mux_command("SET_PRESSURE_ADVANCE", "EXTRUDER", self.name,
+                                   self.cmd_SET_PRESSURE_ADVANCE,
+                                   desc=self.cmd_SET_PRESSURE_ADVANCE_help)
         self.logger.debug("index={}, heater={}".
                           format(self.index, self.heater.name))
     def get_index(self):
@@ -91,7 +98,7 @@ class PrinterExtruder:
                 move.extrude_r = self.max_extrude_ratio
                 return
             area = move.axes_d[3] * self.filament_area / move.move_d
-            self.logger.debug("Overextrude: %s vs %s (area=%.3f dist=%.3f)",
+            self.logger.debug("Over extrude: %s vs %s (area=%.3f dist=%.3f)",
                               move.extrude_r, self.max_extrude_ratio,
                               area, move.move_d)
             raise homing.EndstopError(
@@ -114,7 +121,7 @@ class PrinterExtruder:
         return move.max_cruise_v2
     def lookahead(self, moves, flush_count, lazy):
         lookahead_t = self.pressure_advance_lookahead_time
-        if not lookahead_t:
+        if not self.pressure_advance or not lookahead_t:
             return flush_count
         # Calculate max_corner_v - the speed the head will accelerate
         # to after cornering.
@@ -231,6 +238,25 @@ class PrinterExtruder:
             step_const(move_time, start_pos, -retract_d, retract_v, accel)
             start_pos -= retract_d
         self.extrude_pos = start_pos
+    cmd_SET_PRESSURE_ADVANCE_help = "Set pressure advance parameters"
+    def cmd_default_SET_PRESSURE_ADVANCE(self, params):
+        extruder = self.printer.lookup_object('toolhead').get_extruder()
+        extruder.cmd_SET_PRESSURE_ADVANCE(params)
+    def cmd_SET_PRESSURE_ADVANCE(self, params):
+        self.printer.lookup_object('toolhead').get_last_move_time()
+        gcode = self.printer.lookup_object('gcode')
+        pressure_advance = gcode.get_float(
+            'ADVANCE', params, self.pressure_advance, minval=0.)
+        pressure_advance_lookahead_time = gcode.get_float(
+            'ADVANCE_LOOKAHEAD_TIME', params,
+            self.pressure_advance_lookahead_time, minval=0.)
+        self.pressure_advance = pressure_advance
+        self.pressure_advance_lookahead_time = pressure_advance_lookahead_time
+        msg = ("pressure_advance: %.6f\n"
+               "pressure_advance_lookahead_time: %.6f" % (
+                   pressure_advance, pressure_advance_lookahead_time))
+        self.printer.set_rollover_info(self.name, "%s: %s" % (self.name, msg))
+        gcode.respond_info(msg)
 
 # Dummy extruder class used when a printer has no extruder at all
 class DummyExtruder:
@@ -266,10 +292,10 @@ def get_printer_extruders(printer):
     except AttributeError:
         return {}
 
-def get_printer_extruder(printer, index):
+def get_printer_extruder(printer, index, default=None):
     try:
         if index is None:
             raise KeyError
         return printer._extruders[index]
     except (KeyError, AttributeError):
-        return None
+        return default

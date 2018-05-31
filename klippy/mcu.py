@@ -3,7 +3,7 @@
 # Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import sys, os, zlib, logging, math, time
+import os, zlib, math, time
 import serialhdl, pins, chelper, clocksync
 
 class error(Exception):
@@ -24,6 +24,7 @@ class MCU_stepper:
         self._min_stop_interval = 0.
         self._reset_cmd_id = self._get_position_cmd = None
         self._ffi_lib = self._stepqueue = None
+        self._stepcompress_push_const = self._stepcompress_push_delta = None
     def get_mcu(self):
         return self._mcu
     def setup_dir_pin(self, pin_params):
@@ -61,6 +62,7 @@ class MCU_stepper:
             self._invert_dir, self._oid),
                                       self._ffi_lib.stepcompress_free)
         self._mcu.register_stepqueue(self._stepqueue)
+        self.set_ignore_move(False)
     def get_oid(self):
         return self._oid
     def get_step_dist(self):
@@ -76,6 +78,16 @@ class MCU_stepper:
         if mcu_pos >= 0.:
             return int(mcu_pos + 0.5)
         return int(mcu_pos - 0.5)
+    def set_ignore_move(self, ignore_move):
+        was_ignore = (self._stepcompress_push_const
+                      is not self._ffi_lib.stepcompress_push_const)
+        if ignore_move:
+            self._stepcompress_push_const = (lambda *args: 0)
+            self._stepcompress_push_delta = (lambda *args: 0)
+        else:
+            self._stepcompress_push_const = self._ffi_lib.stepcompress_push_const
+            self._stepcompress_push_delta = self._ffi_lib.stepcompress_push_delta
+        return was_ignore
     def note_homing_start(self, homing_clock):
         ret = self._ffi_lib.stepcompress_set_homing(
             self._stepqueue, homing_clock)
@@ -112,7 +124,7 @@ class MCU_stepper:
         step_offset = 0
         if core is False:
             step_offset = self._commanded_pos - start_pos * inv_step_dist
-        count = self._ffi_lib.stepcompress_push_const(
+        count = self._stepcompress_push_const(
             self._stepqueue, print_time, step_offset, dist * inv_step_dist,
             start_v * inv_step_dist, accel * inv_step_dist)
         if count == STEPCOMPRESS_ERROR_RET:
@@ -122,7 +134,7 @@ class MCU_stepper:
                    , height_base, startxy_d, arm_d, movez_r):
         inv_step_dist = self._inv_step_dist
         height = self._commanded_pos - height_base * inv_step_dist
-        count = self._ffi_lib.stepcompress_push_delta(
+        count = self._stepcompress_push_delta(
             self._stepqueue, print_time, dist * inv_step_dist,
             start_v * inv_step_dist, accel * inv_step_dist,
             height, startxy_d * inv_step_dist, arm_d * inv_step_dist, movez_r)
@@ -404,125 +416,6 @@ class MCU_adc:
         if self._callback is not None:
             self._callback(last_read_time, last_value)
 
-
-class MCU_thermocouple:
-    def __init__(self, mcu, pin_params):
-        self._logger = mcu.logger.getChild('thermocouple')
-        self._mcu             = mcu
-        self._pin             = pin_params['pin']
-        self._min_sample      = self._max_sample  = 0.
-        self._report_time     = 0.
-        self._report_clock    = 0
-        self._callback        = None
-        self._cmd_queue       = mcu.alloc_command_queue()
-        self._oid             = self._mcu.create_oid()
-        self._spi_speed       = 4000000
-        self._spi_mode        = 0
-
-    def setup_spi_settings(self, mode, speed):
-        # default SPI_MODE0 and 4MHz
-        self._spi_speed     = speed
-        self._spi_mode      = mode
-
-    def get_mcu(self):
-        return self._mcu
-
-    def setup_read_command(self, read_cmd, read_bytes, config,
-                           fault_mask = 0, fault_cmd = 0):
-        self._read_cmd   = read_cmd
-        self._read_bytes = read_bytes
-        self._config     = config
-        self._fault_mask = fault_mask
-        self._fault_cmd  = fault_cmd
-
-    def setup_minmax(self, minval, maxval):
-        self._min_sample    = minval
-        self._max_sample    = maxval
-
-    def setup_callback(self, report_time, callback):
-        self._report_time = report_time
-        self._callback    = callback
-
-    def build_config(self):
-        self._mcu.add_config_cmd(
-            "config_thermocouple_ss_pin oid=%d pin=%s spi_mode=%u spi_speed=%u" %
-            (self._oid, self._pin, self._spi_mode, self._spi_speed))
-
-        clock        = self._mcu.get_query_slot(self._oid)
-        self._report_clock = self._mcu.seconds_to_clock(self._report_time)
-
-        config_cmd = ("config_thermocouple oid=%d cmd=%d clock=%d"
-                      " min_value=%d max_value=%d"
-                      " read_bytes=%d fault_mask=%d rest_ticks=%d fault_cmd=%u cfg=" %
-                      (self._oid, self._read_cmd, clock,
-                       self._min_sample, self._max_sample,
-                       self._read_bytes, self._fault_mask, self._report_clock,
-                       self._fault_cmd))
-
-        if (len(self._config)):
-            for idx in range(0, len(self._config)):
-                config_cmd += ("%02x" % (self._config[idx]))
-        else:
-            config_cmd += "0"
-
-        self._mcu.add_config_cmd(config_cmd, is_init=True)
-
-        self._mcu.register_msg(self._handle_spi_response,
-                               "thermocouple_result",
-                               self._oid)
-
-    def _handle_spi_response(self, params):
-        last_value      = params['value']
-        next_clock      = self._mcu.clock32_to_clock64(params['next_clock'])
-        last_read_clock = next_clock - self._report_clock
-        last_read_time  = self._mcu.clock_to_print_time(last_read_clock)
-        if self._callback is not None:
-            self._callback(last_read_time, last_value, params['fault'])
-
-class MCU_spibus:
-    def __init__(self, mcu, pin_params):
-        self._logger = mcu.logger.getChild('spibus')
-        self._mcu           = mcu
-        self._pin           = pin_params['pin']
-        self._oid           = self._mcu.create_oid()
-        # default SPI_MODE0 and 4MHz
-        self._spi_speed     = 4000000
-        self._spi_mode      = 0
-
-    def get_mcu(self):
-        return self._mcu
-    def get_oid(self):
-        return self._oid
-
-    def set_spi_settings(self, mode, speed):
-        self._spi_speed     = speed
-        self._spi_mode      = mode
-
-    def build_config(self):
-        self._mcu.add_config_cmd(
-            "config_spibus_ss_pin oid=%d pin=%s spi_mode=%u spi_speed=%u" %
-            (self._oid, self._pin, self._spi_mode, self._spi_speed))
-        self.write_cmd = self._mcu.lookup_command(
-            "spibus_write oid=%c cmd=%c cfg=%*s")
-        self.read_cmd = self._mcu.lookup_command(
-            "spibus_read oid=%c cmd=%c len=%c")
-
-    def write(self, cmd, val):
-        params = self.write_cmd.send_with_response(
-            [self._oid, cmd, val], response='spibus_write_resp', response_oid=self._oid)
-        if params['status'] is 0:
-            return True
-        # TODO raise error!
-        return False
-
-    def read(self, cmd, cnt):
-        params = self.read_cmd.send_with_response(
-            [self._oid, cmd, cnt], response='spibus_read_resp', response_oid=self._oid)
-        if params['status'] is 0:
-            return list(bytearray(params['data']))
-        else:
-            return []
-
 class MCU:
     error = error
     def __init__(self, printer, config, clocksync):
@@ -554,9 +447,8 @@ class MCU:
         self._emergency_stop_cmd = None
         self._is_shutdown = self._is_timeout = False
         self._shutdown_msg = ""
-        printer.set_rollover_info(self._name, None)
         # Config building
-        pins.get_printer_pins(printer).register_chip(self._name, self)
+        printer.lookup_object('pins').register_chip(self._name, self)
         self._oid_count = 0
         self._config_objects = []
         self._init_cmds = []
@@ -689,7 +581,6 @@ class MCU:
             self._check_restart("CRC mismatch")
             raise error("MCU '%s' CRC does not match config" % (self._name,))
         move_count = config_params['move_count']
-        self.logger.info("Configured MCU '%s' (%d moves)", self._name, move_count)
         msgparser = self._serial.msgparser
         info = [
             "Configured MCU '%s' (%d moves)" % (self._name, move_count),
@@ -734,15 +625,8 @@ class MCU:
         time.sleep(1) # give a little delay to receive shutdown
     # Config creation helpers
     def setup_pin(self, pin_params):
-        pcs = {
-            'stepper'     : MCU_stepper,
-            'endstop'     : MCU_endstop,
-            'digital_out' : MCU_digital_out,
-            'pwm'         : MCU_pwm,
-            'adc'         : MCU_adc,
-            'thermocouple': MCU_thermocouple,
-            'spibus'      : MCU_spibus,
-        }
+        pcs = {'stepper': MCU_stepper, 'endstop': MCU_endstop,
+               'digital_out': MCU_digital_out, 'pwm': MCU_pwm, 'adc': MCU_adc}
         pin_type = pin_params['type']
         if pin_type not in pcs:
             raise pins.error("pin type %s not supported on mcu" % (pin_type,))

@@ -1,251 +1,214 @@
+// Basic support for common SPI controlled thermocouple chips
+//
+// Copyright (C) 2018  Petri Honkala <cruwaller@gmail.com>
+// Copyright (C) 2018  Kevin O'Connor <kevin@koconnor.net>
+//
+// This file may be distributed under the terms of the GNU GPLv3 license.
 #include "autoconf.h"
 
-#include "board/misc.h"
-#include "board/gpio.h"   // gpio_out_write
-#include "board/irq.h"    // irq_disable
-#include "generic/spi.h"
-
-#include "basecmd.h"      // oid_alloc
-#include "command.h"      // DECL_COMMAND
-#include "sched.h"        // DECL_TASK
+#include <string.h> // memcpy
+#include "board/irq.h" // irq_disable
+#include "basecmd.h" // oid_alloc
+#include "byteorder.h" // be32_to_cpu
+#include "command.h" // DECL_COMMAND
+#include "sched.h" // DECL_TASK
+#include "spicmds.h" // spidev_transfer
 
 #if (CONFIG_SIMULATOR == 1)
-#define SPI_READ_CMD (0x40)
-#else
-#define SPI_READ_CMD (0x00)
+#include <stdio.h>
 #endif
 
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-#include <stdio.h>
-extern int SIMULATOR_MODE;
-#undef SPI_READ_CMD
-#define SPI_READ_CMD (SIMULATOR_MODE ? 0x40 : 0x00)
-#endif
+#define USE_FAULTS 0
+
+enum {
+    TS_CHIP_MAX31855 = 1 << 0,
+    TS_CHIP_MAX31856 = 1 << 1,
+    TS_CHIP_MAX31865 = 1 << 2
+};
+
+// (TS_CHIP_MAX31855 | TS_CHIP_MAX31856 | TS_CHIP_MAX31865)
+#define TS_CHIPS_ALL 0x7
+
+DECL_CONSTANT(THERMOCOUPLE_TYPE_MAX31855, TS_CHIP_MAX31855);
+DECL_CONSTANT(THERMOCOUPLE_TYPE_MAX31856, TS_CHIP_MAX31856);
+DECL_CONSTANT(THERMOCOUPLE_TYPE_MAX31865, TS_CHIP_MAX31865);
+
+DECL_CONSTANT(THERMOCOUPLE_TYPES, TS_CHIPS_ALL);
 
 struct thermocouple_spi {
     struct timer timer;
     uint32_t rest_time;
-    uint32_t next_begin_time;     // Start time
-    volatile uint32_t value;      // Stores the thermocouple/RTD ADC output
     uint32_t min_value;           // Min allowed ADC value
     uint32_t max_value;           // Max allowed ADC value
-    uint32_t fault_mask;          // Fault check mask
-    struct spi_config spi_config; // SPI peripheral configuration
-    uint8_t  read_cmd;            // SPI command to get ADC result
-    uint8_t  read_bytes;          // Num of bytes to be read
-    uint8_t  fault_cmd;           // SPI command to get fault register (0 = disabled)
-    uint8_t  fault_value;         // fault register value
-    struct gpio_out pin;
-    uint8_t flag : 8;
+    struct spidev_s *spi;
+    uint8_t chip_type, flags;
 };
 
 enum {
-    INIT = 1 << 0,
-    VALUE = 1 << 1,
-    FAULT = 1 << 2,
-    READY = 1 << 3,
+    TS_PENDING = 1,
 };
 
 static struct task_wake thermocouple_wake;
 
-
-static uint32_t read_data_len(uint8_t len) {
-    uint32_t value = 0;
-    while (len--)
-    {
-        value <<= 8;
-        value += spi_transfer(SPI_READ_CMD);
-    }
-    return value;
-}
-
-#define POLL_DELAY timer_from_us(5)
-
 static uint_fast8_t thermocouple_event(struct timer *timer) {
     struct thermocouple_spi *spi = container_of(
             timer, struct thermocouple_spi, timer);
-#if 0
-    if (unlikely(!spi_set_config(spi->spi_config))) {
-        spi->timer.waketime += POLL_DELAY;
-        return SF_RESCHEDULE;
-    }
-    gpio_out_write(spi->pin, 0); // Enable slave
-    if (likely(spi->read_cmd != 0xFF))
-        spi_transfer(spi->read_cmd);
-    spi->value = read_data_len(spi->read_bytes);
-
-    if (spi->fault_cmd) {
-        spi_transfer(spi->fault_cmd);
-        spi->fault_value = spi_transfer(0x00);
-    }
-    spi_set_ready();
-    gpio_out_write(spi->pin, 1); // Disable slave
-    // ----------------------------------------
-    /* Trigger task to send result */
+    // Trigger task to read and send results
     sched_wake_task(&thermocouple_wake);
-    /* Order next read */
-    spi->next_begin_time += spi->rest_time;
-    spi->timer.waketime = spi->next_begin_time;
-    // ----------------------------------------
-
-#else
-
-    uint32_t waketime = spi->timer.waketime + POLL_DELAY;
-    if (likely(spi->flag & READY)) {
-        spi_set_ready();
-        gpio_out_write(spi->pin, 1); // Disable slave
-        // ----------------------------------------
-        /* Trigger task to send result */
-        sched_wake_task(&thermocouple_wake);
-        /* Order next read */
-        spi->next_begin_time += spi->rest_time;
-        waketime = spi->next_begin_time;
-        // ----------------------------------------
-
-    } else if (likely(spi->flag == FAULT)) {
-        spi_transfer(spi->fault_cmd);
-        spi->fault_value = spi_transfer(0x00);
-        spi->flag = READY;
-
-    } else if (likely(spi->flag & VALUE)) {
-        spi->value = read_data_len(spi->read_bytes);
-        spi->flag = spi->fault_cmd ? FAULT : READY;
-        waketime = timer_read_time() + POLL_DELAY;
-
-    } else if (likely(spi->flag & INIT)) {
-        if (likely(spi_set_config(spi->spi_config))) {
-            gpio_out_write(spi->pin, 0); // Enable slave
-            if (likely(spi->read_cmd != 0xFF))
-                spi_transfer(spi->read_cmd);
-            spi->flag = VALUE;
-        }
-    }
-    spi->timer.waketime = waketime;
-#endif
+    spi->flags |= TS_PENDING;
+    spi->timer.waketime += spi->rest_time;
     return SF_RESCHEDULE;
 }
 
-/* Configure thermocouple / RTD reader and let it do the task */
-void command_config_thermocouple(uint32_t *args) {
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-    printf("config_thermocouple oid=%u cmd=%u clock=%u min_value=%hu max_value=%hu"
-           " read_bytes=%u fault_mask=%u rest_ticks=%u fault_cmd=%u config_len=%u\n",
-           args[0], args[1], args[2], args[3], args[4], args[5], args[6],
-           args[7], args[8], args[9]);
-#endif
-    struct thermocouple_spi *spi =
-        oid_lookup(args[0], command_config_thermocouple);
-
-    spi->read_cmd        = args[1];
-    spi->next_begin_time = args[2];
-    spi->min_value       = args[3];
-    spi->max_value       = args[4];
-    spi->read_bytes      = args[5];
-    spi->fault_mask      = args[6];
-    spi->rest_time       = args[7];
-    spi->fault_cmd       = args[8];
-    spi->flag = INIT;
-
-    /* Configure reader here... */
-    uint8_t len = args[9];
-    uint8_t *msg = (uint8_t*)(size_t)args[10];
-    if (*msg != 0 && 1 < len) {
-        while (!spi_set_config(spi->spi_config));
-        gpio_out_write(spi->pin, 0); // Enable slave
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-        printf("    config: ");
-#endif
-        while (len--) {
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-            printf("0x%X,", *msg);
-#endif
-            spi_transfer((uint8_t)(*msg++));
-        }
-        spi_set_ready();
-        gpio_out_write(spi->pin, 1); // Disable slave
-    }
-
-    /* Configure timer */
-    sched_del_timer(&spi->timer);
-    spi->timer.waketime = spi->next_begin_time;
-
-    /* Enable read timer */
-    sched_add_timer(&spi->timer);
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-    printf("    ...ready\n");
-#endif
+void
+command_config_thermocouple(uint32_t *args)
+{
+    uint8_t chip_type = args[2];
+    if (chip_type > TS_CHIP_MAX31865 || !chip_type)
+        shutdown("Invalid thermocouple chip type");
+    struct thermocouple_spi *spi = oid_alloc(
+        args[0], command_config_thermocouple, sizeof(*spi));
+    spi->timer.func = thermocouple_event;
+    spi->spi = spidev_oid_lookup(args[1]);
+    spi->chip_type = chip_type;
 }
 DECL_COMMAND(command_config_thermocouple,
-             "config_thermocouple oid=%c cmd=%c clock=%u"
-             " min_value=%u max_value=%u read_bytes=%c fault_mask=%u"
-             " rest_ticks=%u fault_cmd=%c cfg=%*s");
+             "config_thermocouple oid=%c spi_oid=%c chip_type=%c");
 
-/* Config slave select pin */
-void command_config_thermocouple_ss_pin(uint32_t *args) {
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-    printf("config_thermocouple_ss_pin oid=%u pin=%u spi_mode=%u spi_speed=%u\n",
-           args[0], args[1], args[2], args[3]);
-#endif
-    struct thermocouple_spi *spi =
-        oid_alloc(args[0],
-                  command_config_thermocouple,
-                  sizeof(*spi));
-    spi->timer.func = thermocouple_event;
-    spi->pin        = gpio_out_setup(args[1], 1); // CS pin
-    spi->spi_config = spi_get_config(args[2], args[3]);
+void
+command_query_thermocouple(uint32_t *args)
+{
+    struct thermocouple_spi *spi = oid_lookup(
+        args[0], command_config_thermocouple);
+
+    sched_del_timer(&spi->timer);
+    spi->timer.waketime = args[1];
+    if (! spi->timer.waketime)
+        return;
+    spi->rest_time = args[2];
+    spi->min_value = args[3];
+    spi->max_value = args[4];
+    sched_add_timer(&spi->timer);
 }
-// TODO : Add support for inverted pin!
-DECL_COMMAND(command_config_thermocouple_ss_pin,
-             "config_thermocouple_ss_pin oid=%c pin=%u spi_mode=%u spi_speed=%u");
+DECL_COMMAND(command_query_thermocouple,
+             "query_thermocouple oid=%c clock=%u rest_ticks=%u"
+             " min_value=%u max_value=%u");
 
+static void
+thermocouple_respond(struct thermocouple_spi *spi, uint32_t next_begin_time
+                     , uint32_t value, uint8_t fault, uint8_t oid)
+{
+    /* check the result and stop if below or above allowed range */
+    if (value < spi->min_value || value > spi->max_value) {
+#if (CONFIG_SIMULATOR == 1)
+        printf("Thermocouple ADC out of range! %u <= %u <= %u\n",
+               spi->min_value, value, spi->max_value);
+#endif
+        try_shutdown("Thermocouple ADC out of range");
+    }
+    sendf("thermocouple_result oid=%c next_clock=%u value=%u fault=%c",
+          oid, next_begin_time, value, fault);
+}
 
-/* task to send response */
-void thermocouple_task(void) {
+/* Logic of thermocouple K readers MAX6675 and MAX31855 are same */
+static void
+thermocouple_handle_max31855(struct thermocouple_spi *spi
+                             , uint32_t next_begin_time, uint8_t oid)
+{
+#if (CONFIG_SIMULATOR == 1)
+    uint8_t msg[4] = { 0x02, 0x80, 0x00, 0x00 };
+#else
+    uint8_t msg[4] = { 0x00, 0x00, 0x00, 0x00 };
+#endif
+    spidev_transfer(spi->spi, 1, sizeof(msg), msg);
+    uint32_t value;
+    memcpy(&value, msg, sizeof(value));
+    value = be32_to_cpu(value);
+    thermocouple_respond(spi, next_begin_time, value, 0, oid);
+    // Kill after data send, host decode an error
+    if (value & 0x04)
+        try_shutdown("Thermocouple reader fault");
+}
+
+#define MAX31856_LTCBH_REG 0x0C
+#define MAX31856_SR_REG 0x0F
+
+static void
+thermocouple_handle_max31856(struct thermocouple_spi *spi
+                             , uint32_t next_begin_time, uint8_t oid)
+{
+#if (CONFIG_SIMULATOR == 1)
+    uint8_t msg[4] = { MAX31856_LTCBH_REG, 0x02, 0x80, 0x00 };
+#else
+    uint8_t msg[4] = { MAX31856_LTCBH_REG, 0x00, 0x00, 0x00 };
+#endif
+    spidev_transfer(spi->spi, 1, sizeof(msg), msg);
+    uint32_t value;
+    memcpy(&value, msg, sizeof(value));
+    value = be32_to_cpu(value) & 0x00ffffff;
+    // Read faults
+    msg[0] = MAX31856_SR_REG;
+    msg[1] = 0x00;
+#if (USE_FAULTS)
+    spidev_transfer(spi->spi, 1, 2, msg);
+#endif
+    thermocouple_respond(spi, next_begin_time, value, msg[1], oid);
+}
+
+#define MAX31865_RTDMSB_REG 0x01
+#define MAX31865_FAULTSTAT_REG 0x07
+
+static void
+thermocouple_handle_max31865(struct thermocouple_spi *spi
+                             , uint32_t next_begin_time, uint8_t oid)
+{
+#if (CONFIG_SIMULATOR == 1)
+    uint8_t msg[4] = { MAX31865_RTDMSB_REG, 0x40, 0x40, 0x40 };
+#else
+    uint8_t msg[4] = { MAX31865_RTDMSB_REG, 0x00, 0x00, 0x00 };
+#endif
+    spidev_transfer(spi->spi, 1, 3, msg);
+    uint32_t value;
+    memcpy(&value, msg, sizeof(value));
+    value = (be32_to_cpu(value) >> 8) & 0xffff;
+    // Read faults
+    msg[0] = MAX31865_FAULTSTAT_REG;
+    msg[1] = 0x00;
+#if (USE_FAULTS)
+    spidev_transfer(spi->spi, 1, 2, msg);
+#endif
+    thermocouple_respond(spi, next_begin_time, value, msg[1], oid);
+    // Kill after data send, host decode an error
+    if (value & 0x0001)
+        try_shutdown("Thermocouple reader fault");
+}
+
+// task to read thermocouple and send response
+void
+thermocouple_task(void)
+{
     if (!sched_check_wake(&thermocouple_wake))
         return;
     uint8_t oid;
     struct thermocouple_spi *spi;
     foreach_oid(oid, spi, command_config_thermocouple) {
+        if (!(spi->flags & TS_PENDING))
+            continue;
         irq_disable();
-        uint32_t const value           = spi->value;
-        uint32_t const next_begin_time = spi->next_begin_time;
-        uint8_t  const fault           = spi->fault_value;
-        spi->flag = INIT;
+        uint32_t next_begin_time = spi->timer.waketime;
+        spi->flags &= ~TS_PENDING;
         irq_enable();
-
-        // ----------------------------------------
-        /* check the faults and stop  */
-        if (value & spi->fault_mask) {
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-            printf("thermocouple error!\n");
-#endif
-            shutdown("Thermocouple reader fault");
+        switch (spi->chip_type) {
+        case TS_CHIP_MAX31855:
+            thermocouple_handle_max31855(spi, next_begin_time, oid);
+            break;
+        case TS_CHIP_MAX31856:
+            thermocouple_handle_max31856(spi, next_begin_time, oid);
+            break;
+        case TS_CHIP_MAX31865:
+            thermocouple_handle_max31865(spi, next_begin_time, oid);
+            break;
         }
-        // ----------------------------------------
-        /* check the result and stop if below or above allowed range */
-        if (value < spi->min_value || value > spi->max_value) {
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-            printf("thermocouple error %u (min: %u, max: %u)\n",
-                   value, spi->min_value, spi->max_value);
-#endif
-            shutdown("Thermocouple ADC out of range");
-        }
-
-        sendf("thermocouple_result oid=%c next_clock=%u value=%u fault=%c",
-              oid, next_begin_time, value, fault);
     }
 }
 DECL_TASK(thermocouple_task);
-
-/* Shutdown task */
-void thermocouple_shutdown(void) {
-    uint8_t oid;
-    struct thermocouple_spi *spi;
-    foreach_oid(oid, spi, command_config_thermocouple) {
-        gpio_out_write(spi->pin, 1); // Disable slaves
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-        printf("thermocouple shutdown! oid %u\n", oid);
-#endif
-    }
-}
-DECL_SHUTDOWN(thermocouple_shutdown);

@@ -4,6 +4,7 @@
 //
 // This file may be distributed under the terms of the GNU GPLv3 license.
 
+#include "autoconf.h" // CONFIG_*
 #include <string.h> // memset
 #include "basecmd.h" // oid_lookup
 #include "board/irq.h" // irq_save
@@ -11,7 +12,9 @@
 #include "board/pgm.h" // READP
 #include "command.h" // DECL_COMMAND
 #include "sched.h" // sched_clear_shutdown
-
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+#include <stdio.h>
+#endif
 
 /****************************************************************
  * Low level allocation
@@ -62,10 +65,10 @@ struct move_freed {
     struct move_freed *next;
 };
 
-static struct move_freed *move_free_list;
-static void *move_list;
-static uint16_t move_count;
-static uint8_t move_item_size;
+static struct move_freed *move_free_list = NULL;
+static void *move_list = NULL;
+static uint16_t move_count = 0;
+static uint8_t move_item_size = 0;
 
 // Is the config and move queue finalized?
 static int
@@ -143,14 +146,19 @@ struct oid_s {
     void *type, *data;
 };
 
-static struct oid_s *oids;
-static uint8_t oid_count;
+static struct oid_s *oids = NULL;
+static uint8_t oid_count = 0;
 
 void *
 oid_lookup(uint8_t oid, void *type)
 {
-    if (oid >= oid_count || type != oids[oid].type)
+    if (oid >= oid_count || type != oids[oid].type) {
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+        printf("oid_count %u <= oid %u\n", oid_count, oid);
+        printf("type %p != oids[oid].type %p\n", type, oids[oid].type);
+#endif
         shutdown("Invalid oid type");
+    }
     return oids[oid].data;
 }
 
@@ -196,7 +204,7 @@ DECL_COMMAND(command_allocate_oids, "allocate_oids count=%c");
  * Config CRC
  ****************************************************************/
 
-static uint32_t config_crc;
+static uint32_t config_crc = 0;
 
 void
 command_get_config(uint32_t *args)

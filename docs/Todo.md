@@ -11,10 +11,6 @@ Host user interaction
 
 * Improve gcode interface:
 
- * Provide a better way to handle print nozzle z offsets. The M206
-   command is cryptic to use and it is too easy to set the value
-   incorrectly or to forget to set it.
-
  * Provide a way to temporarily disable endstop checks so that a user
    can issue commands that potentially move the head past
    position_min/position_max.
@@ -43,10 +39,6 @@ Safety features
    enable runtime endstop detection. (However, it's unclear if runtime
    endstop detection is a good idea because of spurious signals caused
    by electrical noise.)
-
-* Support validating that heaters are heating at expected rates. This
-  can be useful to detect a sensor failure (eg, thermistor short) that
-  could otherwise cause the PID to command excessive heating.
 
 Testing features
 ================

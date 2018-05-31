@@ -6,14 +6,14 @@
 
 #include "autoconf.h"
 #include </usr/include/sched.h> // sched_setscheduler
-#include <stdio.h>  // fprintf
+#include <stdio.h> // fprintf
 #include <string.h> // memset
 #include <unistd.h> // getopt
 #include <ctype.h>  // isprint
 #include "board/misc.h" // console_sendf
-#include "command.h"    // DECL_CONSTANT
-#include "internal.h"   // console_setup
-#include "sched.h"      // sched_main
+#include "command.h" // DECL_CONSTANT
+#include "internal.h" // console_setup
+#include "sched.h" // sched_main
 
 DECL_CONSTANT(MCU, CONFIG_MCU);
 

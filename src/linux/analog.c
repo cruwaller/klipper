@@ -13,7 +13,6 @@
 #include "gpio.h" // gpio_adc_setup
 #include "internal.h" // report_errno
 #include "sched.h" // sched_shutdown
-#include "generic/spi.h"
 
 #if (CONFIG_SIMULATOR == 1)
 #include <stdio.h>
@@ -101,12 +100,21 @@ gpio_adc_cancel_sample(struct gpio_adc g)
 /********************************************************************************/
 
 struct gpio_out gpio_out_setup(uint8_t pin, uint8_t val) {
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    //printf("gpio_out_setup: pin %d value %u\n", pin, val);
+#endif
     return (struct gpio_out){.fd = pin, .val = val};
 }
 void gpio_out_toggle(struct gpio_out g) {
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    //printf("gpio_out_toggle: pin %d\n", g.fd);
+#endif
     (void)g;
 }
 void gpio_out_write(struct gpio_out g, uint8_t val) {
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    //printf("gpio_out_write: pin %d value %u\n", g.fd, val);
+#endif
     (void)g;
     (void)val;
 }
@@ -114,9 +122,15 @@ void gpio_out_write(struct gpio_out g, uint8_t val) {
 /********************************************************************************/
 
 struct gpio_in gpio_in_setup(uint8_t pin, int8_t pull_up) {
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    //printf("gpio_in_setup: pin %d pull_up %u\n", pin, pull_up);
+#endif
     return (struct gpio_in){.fd = pin, .val = !pull_up};
 }
 uint8_t gpio_in_read(struct gpio_in g) {
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    //printf("gpio_in_read: pin %d value %u\n", g.fd, g.val);
+#endif
     return g.val; //(g.fd & 1);
 }
 
@@ -129,49 +143,6 @@ struct gpio_pwm gpio_pwm_setup(uint8_t pin, uint32_t cycle_time, uint8_t val) {
 void gpio_pwm_write(struct gpio_pwm g, uint8_t val) {
     (void)g;
     (void)val;
-}
-
-/********************************************************************************/
-struct spi_config spi_basic_config = {.cfg = 0};
-
-void spi_init(void) {
-    spi_basic_config = spi_get_config(0, 4000000);
-}
-DECL_INIT(spi_init);
-
-struct spi_config spi_get_config(uint8_t const mode, uint32_t const speed) {
-    (void)mode; (void)speed;
-    return spi_basic_config;
-}
-static uint8_t volatile reserved = 0;
-uint8_t spi_set_config(struct spi_config const config) {
-    (void)config;
-    if (reserved) return 0;
-    return ++reserved;
-}
-void spi_set_ready(void) {
-    reserved = 0;
-}
-void spi_transfer_len(char *data, uint8_t len) {
-    (void)data; (void)len;
-}
-uint8_t spi_transfer(uint8_t const data) {
-    return data;
-}
-
-/********************************************************************************/
-
-static uint8_t volatile sent_value = 0;
-void spi_send(uint8_t const data) {
-    sent_value = data;
-}
-uint8_t spi_read(void) {
-    return sent_value;
-}
-uint8_t spi_read_rdy(void) {
-    //return 1;
-    sent_value ^= 1;
-    return sent_value;
 }
 
 /********************************************************************************/

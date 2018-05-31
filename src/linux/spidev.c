@@ -3,11 +3,13 @@
 // Copyright (C) 2017  Kevin O'Connor <kevin@koconnor.net>
 //
 // This file may be distributed under the terms of the GNU GPLv3 license.
+#include "autoconf.h"
 
 #include <fcntl.h> // open
 #include <stdio.h> // snprintf
 #include <unistd.h> // write
 #include "command.h" // DECL_COMMAND
+#include "gpio.h" // spi_setup
 #include "internal.h" // report_errno
 #include "sched.h" // shutdown
 
@@ -47,22 +49,32 @@ spi_open(uint32_t bus, uint32_t dev)
     return fd;
 }
 
-static void
-spi_write(int fd, char *data, int len)
+struct spi_config
+spi_setup(uint32_t bus, uint8_t mode, uint32_t rate)
 {
-    int ret = write(fd, data, len);
+    (void)mode, (void)rate;
+#if (!CONFIG_SIMULATOR)
+    int bus_id = (bus >> 8) & 0xff, dev_id = bus & 0xff;
+    int fd = spi_open(bus_id, dev_id);
+    return (struct spi_config) { fd };
+#else
+    (void)bus;
+    return (struct spi_config) { 0 };
+#endif
+}
+
+void
+spi_transfer(struct spi_config config, uint8_t receive_data
+             , uint8_t len, uint8_t *data)
+{
+    (void)receive_data;
+#if (!CONFIG_SIMULATOR)
+    int ret = write(config.fd, data, len);
     if (ret < 0) {
         report_errno("write spi", ret);
         shutdown("Unable to write to spi");
     }
+#else
+    (void)config, (void)len, (void)data;
+#endif
 }
-
-void
-command_send_spi(uint32_t *args)
-{
-    int fd = spi_open(args[0], args[1]);
-    uint8_t len = args[2];
-    char *msg = (void*)(size_t)args[3];
-    spi_write(fd, msg, len);
-}
-DECL_COMMAND(command_send_spi, "send_spi bus=%u dev=%u msg=%*s");
