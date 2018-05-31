@@ -34,13 +34,6 @@ def beaglebone_pins():
     gpios.update({"AIN%d" % i: i+4*32 for i in range(8)})
     return gpios
 
-def lpc_arm_port_pins(port_count, bit_count=32):
-    pins = {}
-    for port in range(port_count):
-        for portbit in range(bit_count):
-            pins['P%u.%u' % (port, portbit)] = (port * bit_count) + portbit
-    return pins
-
 def esp_pins(port_count):
     pins = {}
     for port in range(port_count):
@@ -73,7 +66,6 @@ MCU_PINS = {
     "lpc176x": lpc_pins(),
     "pru": beaglebone_pins(),
     "linux": {"analog%d" % i: i for i in range(8)}, # XXX
-    "lpc176x": lpc_arm_port_pins(5, 32),
     "esp32": esp_pins_io_expanders(),
 }
 
@@ -129,10 +121,6 @@ Arduino_Due_analog = [
     "PB19", "PB20"
 ]
 
-Arduino_ESP_32 = [
-]
-Arduino_ESP_32_analog = [
-]
 
 Arduino_from_mcu = {
     "atmega168": (Arduino_standard, Arduino_analog_standard),
