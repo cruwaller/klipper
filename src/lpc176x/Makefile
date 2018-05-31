@@ -4,7 +4,8 @@
 CROSS_PREFIX=arm-none-eabi-
 
 CFLAGS += -mthumb -mcpu=cortex-m3 -O2
-CFLAGS += -ffunction-sections -fdata-sections  -fno-exceptions -fno-delete-null-pointer-checks
+CFLAGS += -flto -fwhole-program -fno-use-linker-plugin
+CFLAGS += -fno-exceptions -fno-delete-null-pointer-checks
 CFLAGS += -Ilib/lpc176x/device -Ilib/lpc176x/device -Ilib/lpc176x/cmsis
 
 CFLAGS_klipper.elf += -T $(OUT)LPC1768.ld
@@ -23,7 +24,7 @@ asm-y := ../lib/lpc176x/device/TOOLCHAIN_GCC_ARM/startup_LPC17xx.S
 
 target-y := $(OUT)LPC1768.ld $(target-y)
 
-$(OUT)LPC1768.ld: lib/lpc176x/device/TOOLCHAIN_GCC_ARM/LPC1768.ld $(OUT)board-link
+$(OUT)LPC1768.ld: lib/lpc176x/device/TOOLCHAIN_GCC_ARM/LPC1768.ld  $(OUT)autoconf.h $(OUT)board-link
 	@echo "  Preprocessing $@"
 	$(Q)$(CPP) -P -MD -MT $@ -DMBED_APP_START=$(CONFIG_FLASH_START) -DMBED_APP_SIZE="(512K - $(CONFIG_FLASH_START))" $< -o $@
 

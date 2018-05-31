@@ -26,7 +26,6 @@ source "src/lpc176x/Kconfig"
 source "src/stm32f1/Kconfig"
 source "src/pru/Kconfig"
 source "src/linux/Kconfig"
-source "src/lpc176x/Kconfig"
 source "src/simulator/Kconfig"
 
 # The HAVE_GPIO_x options allow boards to disable support for some
