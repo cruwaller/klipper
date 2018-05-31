@@ -202,9 +202,11 @@ class ToolHead:
             'max_accel_to_decel', default=None
             , above=0., maxval=self.max_accel)
         if max_accel_to_decel is not None:
-            self.max_accel_to_decel = max_accel_to_decel
+            self.requested_accel_to_decel = max_accel_to_decel
         else:
-            self.max_accel_to_decel = self.max_accel * max_accel_to_decel_ratio
+            self.requested_accel_to_decel = self.max_accel * max_accel_to_decel_ratio
+        self.max_accel_to_decel = min(self.requested_accel_to_decel,
+                                      self.max_accel)
         self.junction_deviation = config.getfloat(
             'junction_deviation', 0.02, minval=0.)
         self.config_max_velocity = self.max_velocity
