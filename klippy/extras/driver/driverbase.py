@@ -71,6 +71,7 @@ class SpiDriver(DriverBase):
         self.transfer_cmd = self.mcu.lookup_command(
             "spi_transfer oid=%c data=%*s")
         self._transfer = self.__transfer
+        self._build_config()
     def get_mcu(self):
         return self.mcu
     def get_oid(self):
@@ -108,3 +109,5 @@ class SpiDriver(DriverBase):
         raise NotImplementedError("This need to be implemented in parent class")
     def _init_driver(self):
         raise NotImplementedError("This need to be implemented in parent class")
+    def _build_config(self):
+        pass
