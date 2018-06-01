@@ -167,7 +167,7 @@ thermocouple_handle_max31865(struct thermocouple_spi *spi
 #else
     uint8_t msg[4] = { MAX31865_RTDMSB_REG, 0x00, 0x00, 0x00 };
 #endif
-    spidev_transfer(spi->spi, 1, 3, msg);
+    spidev_transfer(spi->spi, 1, sizeof(msg), msg);
     uint32_t value;
     memcpy(&value, msg, sizeof(value));
     value = (be32_to_cpu(value) >> 8) & 0xffff;
