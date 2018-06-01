@@ -59,6 +59,8 @@ class VirtualSD:
         return {'progress': progress}
     def register_done_cb(self, cb):
         self.done_cb.append(cb)
+    def get_progress(self):
+        return self.file_position/self.file_size
     # G-Code commands
     def cmd_error(self, params):
         raise self.gcode.error("SD write not supported")
