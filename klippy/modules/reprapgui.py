@@ -178,7 +178,7 @@ class LogoutHandler(BaseHandler):
 
 class rrHandler(tornado.web.RequestHandler):
     def initialize(self, parent):
-        self.parent = _PARENT #parent
+        self.parent = _PARENT # parent
         self.sd_path = parent.sd.sdcard_dirname
         self.logger = parent.logger
 
@@ -196,7 +196,7 @@ class rrHandler(tornado.web.RequestHandler):
             # 0 = success, 1 = wrong passwd, 2 = No more HTTP sessions available
             respdata["sessionTimeout"] = 30000 # ms
             # duetwifi10, duetethernet10, radds15, alligator2, duet06, duet07, duet085, default: unknown
-            respdata["boardType"] = "unknown" #"radds15"
+            respdata["boardType"] = "unknown" # "radds15"
 
         #### rr_disconnect
         elif "rr_disconnect" in path:
@@ -209,7 +209,7 @@ class rrHandler(tornado.web.RequestHandler):
             if (_type < 1 or _type > 3):
                 _type = 1
             # get status from Klippy
-            respdata["err"] = 0;
+            respdata["err"] = 0
             respdata.update(self.parent.web_getstatus(_type))
 
         #### rr_gcode?gcode=XXX
@@ -250,7 +250,7 @@ class rrHandler(tornado.web.RequestHandler):
             else:
                 if "G10" in gcode:
                     # G10 - retract if no params (G10 Pnnn Xnnn Ynnn Znnn Rnnn Snnn)
-                    if bool(re.search('P|X|Y|Z|R|S', gcode)):
+                    if bool(re.search("[PXYZRS]", gcode)):
                         gcode = gcode.replace('G10', 'M1010') # M1000 + cmd nbr for RepRap
                 if "M106" in gcode:
                     gcode = gcode.replace('M106', 'M1106')
@@ -301,7 +301,7 @@ class rrHandler(tornado.web.RequestHandler):
                         os.remove(os.path.join(root, name))
                     for name in dirs:
                         os.rmdir(os.path.join(root, name))
-                if (os.path.isdir(directory)):
+                if os.path.isdir(directory):
                     os.rmdir(directory)
                 else:
                     os.remove(directory)
@@ -339,7 +339,7 @@ class rrHandler(tornado.web.RequestHandler):
                     if os.path.isfile(filepath):
                         data = {
                             "type" : "f",
-                            "name" : os.path.relpath(filepath, path), #os.path.basename(filepath),
+                            "name" : os.path.relpath(filepath, path),
                             "size" : os.path.getsize(filepath),
                             "date" : time.strftime("%Y-%m-%dT%H:%M:%S",
                                                    time.gmtime(os.path.getmtime(filepath))),
@@ -348,7 +348,7 @@ class rrHandler(tornado.web.RequestHandler):
                     elif os.path.isdir(filepath):
                         data = {
                             "type" : "d",
-                            "name" : os.path.relpath(filepath, path), #os.path.basename(filepath),
+                            "name" : os.path.relpath(filepath, path),
                             "size" : os.path.getsize(filepath),
                             "date" : time.strftime("%Y-%m-%dT%H:%M:%S",
                                                    time.gmtime(os.path.getmtime(filepath))),
@@ -360,7 +360,6 @@ class rrHandler(tornado.web.RequestHandler):
         elif "rr_fileinfo" in path:
             name = self.get_argument('name', default=None)
             #self.logger.debug("rr_fileinfo: {} , name: {}".format(self.request.uri, name))
-            path = None
             is_printing = False
             if name is None:
                 try:
@@ -587,14 +586,6 @@ class RepRapGuiModule(object):
         printer.add_object("webgui", self)
         self.logger.info("RepRep Web GUI loaded")
 
-    def printer_state(self, state):
-        if state == 'shutdown':
-            pass
-        elif state == 'connect':
-            pass
-        elif state == 'ready':
-            pass
-
     def Tornado_LoggerCb(self, req):
         values  = [req.request.remote_ip, req.request.method, req.request.uri]
         self.logger_tornado.debug(" ".join(values))
@@ -717,7 +708,7 @@ class RepRapGuiModule(object):
             "axisMins"            : [ s.position_min for s in steppers ],
             "axisMaxes"           : [ s.position_max for s in steppers ],
             "accelerations"       : [ toolhead.max_accel ] * (num_steppers + num_extruders),
-            "currents"            : currents, #[1.00] * (num_steppers + num_extruders),
+            "currents"            : currents, # [1.00] * (num_steppers + num_extruders),
             "firmwareElectronics" : util.get_cpu_info(),
             "firmwareName"        : "Klipper",
             "firmwareVersion"     : self.printer.get_start_args().get('software_version'),
@@ -770,7 +761,7 @@ class RepRapGuiModule(object):
         }
 
         status_block["temps"] = {}
-        if (heatbed is not None):
+        if heatbed is not None:
             status_block["temps"].update( {
                 "bed": {
                     "active"  : float("%.2f" % heatbed.target_temp),
@@ -816,7 +807,7 @@ class RepRapGuiModule(object):
             },
         } )
 
-        if (_type == 2):
+        if _type == 2:
             max_temp  = 0.0
             cold_temp = 0.0
             if hasattr(toolhead.extruder, "get_heater"):
@@ -854,7 +845,7 @@ class RepRapGuiModule(object):
             } )
 
             tools = []
-            for key,extr in _extrs.items():
+            for key, extr in _extrs.items():
                 values = {
                     "number"   : extr.index,
                     "name"     : extr.name,
@@ -865,7 +856,7 @@ class RepRapGuiModule(object):
                 tools.append(values)
             status_block["tools"] = tools
 
-        elif (_type == 3):
+        elif _type == 3:
             # TODO : update at some day
             status_block.update( {
                 "currentLayer"       : 0,
