@@ -344,11 +344,7 @@ gpio_adc_read(struct gpio_adc g)
 {
     (void)g;
     last_analog_read = ADC_DUMMY;
-#if (CONFIG_SIMULATOR == 1)
-    return (uint16_t)(870);
-#else
     return ADC;
-#endif
 }
 
 // Cancel a sample that may have been started with gpio_adc_sample()
