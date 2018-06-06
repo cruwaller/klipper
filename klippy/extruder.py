@@ -28,6 +28,7 @@ class PrinterExtruder:
             'max_extrude_cross_section', 4. * self.nozzle_diameter**2
             , above=0.)
         self.max_extrude_ratio = max_cross_section / self.filament_area
+        self.logger.info("Extruder max_extrude_ratio=%.6f", self.max_extrude_ratio)
         self.toolhead = toolhead = printer.lookup_object('toolhead')
         max_velocity, max_accel = toolhead.get_max_velocity()
         self.max_e_velocity = config.getfloat(
