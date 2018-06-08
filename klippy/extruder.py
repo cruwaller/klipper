@@ -55,9 +55,10 @@ class PrinterExtruder:
             gcode.register_mux_command("SET_PRESSURE_ADVANCE", "EXTRUDER", None,
                                        self.cmd_default_SET_PRESSURE_ADVANCE,
                                        desc=self.cmd_SET_PRESSURE_ADVANCE_help)
-        gcode.register_mux_command("SET_PRESSURE_ADVANCE", "EXTRUDER", self.name,
-                                   self.cmd_SET_PRESSURE_ADVANCE,
-                                   desc=self.cmd_SET_PRESSURE_ADVANCE_help)
+        for key in [self.name.upper(), str(self.index)]:
+            gcode.register_mux_command("SET_PRESSURE_ADVANCE", "EXTRUDER", key,
+                                       self.cmd_SET_PRESSURE_ADVANCE,
+                                       desc=self.cmd_SET_PRESSURE_ADVANCE_help)
         self.logger.debug("index={}, heater={}".
                           format(self.index, self.heater.name))
     def get_index(self):
