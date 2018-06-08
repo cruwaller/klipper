@@ -43,6 +43,7 @@ class SpiDriver(DriverBase):
         cs_pin = config.get('ss_pin')
         spi_mode = config.getint('spi_mode', 3, minval=0, maxval=3)
         spi_speed = config.getint('spi_speed', 2000000)
+        spi_bus = config.getint('spi_bus', 0)
         # setup SPI pins and configure mcu
         ppins = printer.lookup_object('pins')
         cs_pin_params = ppins.lookup_pin('digital_out', cs_pin)
@@ -51,8 +52,10 @@ class SpiDriver(DriverBase):
         self.mcu = mcu = cs_pin_params['chip']
         self._oid = oid = mcu.create_oid()
         mcu.add_config_cmd(
-            "config_spi oid=%d bus=%d pin=%s inverted=%u mode=%u rate=%u shutdown_msg=" % (
-                oid, 0, cs_pin_params['pin'], cs_pin_params['invert'], spi_mode, spi_speed))
+            "config_spi oid=%d bus=%d pin=%s inverted=%u"
+            " mode=%u rate=%u shutdown_msg=" % (
+                oid, spi_bus, cs_pin_params['pin'],
+                cs_pin_params['invert'], spi_mode, spi_speed))
         self._transfer = (lambda *args: 0)
         self.transfer_cmd = None
         mcu.add_config_object(self)
