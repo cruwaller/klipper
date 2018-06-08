@@ -167,8 +167,21 @@ class PrinterHeater:
                           self.name, value, pwm_time,
                           self.last_temp, self.last_temp_time, self.target_temp)
         self.mcu_pwm.set_pwm(pwm_time, value)
+    temp_debug = 0.
     def temperature_callback(self, read_time, read_value):
         temp = self.sensor.calc_temp(read_value)
+        '''
+        # >>>>> DEBUG DEBUG DEBUG >>>>>
+        if self.target_temp:
+            if self.last_pwm_value:
+                self.temp_debug += 1.
+            else:
+                self.temp_debug -= 1.
+            temp = self.temp_debug
+        else:
+            self.temp_debug = temp
+        # <<<<< DEBUG DEBUG DEBUG <<<<<
+        '''
         with self.lock:
             self.last_temp = temp
             self.last_temp_time = read_time
@@ -227,10 +240,6 @@ class PrinterHeater:
             target_temp = self.target_temp
             last_temp = self.last_temp
         return {'temperature': last_temp, 'target': target_temp}
-    def get_control(self):
-        if hasattr(self.control, "set_terms"):
-            return self.control.set_terms
-        return None
 
 
 ######################################################################
@@ -279,6 +288,31 @@ class ControlPID:
         self.prev_temp_time = 0.
         self.prev_temp_deriv = 0.
         self.prev_temp_integ = 0.
+        self.gcode = gcode = config.get_printer().lookup_object('gcode')
+        for name in [heater.name.replace(" ", "_").upper(), str(heater.index)]:
+            gcode.register_mux_command("SET_PID_PARAMS", "HEATER", name,
+                                       self.cmd_SET_PID_PARAMS,
+                                       desc=self.cmd_SET_PID_PARAMS_help)
+    cmd_SET_PID_PARAMS_help = "HEATER, P, I, D, DERIV_TIME, INTEGRAL_MAX"
+    def cmd_SET_PID_PARAMS(self, params):
+        self.Kp = self.gcode.get_float(
+            'P', params, self.Kp*PID_PARAM_BASE, minval=0.) / PID_PARAM_BASE
+        self.Ki = self.gcode.get_float(
+            'I', params, self.Ki*PID_PARAM_BASE, minval=0.) / PID_PARAM_BASE
+        self.Kd = self.gcode.get_float(
+            'D', params, self.Kd*PID_PARAM_BASE, minval=0.) / PID_PARAM_BASE
+        self.min_deriv_time = self.gcode.get_float(
+            'DERIV_TIME', params, self.min_deriv_time, above=0.)
+        self.imax = self.gcode.get_float(
+            'INTEGRAL_MAX', params, self.imax, minval=0.)
+        self.temp_integ_max = self.imax / self.Ki
+        self.prev_temp_time = 0.
+        self.prev_temp_deriv = 0.
+        self.prev_temp_integ = 0.
+        self.gcode.respond_info(
+            "PID params: P=%.2f I=%.2f D=%.2f TIME=%.2f MAX=%.2f" %
+            (self.Kp*PID_PARAM_BASE, self.Ki*PID_PARAM_BASE, self.Kd*PID_PARAM_BASE,
+             self.min_deriv_time, self.imax))
     def temperature_callback(self, read_time, temp):
         time_diff = read_time - self.prev_temp_time
         # Calculate change of temperature
@@ -308,23 +342,6 @@ class ControlPID:
         temp_diff = self.heater.target_temp - self.heater.last_temp
         return (abs(temp_diff) > PID_SETTLE_DELTA
                 or abs(self.prev_temp_deriv) > PID_SETTLE_SLOPE)
-    def set_terms(self, Kp=None, Ki=None, Kd=None):
-        reset = False
-        if Kp is not None:
-            self.Kp = Kp
-            reset = True
-        if Ki is not None:
-            self.Ki = Ki
-            self.temp_integ_max = self.imax / self.Ki
-            reset = True
-        if Kd is not None:
-            self.Kd = Kd
-            reset = True
-        if reset:
-            # self.prev_temp = AMBIENT_TEMP
-            # self.prev_temp_deriv = 0.
-            # self.prev_temp_integ = 0.
-            pass
 
 
 def load_config(config):
