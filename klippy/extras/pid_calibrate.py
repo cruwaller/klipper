@@ -15,11 +15,11 @@ class PIDCalibrate:
             desc=self.cmd_PID_CALIBRATE_help)
         self.gcode.register_command('M303', self.cmd_M303)
         self.logger = self.printer.logger.getChild('PIDCalibrate')
-    cmd_PID_CALIBRATE_help = "Run PID calibration test"
+    cmd_PID_CALIBRATE_help = "Run PID calibration test. args: HEATER, TARGET"
     def cmd_PID_CALIBRATE(self, params):
         heater_name = self.gcode.get_str('HEATER', params).lower()
         target = self.gcode.get_float('TARGET', params)
-        count = self.gcode.get_int('TARGET', params, 12)
+        count = self.gcode.get_int('COUNT', params, 12)
         write_file = self.gcode.get_int('WRITE_FILE', params, 0)
         try:
             if 'extruder' in heater_name:
@@ -32,7 +32,7 @@ class PIDCalibrate:
                     'heater %s' % heater_name)
         except ValueError:
             raise self.gcode.error("Error: extruder index is missing!")
-        except (AttributeError, self.printer.config_error) as e:
+        except (AttributeError, self.printer.config_error):
             raise self.gcode.error("Error: Heater not found! Check heater name and try again")
         self.__start(tgt_heater, target, write_file, count)
     def __start(self, tgt_heater, target, write_file=False, count=12):
@@ -50,13 +50,17 @@ class PIDCalibrate:
             calibrate.write_file('/tmp/heattest.txt')
         try:
             Kp, Ki, Kd = calibrate.calc_final_pid()
+        except calibrate.Timeout as err:
+            raise self.gcode.error(err)
         except Exception:
             raise self.gcode.error("Error during calibrarion.")
         self.logger.info("Autotune: final: Kp=%f Ki=%f Kd=%f", Kp, Ki, Kd)
         self.gcode.respond_info(
             "PID parameters: pid_Kp=%.3f pid_Ki=%.3f pid_Kd=%.3f\n"
             "To use these parameters, update the printer config file with\n"
-            "the above and then issue a RESTART command" % (Kp, Ki, Kd))
+            "the above and then issue a RESTART command.\n"
+            "Or use SET_PID_PARAMS HEATER=%s P=%.3f I=%.3f D=%.3f to test values." % (
+                Kp, Ki, Kd, tgt_heater.index, Kp, Ki, Kd))
     def cmd_M303(self, params):
         # Run PID tuning (M303 E<-1 or 0...> S<temp> C<count> W<write_file>)
         tgt_heater = None
@@ -68,18 +72,19 @@ class PIDCalibrate:
             if e is not None:
                 tgt_heater = e.get_heater()
         if tgt_heater is None:
-            self.gcode.error("Heater is not configured")
-        else:
-            temp = self.gcode.get_float('S', params)
-            count = self.gcode.get_int('C', params, 12)
-            write = self.gcode.get_int('W', params, 0)
-            self.__start(tgt_heater, temp, write, count)
+            raise self.gcode.error("Heater is not configured")
+        temp = self.gcode.get_float('S', params)
+        count = self.gcode.get_int('C', params, 12)
+        write = self.gcode.get_int('W', params, 0)
+        self.__start(tgt_heater, temp, write, count)
 
 
 TUNE_PID_DELTA = 5.0
 
 class ControlAutoTune:
-    def __init__(self, tgt_heater, logger, count):
+    class Timeout(Exception):
+        pass
+    def __init__(self, tgt_heater, logger, count, time_per_round=20.):
         self.heater = tgt_heater
         self.logger = logger
         self.count = count
@@ -93,6 +98,9 @@ class ControlAutoTune:
         self.last_pwm = 0.
         self.pwm_samples = []
         self.temp_samples = []
+        self.first_sample = None
+        self.max_time = count * time_per_round
+        self.timeout = self.target_reached = False
     # Heater control
     def set_pwm(self, read_time, value):
         if value != self.last_pwm:
@@ -102,6 +110,7 @@ class ControlAutoTune:
     def temperature_callback(self, read_time, temp):
         self.temp_samples.append((read_time, temp))
         if self.heating and temp >= self.heater.target_temp:
+            self.target_reached = True
             self.heating = False
             self.check_peaks()
         elif (not self.heating
@@ -119,6 +128,11 @@ class ControlAutoTune:
                 self.peak = temp
                 self.peak_time = read_time
     def check_busy(self, eventtime):
+        if self.first_sample is None or self.target_reached is False:
+            self.first_sample = eventtime
+        elif (eventtime - self.first_sample) > self.max_time:
+            self.timeout = True
+            return False
         if self.heating or len(self.peaks) < self.count:
             return True
         return False
@@ -148,6 +162,8 @@ class ControlAutoTune:
                          temp_diff, max_power, Ku, Tu, Kp, Ki, Kd)
         return Kp, Ki, Kd
     def calc_final_pid(self):
+        if self.timeout:
+            raise self.Timeout("Error: timeout during caliabration")
         if len(self.peaks) == 0:
             raise Exception("Internal error with peaks!")
         cycle_times = [(self.peaks[pos][1] - self.peaks[pos-2][1], pos)
