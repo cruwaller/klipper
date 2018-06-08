@@ -36,7 +36,8 @@ create_virtualenv()
     [ ! -d ${PYTHONDIR} ] && virtualenv ${PYTHONDIR}
 
     # Install/update dependencies
-    ${PYTHONDIR}/bin/pip install cffi==1.6.0 pyserial==3.2.1 greenlet==0.4.10 tornado==4.5
+    #${PYTHONDIR}/bin/pip install cffi==1.6.0 pyserial==3.2.1 greenlet==0.4.10 tornado==4.5
+    ${PYTHONDIR}/bin/pip install -r ${SRCDIR}/requirements.txt
 }
 
 # Step 3: Install startup script
