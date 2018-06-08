@@ -105,32 +105,11 @@ class GenericGcode(object):
 
     def cmd_M301(self, params):
         # M301: Set PID parameters
-        index = self.gcode.get_int('E', params)
-        if index == -1:
-            index = "bed"
-        try:
-            htr = self.printer.lookup_object('heater %s' % (index))
-            ctrl = htr.get_control()
-            if ctrl is not None:
-                Kp = self.gcode.get_float('P', params, None)
-                Ki = self.gcode.get_float('I', params, None)
-                Kd = self.gcode.get_float('D', params, None)
-                ctrl(Kp=Kp, Ki=Ki, Kd=Kd)
-        except self.printer.config_error as e:
-            raise self.gcode.error("Error: Heater not found!")
+        self.gcode.respond_info("Obsolete, use SET_PID_PARAMS")
 
     def cmd_M304(self, params):
         # M304: Set PID parameters - Bed
-        try:
-            htr = self.printer.lookup_object('heater bed')
-            ctrl = htr.get_control()
-            if ctrl is not None:
-                Kp = self.gcode.get_float('P', params, None)
-                Ki = self.gcode.get_float('I', params, None)
-                Kd = self.gcode.get_float('D', params, None)
-                ctrl(Kp=Kp, Ki=Ki, Kd=Kd)
-        except self.printer.config_error as e:
-            raise self.gcode.error("Error: Bed is not configured!")
+        self.gcode.respond_info("Obsolete, use SET_PID_PARAMS")
 
     def cmd_M851(self, params):
         # Set X, Y, Z offsets
@@ -146,40 +125,8 @@ class GenericGcode(object):
 
     def cmd_M900(self, params):
         # Pressure Advance configuration
-        index = self.gcode.get_int('T', params, None)
-        extr = extruder.get_printer_extruder(
-            self.printer, index, self.gcode.extruder)
-        if extr is None:
-            raise self.gcode.error("Error: Extruder is not configured!")
-        self.toolhead.get_last_move_time()
-        pa = self.gcode.get_float('P', params, None)
-        t = self.gcode.get_float('L', params, None)
-        if 0. <= pa:
-            extr.pressure_advance = pa
-        if 0. <= t:
-            extr.pressure_advance_lookahead_time = t
-        self.respond_info("%s: pressure advance %.6f, lookahead time %.6f" %
-                          (extr.name, extr.pressure_advance,
-                           extr.pressure_advance_lookahead_time))
-    '''
-    cmd_SET_PRESSURE_ADVANCE_help = "Set pressure advance parameters"
-    def cmd_SET_PRESSURE_ADVANCE(self, params):
-        index = self.gcode.get_int('EXTRUDER', params, None)
-        extr = extruder.get_printer_extruder(
-            self.printer, index, self.gcode.extruder)
-        if extr is None:
-            raise self.gcode.error("Error: Extruder is not configured!")
-        self.toolhead.get_last_move_time()
-        pa = self.gcode.get_float('ADVANCE', params, None)
-        t = self.gcode.get_float('ADVANCE_LOOKAHEAD_TIME', params, None)
-        if 0. <= pa:
-            extr.pressure_advance = pa
-        if 0. <= t:
-            extr.pressure_advance_lookahead_time = t
-        self.respond_info("%s: pressure advance %.6f, lookahead time %.6f" %
-                          (extr.name, extr.pressure_advance,
-                           extr.pressure_advance_lookahead_time))
-    '''
+        self.gcode.respond_info("Obsolete, use SET_PRESSURE_ADVANCE")
+
 
 def load_gcode(printer):
     GenericGcode(printer)
