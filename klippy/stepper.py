@@ -61,7 +61,8 @@ def calculate_steps(config, microsteps=None):
 class PrinterStepper:
     driver = mcu_stepper = None
     step_dist = inv_step_dist = None
-    step = step_const = step_delta = step_move = None
+    step = step_const = step_itersolve = setup_itersolve = None
+    step_move = None
     def __init__(self, printer, config, logger=None):
         self.printer = printer
         self.name = config.get_name()
@@ -98,7 +99,8 @@ class PrinterStepper:
             self.mcu_stepper.setup_step_distance(self.step_dist)
             self.step = self.mcu_stepper.step
             self.step_const = self.mcu_stepper.step_const
-            self.step_delta = self.mcu_stepper.step_delta
+            self.step_itersolve = self.mcu_stepper.step_itersolve
+            self.setup_itersolve = self.mcu_stepper.setup_itersolve
         else:
             self.step_move = driver.step_move
         self.enable = lookup_enable_pin(ppins, config.get('enable_pin', None))
