@@ -3,7 +3,7 @@
 # Copyright (C) 2016  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import stepper, homing
+import stepper, homing, chelper
 
 StepList = (0, 1, 2)
 
@@ -28,6 +28,12 @@ class CartKinematics:
             # Just set min and max values for SW limit
             self.limits = [ (s.position_min, s.position_max)
                             for s in self.steppers ]
+        # Setup iterative solver
+        ffi_main, ffi_lib = chelper.get_ffi()
+        self.cmove = ffi_main.gc(ffi_lib.move_alloc(), ffi_lib.free)
+        self.move_fill = ffi_lib.move_fill
+        for a, s in zip('xyz', self.steppers):
+            s.setup_cartesian_itersolve(a)
         # Setup stepper max halt velocity
         max_halt_velocity = toolhead.get_max_axis_halt()
         self.steppers[0].set_max_jerk(max_halt_velocity, max_accel)
@@ -39,9 +45,10 @@ class CartKinematics:
         self.dual_carriage_steppers = []
         if config.has_section('dual_carriage'):
             dc_config = config.getsection('dual_carriage')
-            self.dual_carriage_axis = dc_config.getchoice(
-                'axis', {'x': 0, 'y': 1})
+            dc_axis = dc_config.getchoice('axis', {'x': 'x', 'y': 'y'})
+            self.dual_carriage_axis = {'x': 0, 'y': 1}[dc_axis]
             dc_stepper = stepper.LookupMultiHomingStepper(printer, dc_config)
+            dc_stepper.setup_cartesian_itersolve(dc_axis)
             dc_stepper.set_max_jerk(max_halt_velocity, max_accel)
             self.dual_carriage_steppers = [
                 self.steppers[self.dual_carriage_axis], dc_stepper]
@@ -169,41 +176,23 @@ class CartKinematics:
     def move(self, print_time, move):
         if self.need_motor_enable:
             self._check_motor_enable(print_time, move)
+        self.move_fill(
+            self.cmove, print_time,
+            move.accel_t, move.cruise_t, move.decel_t,
+            move.start_pos[0], move.start_pos[1], move.start_pos[2],
+            move.axes_d[0], move.axes_d[1], move.axes_d[2],
+            move.start_v, move.cruise_v, move.accel)
         for i in StepList:
-            axis_d = move.axes_d[i]
-            if not axis_d:
-                continue
-            # Generate steps
-            step_const = self.steppers[i].step_const
-            move_time = print_time
-            start_pos = move.start_pos[i]
-            axis_r = abs(axis_d) / move.move_d
-            accel = move.accel * axis_r
-            cruise_v = move.cruise_v * axis_r
+            if move.axes_d[i]:
+                self.steppers[i].step_itersolve(self.cmove)
+            '''
             # Generate move
             if self.steppers[i].step_move:
                 self.steppers[i].step_move(
                     move_time, start_pos,
                     axis_d, accel, (move.start_v * axis_r), cruise_v)
                 continue
-            # Acceleration steps
-            if move.accel_r:
-                accel_d = move.accel_r * axis_d
-                step_const(move_time, start_pos, accel_d,
-                           move.start_v * axis_r, accel)
-                start_pos += accel_d
-                move_time += move.accel_t
-            # Cruising steps
-            if move.cruise_r:
-                cruise_d = move.cruise_r * axis_d
-                step_const(move_time, start_pos, cruise_d, cruise_v, 0.)
-                start_pos += cruise_d
-                move_time += move.cruise_t
-            # Deceleration steps
-            if move.decel_r:
-                decel_d = move.decel_r * axis_d
-                step_const(move_time, start_pos, decel_d, cruise_v, -accel)
-
+            '''
     def is_homed(self):
         ret = [1, 1, 1]
         if self.toolhead.sw_limit_check_enabled is True:
@@ -216,7 +205,6 @@ class CartKinematics:
         max_velocity, max_accel = self.toolhead.get_max_velocity()
         self.steppers[0].set_max_jerk(max_halt_velocity, max_accel)
         self.steppers[1].set_max_jerk(max_halt_velocity, max_accel)
-
     # Dual carriage support
     def _activate_carriage(self, carriage):
         toolhead = self.printer.lookup_object('toolhead')
