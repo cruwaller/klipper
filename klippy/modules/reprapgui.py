@@ -111,16 +111,16 @@ class MJPEGHandler(tornado.web.RequestHandler):
             return
 
         ioloop = tornado.ioloop.IOLoop.current()
-        self.served_image_timestamp = time.time()
+        served_image_timestamp = time.time()
         my_boundary = "--boundarydonotcross\n"
         while True:
             img = self.camera.get_frame()
-            if self.served_image_timestamp + self.interval < time.time():
+            if served_image_timestamp + self.interval < time.time():
                 self.write(my_boundary)
                 self.write("Content-type: image/jpeg\r\n")
                 self.write("Content-length: %s\r\n\r\n" % len(img))
                 self.write(str(img))
-                self.served_image_timestamp = time.time()
+                served_image_timestamp = time.time()
                 yield tornado.gen.Task(self.flush)
             else:
                 yield tornado.gen.Task(ioloop.add_timeout, ioloop.time() + self.interval)
@@ -137,6 +137,7 @@ class MainHandler(BaseHandler):
         self.render(os.path.join(self.path, "reprap.htm"))
 
 class LoginHandler(BaseHandler):
+    path = parent = None
     def initialize(self, path, parent):
         self.path = path
         self.parent = _PARENT #parent
@@ -177,6 +178,8 @@ class LogoutHandler(BaseHandler):
         self.redirect(self.get_argument("next", self.reverse_url("main")))
 
 class rrHandler(tornado.web.RequestHandler):
+    parent = sd_path = logger = None
+
     def initialize(self, parent):
         self.parent = _PARENT # parent
         self.sd_path = parent.sd.sdcard_dirname
@@ -187,10 +190,10 @@ class rrHandler(tornado.web.RequestHandler):
             "err" : 10
         }
 
-        #### rr_connect?password=XXX&time=YYY
+        # rr_connect?password=XXX&time=YYY
         if "rr_connect" in path:
             respdata["err"] = 0
-            _passwd = self.get_argument('password')
+            #_passwd = self.get_argument('password')
             #if self.parent.passwd != _passwd:
             #    respdata["err"] = 1
             # 0 = success, 1 = wrong passwd, 2 = No more HTTP sessions available
@@ -198,21 +201,21 @@ class rrHandler(tornado.web.RequestHandler):
             # duetwifi10, duetethernet10, radds15, alligator2, duet06, duet07, duet085, default: unknown
             respdata["boardType"] = "unknown" # "radds15"
 
-        #### rr_disconnect
+        # rr_disconnect
         elif "rr_disconnect" in path:
             respdata["err"] = 0
 
-        #### rr_status?type=XXX
+        # rr_status?type=XXX
         # http://reprap.org/wiki/RepRap_Firmware_Status_responses
         elif "rr_status" in path:
             _type = int(self.get_argument('type'))
-            if (_type < 1 or _type > 3):
+            if _type < 1 or _type > 3:
                 _type = 1
             # get status from Klippy
             respdata["err"] = 0
             respdata.update(self.parent.web_getstatus(_type))
 
-        #### rr_gcode?gcode=XXX
+        # rr_gcode?gcode=XXX
         elif "rr_gcode" in path:
             respdata["err"] = 0
             respdata["buff"] = 99999
@@ -242,7 +245,7 @@ class rrHandler(tornado.web.RequestHandler):
                     printer_write(gcode.replace("M32 ", "M23 gcodes/"))
                     self.parent.current_file = gcode[4:]
                     printer_write("M24")
-                except self.parent.gcode.error as e:
+                except self.parent.gcode.error:
                     respdata["err"] = 1
             elif "T-1" in gcode:
                 # Skip...
@@ -250,7 +253,7 @@ class rrHandler(tornado.web.RequestHandler):
             else:
                 if "G10" in gcode:
                     # G10 - retract if no params (G10 Pnnn Xnnn Ynnn Znnn Rnnn Snnn)
-                    if bool(re.search("[PXYZRS]", gcode)):
+                    if bool(re.search('[PXYZRS]', gcode)):
                         gcode = gcode.replace('G10', 'M1010') # M1000 + cmd nbr for RepRap
                 if "M106" in gcode:
                     gcode = gcode.replace('M106', 'M1106')
@@ -259,7 +262,7 @@ class rrHandler(tornado.web.RequestHandler):
                 except self.parent.gcode.error as e:
                     respdata["err"] = 1
 
-        #### rr_download?name=XXX
+        # rr_download?name=XXX
         elif "rr_download" in path:
             # Download a specified file from the SD card.
             path = self.get_argument('name').replace("0:/", "").replace("0%3A%2F", "")
@@ -288,7 +291,7 @@ class rrHandler(tornado.web.RequestHandler):
                         raise tornado.web.HTTPError(404)
                 raise tornado.web.HTTPError(500)
 
-        #### rr_delete?name=XXX
+        # rr_delete?name=XXX
         elif "rr_delete" in path:
             # resp: `{"err":[code]}`
             respdata["err"] = 0
@@ -309,7 +312,7 @@ class rrHandler(tornado.web.RequestHandler):
                 self.logger.error("rr_delete: %s" % (e.strerror,))
                 respdata["err"] = 1
 
-        #### rr_filelist?dir=XXX
+        # rr_filelist?dir=XXX
         elif "rr_filelist" in path:
             '''
             resp: `{"type":[type],"name":"[name]","size":[size],"lastModified":"[datetime]"}`
@@ -356,7 +359,7 @@ class rrHandler(tornado.web.RequestHandler):
                         respdata["files"].append(data)
             #self.logger.debug("rr_filelist: {}".format(respdata))
 
-        #### rr_fileinfo?name=XXX
+        # rr_fileinfo?name=XXX
         elif "rr_fileinfo" in path:
             name = self.get_argument('name', default=None)
             #self.logger.debug("rr_fileinfo: {} , name: {}".format(self.request.uri, name))
@@ -383,8 +386,8 @@ class rrHandler(tornado.web.RequestHandler):
                 respdata["err"] = 0
                 respdata["size"] = os.path.getsize(path)
                 respdata["lastModified"] = \
-                        time.strftime("%Y-%m-%dT%H:%M:%S",
-                                      time.gmtime(os.path.getmtime(path)))
+                    time.strftime("%Y-%m-%dT%H:%M:%S",
+                                  time.gmtime(os.path.getmtime(path)))
                 respdata["generatedBy"]      = "unknown"
                 respdata["height"]           = "NA"
                 respdata["firstLayerHeight"] = "NA"
@@ -395,7 +398,7 @@ class rrHandler(tornado.web.RequestHandler):
                     respdata["printDuration"] = 1234
                     respdata["fileName"]      = os.path.relpath(path, self.sd_path)
 
-        #### rr_move?old=XXX&new=YYY
+        # rr_move?old=XXX&new=YYY
         elif "rr_move" in path:
             # {"err":[code]} , code 0 if success
             respdata["err"] = 0
@@ -409,7 +412,7 @@ class rrHandler(tornado.web.RequestHandler):
                 self.logger.error("rr_move: %s" % (e.strerror,))
                 respdata["err"] = 1
 
-        #### rr_mkdir?dir=XXX
+        # rr_mkdir?dir=XXX
         elif "rr_mkdir" in path:
             #self.logger.debug("GET rr_mkdir: dir={}".
             #                  format(self.get_argument('dir')))
@@ -424,7 +427,7 @@ class rrHandler(tornado.web.RequestHandler):
                     self.logger.error("rr_mkdir: %s" % (e.strerror,))
                     respdata["err"] = 1
 
-        #### rr_config / rr_configfile
+        # rr_config / rr_configfile
         elif "rr_configfile" in path:
             respdata = {
                 "err" : 0,
@@ -602,9 +605,9 @@ class RepRapGuiModule(object):
                 "certfile": os.path.normpath(os.path.expanduser(config.get('cert'))),
                 "keyfile": os.path.normpath(os.path.expanduser(config.get('key'))),
             }
-            self.logger.debug("HTTPS port %s" % (https_port))
+            self.logger.debug("HTTPS port %s" % (https_port,))
         else:
-            self.logger.debug("HTTP port %s" % (http_port))
+            self.logger.debug("HTTP port %s" % (http_port,))
 
         http_server = tornado.httpserver.HTTPServer(application,
                                                     ssl_options=ssl_options)
@@ -648,7 +651,7 @@ class RepRapGuiModule(object):
         self.gcode.set_fan_speed(self.gcode.get_float('S', params, 1.),
                                  self.gcode.get_int('P', params, 0))
     def cmd_M1010(self, params):
-        '''
+        """
         Usage
           G10 Pnnn Xnnn Ynnn Znnn Rnnn Snnn
         Parameters
@@ -659,7 +662,7 @@ class RepRapGuiModule(object):
           Znnn Z offset - SKIP
           Rnnn Standby temperature(s)
           Snnn Active temperature(s)
-        '''
+        """
         if 'P' in params:
             # Set correct tool index keyword
             params['T'] = params['P']
@@ -672,15 +675,16 @@ class RepRapGuiModule(object):
         if 'P' in params:
             gco_f = params['#original'][5:]
             self.logger.info("Simulating file %s" % (gco_f,))
+            gco_f = gco_f.replace('"', '')
             self.gcode.simulate_print = True
-            self.printer_write("M23 %s" % (gco_f))
+            self.printer_write("M23 gcodes/%s" % (gco_f,))
             self.printer_write("M24")
-            # TODO: Disable simulation??
     def cmd_M98(self, params):
         macro = params['#original'][5:]
         self.logger.info("Executing macro %s" % (macro,))
+        macro = macro.replace('"', '')
         self.gcode.simulate_print = False
-        self.printer_write("M23 %s" % (macro))
+        self.printer_write("M23 %s" % (macro,))
         self.printer_write("M24")
     def cmd_M550(self, params):
         if 'P' in params:
@@ -690,25 +694,25 @@ class RepRapGuiModule(object):
     # ================================================================================
     def web_getconfig(self):
         # self.logger.info("****** KLIPPER: web_getconfig() *******")
-        _extrs   = extruder.get_printer_extruders(self.printer)
+        _extrs = self.printer.extruder_get()
         num_extruders = len(_extrs)
         toolhead = self.toolhead
         steppers = toolhead.kin.get_steppers()
         num_steppers = len(steppers)
         currents = [0.00] * (num_steppers + num_extruders)
-        for idx,stp in enumerate(steppers):
+        for idx, stp in enumerate(steppers):
             get_current = getattr(stp.driver, "get_current", None)
             if get_current is not None:
-                currents[idx] = get_current()
-        for idx,e in _extrs.items():
+                currents[idx] = int(get_current())
+        for idx, e in _extrs.items():
             get_current = getattr(e.stepper.driver, "get_current", None)
             if get_current is not None:
-                currents[idx] = get_current()
+                currents[idx] = int(get_current())
         return {
             "axisMins"            : [ s.position_min for s in steppers ],
             "axisMaxes"           : [ s.position_max for s in steppers ],
             "accelerations"       : [ toolhead.max_accel ] * (num_steppers + num_extruders),
-            "currents"            : currents, # [1.00] * (num_steppers + num_extruders),
+            "currents"            : currents,
             "firmwareElectronics" : util.get_cpu_info(),
             "firmwareName"        : "Klipper",
             "firmwareVersion"     : self.printer.get_start_args().get('software_version'),
@@ -726,41 +730,44 @@ class RepRapGuiModule(object):
             True  : 2
         }
         curr_pos = toolhead.get_position()
-        fans     = [ fan.last_fan_value * 100.0 for fan in self.printer.lookup_module_objects("fan") ]
+        fans     = [ fan.last_fan_value * 100.0 for fan in
+                     self.printer.lookup_module_objects("fan") ]
         heatbed  = self.printer.lookup_object('heater bed', None)
         _heaters = self.printer.lookup_module_objects("heater")
         total_htrs = len(_heaters)
-        _extrs   = extruder.get_printer_extruders(self.printer)
+        _extrs   = self.printer.extruder_get()
 
         # _type == 1 is always included
         status_block = {
-            # sequence number to indicate a new G-code response
             "status": self.curr_state,
-            "seq"   : len(self.gcode_resps),
+            "seq": len(self.gcode_resps),
             "coords": {
-                "axesHomed" : toolhead.kin.is_homed(),
-                "extr"      : [ curr_pos[3] if toolhead.extruder == e else 0.0
-                                for i,e in _extrs.items() ], #coords_extr,
-                "xyz"       : curr_pos[:3],
+                "axesHomed": toolhead.kin.is_homed(),
+                "SKIP_SKIP_extr": [curr_pos[3] if toolhead.extruder == e else 0.0
+                                   for i, e in _extrs.items()],  # coords_extr,
+                "extr": [e.extrude_pos
+                         for i, e in _extrs.items()],
+                "xyz": curr_pos[:3],
             },
-            "currentTool": toolhead.extruder.index,        # -1 means none
+            "currentTool": toolhead.extruder.index,
             "params": {
-                "atxPower"    : 0,
-                "fanPercent"  : fans,
-                "speedFactor" : self.gcode.speed_factor * 60. * 100.0,
-                "extrFactors" : [ e.extrude_factor * 100.0 for i,e in _extrs.items() ],
-                "babystep"    : float("%.3f" % self.babysteps.babysteps),
+                "atxPower": 0,
+                "fanPercent": fans,
+                "speedFactor": self.gcode.speed_factor * 60. * 100.0,
+                "extrFactors": [e.extrude_factor * 100.0 for i, e in _extrs.items()],
+                "babystep": float("%.3f" % self.babysteps.babysteps),
             },
-            # This must be included....
             "sensors": {
-                "probeValue"     : -1, # 0
-                "probeSecondary" : [0,0],  # Hidden for unmodulated probes, otherwise its array size depends on the probe type (usually 1 or 2)
-                "fanRPM"         : 0,
+                "probeValue": -1,  # 0
+                "probeSecondary": [0, 0],
+                # Hidden for unmodulated probes, otherwise its array size depends on
+                # the probe type (usually 1 or 2)
+                "fanRPM": 0,
             },
-            "time" : (time.time() - self.starttime)  # time since last reset
+            "time": (time.time() - self.starttime),
+            "temps": {}
         }
 
-        status_block["temps"] = {}
         if heatbed is not None:
             status_block["temps"].update( {
                 "bed": {
@@ -786,7 +793,8 @@ class RepRapGuiModule(object):
             } )
         '''
         htr_current = [0.0] * total_htrs
-        htr_state   = [  3] * total_htrs # HS_off = 0, HS_standby = 1, HS_active = 2, HS_fault = 3, HS_tuning = 4
+        # HS_off = 0, HS_standby = 1, HS_active = 2, HS_fault = 3, HS_tuning = 4
+        htr_state   = [  3] * total_htrs
         for htr in _heaters:
             index = htr.index
             if htr == heatbed:
@@ -801,9 +809,9 @@ class RepRapGuiModule(object):
         # Tools target temps
         status_block["temps"].update( {
             'tools': {
-                "active"  : [ [ float("%.2f" % (e.get_heater().target_temp)) ]
-                              for i,e in _extrs.items() ],
-                "standby" : [ [ 0.0 ] for i,e in _extrs.items() ],
+                "active"  : [ [float("%.2f" % e.get_heater().target_temp)]
+                              for i, e in _extrs.items() ],
+                "standby" : [ [ .0 ] for i, e in _extrs.items() ],
             },
         } )
 
@@ -820,7 +828,8 @@ class RepRapGuiModule(object):
                 "coldExtrudeTemp" : cold_temp,
                 "coldRetractTemp" : cold_temp,
                 "tempLimit"       : max_temp,
-                "endstops_IGN"    : 7,                # NEW: As of 1.09n-ch, this field provides a bitmap of all stopped drive endstops
+                # NEW: As of 1.09n-ch, this field provides a bitmap of all stopped drive endstops
+                "endstops_IGN"    : 7,
                 "firmwareName"    : "Klipper",
                 "geometry"        : toolhead.kin.name, # cartesian, coreXY, delta
                 "axes"            : 3,                # Subject to deprecation - may be dropped in RRF 1.20
@@ -858,19 +867,31 @@ class RepRapGuiModule(object):
 
         elif _type == 3:
             # TODO : update at some day
+            heaters = self.printer.lookup_module_objects("heater")
+            warmuptime = 0.
+            for h in heaters:
+                if h.heating_time > 0:
+                    warmuptime += h.heating_time
+            printing_time = toolhead.get_print_time()
+            progress = self.sd.get_progress()
+            remaining_time = 0.
+            if progress > 0:
+                remaining_time = (printing_time / progress) - printing_time
             status_block.update( {
                 "currentLayer"       : 0,
                 "currentLayerTime"   : 0.0,
-                "extrRaw"            : [ 0.0 for i,e in _extrs.items() ],  # How much filament would have been printed without extrusion factors applied
-                "fractionPrinted"    : 0.0,         # one decimal place
+                # How much filament would have been printed without extrusion factors applied
+                "extrRaw"            : [ float("%0.1f" % e.raw_filament)
+                                         for i, e in _extrs.items() ],
+                "fractionPrinted"    : float("%.1f" % progress),
 
                 "firstLayerDuration" : 0.0,
                 "firstLayerHeight"   : 0.0,
-                "printDuration"      : 0.0,
-                "warmUpDuration"     : 0.0,
+                "printDuration"      : printing_time,
+                "warmUpDuration"     : float("%.1f" % warmuptime),
 
                 "timesLeft": {
-                    "file"     : 0.0,
+                    "file"     : float("%.1f" % remaining_time),
                     "filament" : 0.0,
                     "layer"    : 0.0
                 }

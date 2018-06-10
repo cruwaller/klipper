@@ -379,7 +379,7 @@ class ToolHead:
         self.dwell(STALL_TIME)
         last_move_time = self.get_last_move_time()
         self.kin.motor_off(last_move_time)
-        for key,e in extruder.get_printer_extruders(self.printer).items():
+        for key, e in self.printer.extruder_get().items():
             e.motor_off(last_move_time)
         self.dwell(STALL_TIME)
         self.need_motor_off = False
@@ -422,8 +422,9 @@ class ToolHead:
             status = "Ready"
         else:
             status = "Idle"
-        printing_time = self.print_time - self.last_print_start_time
-        return {'status': status, 'printing_time': printing_time}
+        return {'status': status, 'printing_time': self.get_print_time()}
+    def get_print_time(self):
+        return self.print_time - self.last_print_start_time
     def printer_state(self, state):
         if state == 'shutdown':
             try:

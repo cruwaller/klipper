@@ -23,7 +23,7 @@ class PIDCalibrate:
         write_file = self.gcode.get_int('WRITE_FILE', params, 0)
         try:
             if 'extruder' in heater_name:
-                tgt_heater = extruder.get_printer_extruder(self.printer,
+                tgt_heater = self.printer.extruder_get(
                     int(heater_name[8:])).get_heater()
             elif 'heater_bed' == heater_name:
                 tgt_heater = self.printer.lookup_object('heater bed')
@@ -68,7 +68,7 @@ class PIDCalibrate:
         if heater_index == -1:
             tgt_heater = self.printer.lookup_object('heater bed', None)
         else:
-            e = extruder.get_printer_extruder(self.printer, heater_index)
+            e = self.printer.extruder_get(heater_index)
             if e is not None:
                 tgt_heater = e.get_heater()
         if tgt_heater is None:

@@ -153,12 +153,26 @@ class Printer:
         self.run_result = None
         self.stats_cb = []
         self.state_cb = []
+        self._extruders = {}
     def get_start_args(self):
         return self.start_args
     def get_reactor(self):
         return self.reactor
     def get_state_message(self):
         return self.state_message
+    def extruder_add(self, extr):
+        extruders = self._extruders
+        if extr.index in extruders:
+            raise self.config_error("Extruders cannot have same index!")
+        extruders[extr.index] = extr
+    def extruder_get(self, index=None,
+                     default=ConfigWrapper.sentinel):
+        extruders = self._extruders
+        if index is None:
+            return dict(extruders)
+        if default is ConfigWrapper.sentinel:
+            return extruders.get(index)
+        return extruders.get(index, default)
     def add_object(self, name, obj):
         if obj in self.objects:
             raise self.config_error(
@@ -238,6 +252,7 @@ class Printer:
             if "driver" not in section:
                 self.try_load_module(config, section)
         self.logger.info("========================================")
+        self._extruders = {}
         for m in [toolhead, extruder]:
             m.add_printer_objects(self, config)
 

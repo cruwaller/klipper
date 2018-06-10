@@ -10,12 +10,12 @@ EXTRUDE_DIFF_IGNORE = 1.02
 
 
 class PrinterExtruder:
-    def __init__(self, printer, config, index):
+    def __init__(self, printer, config):
         self.printer = printer
         self.name = config.get_name()
         self.logger = printer.logger.getChild(self.name)
         self.config = config
-        self.index = index
+        self.index = int(self.name[8:])
         self.heater = printer.lookup_object(config.get('heater'))
         self.heater.set_min_extrude_temp(config.getfloat('min_extrude_temp',
                                                          170.0))
@@ -47,6 +47,7 @@ class PrinterExtruder:
             'pressure_advance_lookahead_time', 0.010, minval=0.)
         self.need_motor_enable = True
         self.extrude_pos = 0.
+        self.raw_filament = 0.
         self.extrude_factor = config.getfloat('extrusion_factor',
                                               1.0,
                                               minval=0.1)
@@ -176,6 +177,9 @@ class PrinterExtruder:
         retract_t = retract_d = retract_v = 0.
         decel_v = cruise_v
 
+        if 0 < axis_d:
+            self.raw_filament += axis_d
+
         # Update for pressure advance
         start_pos = self.extrude_pos
         if (axis_d >= 0. and (move.axes_d[0] or move.axes_d[1])
@@ -275,28 +279,9 @@ class DummyExtruder:
         return flush_count
 
 def add_printer_objects(printer, config):
-    printer._extruders = {}
     if config.has_section('extruder'):
         raise printer.config_error("Extruder section must contain index!")
-        #printer._extruders[0] = PrinterExtruder(
-        #    printer, config.getsection('extruder'), 0)
     else:
         extruders = config.get_prefix_sections('extruder')
         for s in extruders:
-            index = int(s.section[8:])
-            printer._extruders[index] = PrinterExtruder(
-                printer, s, index)
-
-def get_printer_extruders(printer):
-    try:
-        return printer._extruders
-    except AttributeError:
-        return {}
-
-def get_printer_extruder(printer, index, default=None):
-    try:
-        if index is None:
-            raise KeyError
-        return printer._extruders[index]
-    except (KeyError, AttributeError):
-        return default
+            printer.extruder_add( PrinterExtruder(printer, s) )

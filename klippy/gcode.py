@@ -123,7 +123,7 @@ class GCodeParser:
         if self.move_transform is None:
             self.move_with_transform = self.toolhead.move
             self.position_with_transform = self.toolhead.get_position
-        self.extruder = extruder.get_printer_extruder(self.printer, 0)
+        self.extruder = self.printer.extruder_get(0)
         if self.extruder is not None:
             self.toolhead.set_extruder(self.extruder)
         if self.is_fileinput and self.fd_handle is None:
@@ -349,7 +349,7 @@ class GCodeParser:
     def get_temp(self, eventtime):
         # Tn:XXX /YYY B:XXX /YYY
         out = []
-        for key,e in extruder.get_printer_extruders(self.printer).items():
+        for key, e in self.printer.extruder_get().items():
             heater = e.get_heater()
             if heater is not None:
                 cur, target = heater.get_temp(eventtime)
@@ -386,7 +386,7 @@ class GCodeParser:
                 index = self.get_int('P', params, None)
 
             if index is not None:
-                e = extruder.get_printer_extruder(self.printer, index)
+                e = self.printer.extruder_get(index)
                 if e is not None:
                     heater = e.get_heater()
             elif self.extruder is not None:
@@ -431,7 +431,7 @@ class GCodeParser:
         if index < 0:
             # Reprap WebGui uses T-1 in some cases, skip it
             return
-        e = extruder.get_printer_extruder(self.printer, index)
+        e = self.printer.extruder_get(index)
         if e is None:
             self.respond_error("Extruder %d not configured" % (index,))
             return
@@ -590,7 +590,7 @@ class GCodeParser:
         if index is None:
             extr = self.extruder
         else:
-            extr = extruder.get_printer_extruder(self.printer, index)
+            extr = self.printer.extruder_get(index)
         if extr is not None:
             last_e_pos = self.last_position[3]
             e_value = (last_e_pos - self.base_position[3]) / extr.extrude_factor

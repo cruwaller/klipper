@@ -7,7 +7,7 @@ import os, logging
 
 class VirtualSD:
     def __init__(self, config):
-        printer = config.get_printer()
+        self.printer = printer = config.get_printer()
         # sdcard state
         sd = config.get('path')
         self.sdcard_dirname = os.path.normpath(os.path.expanduser(sd))
@@ -108,8 +108,13 @@ class VirtualSD:
         self.current_file = f
         self.file_position = 0
         self.file_size = fsize
+        # Reset extruders filament counters
+        for i, e in self.printer.extruder_get().items():
+            e.raw_filament = 0.
     def cmd_M24(self, params):
         # Start/resume SD print
+        if self.current_file is None:
+            raise self.gcode.error("SD file is not loaded")
         if self.work_timer is not None:
             raise self.gcode.error("SD busy")
         for cb in self.done_cb:

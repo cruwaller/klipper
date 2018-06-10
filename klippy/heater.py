@@ -81,6 +81,8 @@ class PrinterHeater:
         self.protection_timer = self.reactor.register_timer(self._check_heating)
         self.protection_last_temp = None
         self.protect_runaway_disabled = False
+        self.heating_start_time = 0.
+        self.heating_time = None
     def _check_heating(self, eventtime):
         next_time = 10.0  # next 10sec from now
         with self.lock:
@@ -120,6 +122,7 @@ class PrinterHeater:
             if ((target_temp - self.protect_hyst_runaway)
                     <= current_temp <=
                     (target_temp + self.protect_hyst_runaway)):
+                # Heating over, start maintaining protect
                 self.is_runaway = True
             elif current_temp < target_temp:
                 if abs(current_temp - self.protection_last_temp) < self.protection_hysteresis_heat:
@@ -131,6 +134,9 @@ class PrinterHeater:
         self.logger.debug("check_heating(eventtime {}, next {}) {} / {}".
                           format(eventtime, (eventtime + next_time),
                                  current_temp, target_temp))
+        if self.heating_time is None and \
+                current_temp >= target_temp:
+            self.heating_time = eventtime
         return eventtime + next_time
     def __protect_error(self, errorstr):
         self.set_temp(0, 0)
@@ -199,6 +205,8 @@ class PrinterHeater:
         with self.lock:
             self.target_temp = degrees
         if degrees:
+            self.heating_time = None
+            self.heating_start_time = self.reactor.monotonic()
             # Start checking
             self.protection_last_temp = None
             self.reactor.update_timer(self.protection_timer,
@@ -240,6 +248,10 @@ class PrinterHeater:
             target_temp = self.target_temp
             last_temp = self.last_temp
         return {'temperature': last_temp, 'target': target_temp}
+    def get_heating_time(self):
+        if self.heating_time is None:
+            return 0.
+        return self.heating_time - self.heating_start_time
 
 
 ######################################################################
