@@ -3,11 +3,12 @@
 # Copyright (C) 2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import os, logging
+import os
 
 class VirtualSD:
     def __init__(self, config):
         self.printer = printer = config.get_printer()
+        self.logger = printer.logger.getChild('VirtualSD')
         # sdcard state
         sd = config.get('path')
         self.sdcard_dirname = os.path.normpath(os.path.expanduser(sd))
@@ -34,11 +35,11 @@ class VirtualSD:
                 self.current_file.seek(readpos)
                 data = self.current_file.read(readcount + 128)
             except:
-                logging.exception("virtual_sdcard shutdown read")
+                self.logger.exception("virtual_sdcard shutdown read")
                 return
-            logging.info("Virtual sdcard (%d): %s\nUpcoming (%d): %s",
-                         readpos, repr(data[:readcount]),
-                         self.file_position, repr(data[readcount:]))
+            self.logger.info("Virtual sdcard (%d): %s\nUpcoming (%d): %s",
+                             readpos, repr(data[:readcount]),
+                             self.file_position, repr(data[readcount:]))
     def stats(self, eventtime):
         if self.work_timer is None:
             return False, ""
@@ -50,7 +51,7 @@ class VirtualSD:
             return [(fname, os.path.getsize(os.path.join(dname, fname)))
                     for fname in filenames]
         except:
-            logging.exception("virtual_sdcard get_file_list")
+            self.logger.exception("virtual_sdcard get_file_list")
             raise self.gcode.error("Unable to get file list")
     def get_status(self, eventtime):
         progress = 0.
@@ -60,8 +61,7 @@ class VirtualSD:
     def register_done_cb(self, cb):
         self.done_cb.append(cb)
     def get_progress(self):
-        if self.current_file is None or self.work_timer is None \
-                or not self.file_size:
+        if self.current_file is None or not self.file_size:
             return .0
         return float(self.file_position) / self.file_size
     # G-Code commands
@@ -101,7 +101,7 @@ class VirtualSD:
             fsize = f.tell()
             f.seek(0)
         except:
-            logging.exception("virtual_sdcard file open")
+            self.logger.exception("virtual_sdcard file open")
             raise self.gcode.error("Unable to open file")
         self.gcode.respond("File opened:%s Size:%d" % (filename, fsize))
         self.gcode.respond("File selected")
@@ -111,6 +111,8 @@ class VirtualSD:
         # Reset extruders filament counters
         for i, e in self.printer.extruder_get().items():
             e.raw_filament = 0.
+        for cb in self.done_cb:
+            cb('loaded')
     def cmd_M24(self, params):
         # Start/resume SD print
         if self.current_file is None:
@@ -143,12 +145,12 @@ class VirtualSD:
             self.file_position, self.file_size))
     # Background work timer
     def work_handler(self, eventtime):
-        logging.info("Starting SD card print (position %d)", self.file_position)
+        self.logger.info("Starting SD card print (position %d)", self.file_position)
         self.reactor.unregister_timer(self.work_timer)
         try:
             self.current_file.seek(self.file_position)
         except:
-            logging.exception("virtual_sdcard seek")
+            self.logger.exception("virtual_sdcard seek")
             self.gcode.respond_error("Unable to seek file")
             self.work_timer = None
             return self.reactor.NEVER
@@ -160,7 +162,7 @@ class VirtualSD:
                 try:
                     data = self.current_file.read(8192)
                 except:
-                    logging.exception("virtual_sdcard read")
+                    self.logger.exception("virtual_sdcard read")
                     self.gcode.respond_error("Error on virtual sdcard read")
                     for cb in self.done_cb:
                         cb('error')
@@ -169,7 +171,7 @@ class VirtualSD:
                     # End of file
                     self.current_file.close()
                     self.current_file = None
-                    logging.info("Finished SD card print")
+                    self.logger.info("Finished SD card print")
                     self.gcode.respond("Done printing file")
                     for cb in self.done_cb:
                         cb('done')
@@ -190,10 +192,11 @@ class VirtualSD:
                     cb('error')
                 break
             except:
-                logging.exception("virtual_sdcard dispatch")
+                self.logger.exception("virtual_sdcard dispatch")
                 break
             self.file_position += len(lines.pop()) + 1
-        logging.info("Exiting SD card print (position %d)", self.file_position)
+        self.logger.info("Exiting SD card print (position %d)",
+                         self.file_position)
         self.work_timer = None
         return self.reactor.NEVER
 
