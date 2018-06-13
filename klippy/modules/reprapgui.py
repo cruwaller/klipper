@@ -8,7 +8,7 @@
 #     Install opencv for video streaming
 #         - $sudo apt-get install python-opencv
 #
-'''
+"""
 Example config sections:
 
 [virtual_sdcard]
@@ -26,7 +26,7 @@ http: 80
 ; Video feed
 ;feedrate: 1.0
 ;camera_index: 0
-'''
+"""
 
 '''
 Status info:
@@ -43,7 +43,7 @@ Status info:
 '''
 
 import time, sys, os, errno, threading, json, re, logging
-import extruder, util
+import util
 
 try:
     sys.path.append(os.path.normpath(
@@ -125,11 +125,172 @@ class MJPEGHandler(tornado.web.RequestHandler):
             else:
                 yield tornado.gen.Task(ioloop.add_timeout, ioloop.time() + self.interval)
 
+class ParseError(Exception):
+    pass
+
+
+ANALYSED_GCODE_FILES = {}
+
+def analyse_gcode_file(filepath):
+    if filepath in ANALYSED_GCODE_FILES:
+        return ANALYSED_GCODE_FILES[filepath]
+    elif os.path.join("gcode", filepath) in ANALYSED_GCODE_FILES:
+        return ANALYSED_GCODE_FILES[filepath]
+    # Set initial values
+    info = {
+        "slicer" : "unknown",
+        "height" : 0,
+        "layerHeight" : 0,
+        "firstLayerHeight": 0,
+        "filament" : []
+    }
+    absolutecoord = True
+    last_position = .0
+    try:
+        with open(filepath, 'rb') as f:
+            #f.seek(0, os.SEEK_END)
+            #fsize = f.tell()
+            f.seek(0)
+            # find used slicer
+            slicer = None
+            for idx in range(100):
+                line = f.readline().strip()
+                if "Simplify3D" in line: # S3D
+                    slicer = "Simplify3D"
+                elif "Slic3r" in line: # slic3r
+                    slicer = "Slic3r"
+                elif ";Sliced by " in line: # ideaMaker
+                    slicer = "ideaMaker"
+                elif "; KISSlicer" in line: # KISSlicer
+                    slicer = "KISSlicer"
+                elif ";Sliced at: " in line: # Cura(old)
+                    slicer = "Cura (OLD)"
+                elif ";Generated with Cura" in line: # Cura(new)
+                    slicer = "Cura"
+                elif "IceSL" in line:
+                    slicer = "IceSL"
+                elif "CraftWare" in line:
+                    slicer = "CraftWare"
+                if slicer is not None:
+                    break
+            # Stop if slicer is not detected!
+            if slicer is None:
+                raise ParseError("Cannot detect slicer")
+            info["slicer"] = slicer
+            # read header
+            layerHeight = None
+            firstLayerHeightPercentage = None
+            firstLayerHeight = None
+            # read footer and find object height
+            f.seek(0)
+            args_r = re.compile('([A-Z_]+|[A-Z*/])')
+            build_info_r = re.compile('([0-9\.]+)')
+            for line in f:
+                line = line.strip()
+                cpos = line.find(';')
+                if cpos == 0:
+                    # Try to parse slicer infos
+                    if slicer is "Simplify3D":
+                        if "Build time" in line:
+                            parts = build_info_r.split(line)
+                            buildTime = .0
+                            offset = 1
+                            if " hour " in parts:
+                                buildTime += 60. * float(parts[offset])
+                                offset += 2
+                            if " minutes" in parts:
+                                buildTime += float(parts[offset])
+                            info["buildTime"] = buildTime * 60.
+                        elif "Filament length: " in line:
+                            parts = build_info_r.split(line)
+                            info["filament"].append(float(parts[1]))
+                        elif "layerHeight" in line:
+                            parts = build_info_r.split(line)
+                            layerHeight = float(parts[1])
+                        elif "firstLayerHeightPercentage" in line:
+                            parts = build_info_r.split(line)
+                            firstLayerHeightPercentage = float(parts[1]) / 100.
+                    elif slicer is "Slic3r":
+                        if "filament used" in line:
+                            parts = build_info_r.split(line)
+                            info["filament"].append(float(parts[1]))
+                        elif "first_layer_height" in line:
+                            parts = build_info_r.split(line)
+                            firstLayerHeight = float(parts[1])
+                        elif "layer_height" in line:
+                            parts = build_info_r.split(line)
+                            layerHeight = float(parts[1])
+                    elif slicer is "Cura":
+                        if "Filament used" in line:
+                            parts = build_info_r.split(line)
+                            info["filament"].append(float(parts[1]) * 1000.) # Convert m to mm
+                        elif "Layer height" in line:
+                            parts = build_info_r.split(line)
+                            layerHeight = float(parts[1])
+                            firstLayerHeight = layerHeight
+                    elif slicer is "IceSL":
+                        if "z_layer_height_first_layer_mm" in line:
+                            parts = build_info_r.split(line)
+                            firstLayerHeight = float(parts[1])
+                        elif "z_layer_height_mm" in line:
+                            parts = build_info_r.split(line)
+                            layerHeight = float(parts[1])
+                    elif slicer is "KISSlicer":
+                        if ";    Ext " in line:
+                            parts = build_info_r.split(line)
+                            info["filament"].append(float(parts[3]))
+                        elif "first_layer_thickness_mm" in line:
+                            parts = build_info_r.split(line)
+                            firstLayerHeight = float(parts[1])
+                        elif "layer_thickness_mm" in line:
+                            parts = build_info_r.split(line)
+                            layerHeight = float(parts[1])
+                    elif slicer is "CraftWare":
+                        # encoded settings in gcode file, need to extract....
+                        pass
+                    continue
+
+                # Remove comments
+                if cpos >= 0:
+                    line = line[:cpos]
+                # Parse args
+                parts = args_r.split(line.upper())[1:]
+                params = { parts[i]: parts[i+1].strip()
+                           for i in range(0, len(parts), 2) }
+                # Find object height
+                if "G" in params:
+                    gnum = int(params['G'])
+                    if gnum == 0 or gnum == 1:
+                        if "Z" in params:
+                            if absolutecoord:
+                                last_position = float(params['Z'])
+                            else:
+                                last_position += float(params['Z'])
+                    elif gnum == 90:
+                        absolutecoord = True
+                    elif gnum == 91:
+                        absolutecoord = False
+
+            info["height"] = last_position
+            # first layer height
+            if layerHeight is not None:
+                info["layerHeight"] = float("%.3f" % layerHeight)
+            if layerHeight is not None and firstLayerHeightPercentage is not None:
+                info["firstLayerHeight"] = float("%.3f" % (layerHeight * firstLayerHeightPercentage))
+            if firstLayerHeight is not None:
+                info["firstLayerHeight"] = float("%.3f" % firstLayerHeight)
+    except (IOError, ParseError):
+        pass
+    ANALYSED_GCODE_FILES[filepath] = info
+    # logging.info("PARSED: %s" % info)
+    return info
+
 class BaseHandler(tornado.web.RequestHandler):
     def get_current_user(self):
         return self.get_secure_cookie("user", max_age_days=5)
 
 class MainHandler(BaseHandler):
+    path = None
     def initialize(self, path):
         self.path = path
     @tornado.web.authenticated
@@ -241,9 +402,13 @@ class rrHandler(tornado.web.RequestHandler):
             if "M32" in gcode:
                 # M32 <GCodeFile> - Select and start gcode file
                 try:
+                    gco_f = gcode[gcode.find("M32") + 3:].split()[0].strip()
+                    gco_f = gco_f.replace('"', '')
+                    if not gco_f.startswith("gcodes"):
+                        gco_f = os.path.join("gcodes", gco_f)
+                    analyse_gcode_file(os.path.join(self.parent.sd.sdcard_dirname, gco_f))
                     self.parent.gcode.simulate_print = False
-                    printer_write(gcode.replace("M32 ", "M23 gcodes/"))
-                    self.parent.current_file = gcode[4:]
+                    printer_write("M23 %s" % gco_f)
                     printer_write("M24")
                 except self.parent.gcode.error:
                     respdata["err"] = 1
@@ -258,7 +423,7 @@ class rrHandler(tornado.web.RequestHandler):
                 if "M106" in gcode:
                     gcode = gcode.replace('M106', 'M1106')
                 try:
-                    resp = printer_write(gcode)
+                    printer_write(gcode)
                 except self.parent.gcode.error as e:
                     respdata["err"] = 1
 
@@ -378,25 +543,26 @@ class rrHandler(tornado.web.RequestHandler):
             else:
                 path = self.get_argument('name').replace("0:/", "").replace("0%3A%2F", "")
                 path = os.path.abspath(os.path.join(self.sd_path, path))
-
             # info about the requested file
             if not os.path.exists(path):
                 respdata["err"] = 1
             else:
+                info = analyse_gcode_file(path)
                 respdata["err"] = 0
                 respdata["size"] = os.path.getsize(path)
                 respdata["lastModified"] = \
                     time.strftime("%Y-%m-%dT%H:%M:%S",
                                   time.gmtime(os.path.getmtime(path)))
-                respdata["generatedBy"]      = "unknown"
-                respdata["height"]           = "NA"
-                respdata["firstLayerHeight"] = "NA"
-                respdata["layerHeight"]      = "NA"
-                respdata["filament"]         = []
+                respdata["generatedBy"]      = info["slicer"]
+                respdata["height"]           = info["height"]
+                respdata["firstLayerHeight"] = info["firstLayerHeight"]
+                respdata["layerHeight"]      = info["layerHeight"]
+                respdata["filament"]         = info["filament"]
 
                 if is_printing is True:
-                    respdata["printDuration"] = 1234
-                    respdata["fileName"]      = os.path.relpath(path, self.sd_path)
+                    # Current file information
+                    respdata["printDuration"] = self.parent.toolhead.get_print_time()
+                    respdata["fileName"] = os.path.relpath(path, self.sd_path) # os.path.basename ?
 
         # rr_move?old=XXX&new=YYY
         elif "rr_move" in path:
@@ -465,10 +631,6 @@ class rrHandler(tornado.web.RequestHandler):
             path = self.get_argument('name').replace("0:/", "").replace("0%3A%2F", "")
             path = os.path.abspath(os.path.join(self.sd_path, path))
 
-            #self.logger.debug("POST rr_upload: name={} time={} [path: {}]".
-            #                  format(self.get_argument('name'),
-            #                         self.get_argument('time'),
-            #                         path))
             try:
                 os.makedirs(os.path.dirname(path))
             except OSError as e:
@@ -498,6 +660,10 @@ def create_dir(_dir):
 _TORNADO_THREAD = None
 
 class RepRapGuiModule(object):
+    warmup_time = .1
+    layer_stats = []
+    first_layer_start = None
+    last_used_file = None
     htmlroot = None
     def __init__(self, printer, config):
         global _TORNADO_THREAD
@@ -509,13 +675,13 @@ class RepRapGuiModule(object):
         self.logger_tornado.setLevel(logging.INFO)
         self.gcode = printer.lookup_object('gcode')
         self.toolhead = printer.lookup_object('toolhead')
+        self.toolhead.register_cb('layer', self.layer_changed)
         self.babysteps = printer.lookup_object('babysteps')
         printer.try_load_module(config, "virtual_sdcard")
         self.sd = printer.lookup_object('virtual_sdcard')
         self.starttime = time.time()
         self.curr_state = 'C'
         self.gcode_resps = []
-        self.current_file = None
 
         # Read config
         self.name = config.getsection('printer').get(
@@ -636,7 +802,7 @@ class RepRapGuiModule(object):
         elif state == "shutdown":
             self.curr_state = "H"
 
-    def sd_print_done(self, status):
+    def sd_print_done(self, status, *args, **kwargs):
         if status == 'pause':
             self.curr_state = "S"
         elif status == 'start':
@@ -644,7 +810,13 @@ class RepRapGuiModule(object):
         elif status == 'error':
             self.curr_state = "I"
         elif status == 'done':
+            toolhead = self.toolhead
+            toolhead.wait_moves()
+            self.layer_changed(toolhead.get_print_time())
             self.curr_state = "I"
+        elif status == 'loaded':
+            self.layer_stats = []
+            self.warmup_time = .1
 
     # ================================================================================
     def cmd_M1106(self, params):
@@ -673,16 +845,21 @@ class RepRapGuiModule(object):
             self.gcode.set_temp(params)
     def cmd_M37(self, params):
         if 'P' in params:
-            gco_f = params['#original'][5:]
-            self.logger.info("Simulating file %s" % (gco_f,))
+            gcode = params['#original']
+            gco_f = gcode[gcode.find("P") + 1:].split()[0].strip()
             gco_f = gco_f.replace('"', '')
+            if not gco_f.startswith("gcodes"):
+                gco_f = os.path.join("gcodes", gco_f)
+            analyse_gcode_file(os.path.join(self.sd.sdcard_dirname, gco_f))
+            self.logger.info("Simulating file %s" % (gco_f,))
             self.gcode.simulate_print = True
-            self.printer_write("M23 gcodes/%s" % (gco_f,))
+            self.printer_write("M23 %s" % (gco_f,))
             self.printer_write("M24")
     def cmd_M98(self, params):
-        macro = params['#original'][5:]
-        self.logger.info("Executing macro %s" % (macro,))
+        gcode = params['#original']
+        macro = gcode[gcode.find("M98") + 3:].split()[0].strip()
         macro = macro.replace('"', '')
+        self.logger.info("Executing macro %s" % (macro,))
         self.gcode.simulate_print = False
         self.printer_write("M23 %s" % (macro,))
         self.printer_write("M24")
@@ -693,7 +870,6 @@ class RepRapGuiModule(object):
 
     # ================================================================================
     def web_getconfig(self):
-        # self.logger.info("****** KLIPPER: web_getconfig() *******")
         _extrs = self.printer.extruder_get()
         num_extruders = len(_extrs)
         toolhead = self.toolhead
@@ -866,37 +1042,102 @@ class RepRapGuiModule(object):
             status_block["tools"] = tools
 
         elif _type == 3:
-            # TODO : update at some day
-            heaters = self.printer.lookup_module_objects("heater")
-            warmuptime = 0.
-            for h in heaters:
-                if h.heating_time > 0:
-                    warmuptime += h.heating_time
+            try:
+                self.last_used_file = fname = self.sd.current_file.name
+            except AttributeError:
+                fname = "NA"
+                if self.last_used_file is not None:
+                    fname = self.last_used_file
+            info = analyse_gcode_file(fname)
+
             printing_time = toolhead.get_print_time()
+            curr_layer = len(self.layer_stats)
+
+            first_layer_time = 0.
+            layer_time_curr = .0
+            if curr_layer > 0 or self.first_layer_start is not None:
+                lstat = self.layer_stats
+                try:
+                    first_layer_time = lstat[0]['layer time']
+                except IndexError:
+                    first_layer_time = printing_time
+                try:
+                    layer_time_curr = lstat[-1]['layer time']
+                except IndexError:
+                    layer_time_curr = printing_time
+            else:
+                self.warmup_time += printing_time - self.warmup_time
+
+            # Print time estimations
             progress = self.sd.get_progress()
-            remaining_time = 0.
+            remaining_time_file = 0.
             if progress > 0:
-                remaining_time = (printing_time / progress) - printing_time
+                remaining_time_file = (printing_time / progress) - printing_time
+
+            # Used filament amount
+            remaining_time_fila = 0.
+            '''
+            fila_total = sum(e for e in info['filament'])
+            if fila_total > 0:
+                fila_used = sum(e.raw_filament for i, e in _extrs.items())
+                fila_perc = (fila_used / fila_total)
+                remaining_time_fila = (printing_time / fila_perc) - printing_time
+            '''
+
+            # Layer statistics
+            remaining_time_layer = 0.
+            '''
+            num_layers = 0
+            layerHeight = info['layerHeight']
+            firstLayerHeight = info['firstLayerHeight']
+            if layerHeight > 0:
+                num_layers = int( (info["height"] - firstLayerHeight +
+                                  layerHeight) / layerHeight )
+            if num_layers:
+                proc = curr_layer / num_layers
+                if proc > 0:
+                    remaining_time_layer = (printing_time / proc) - printing_time
+            '''
+
+            # Fill status block
             status_block.update( {
-                "currentLayer"       : 0,
-                "currentLayerTime"   : 0.0,
+                "currentLayer"       : curr_layer,
+                "currentLayerTime"   : layer_time_curr,
                 # How much filament would have been printed without extrusion factors applied
                 "extrRaw"            : [ float("%0.1f" % e.raw_filament)
                                          for i, e in _extrs.items() ],
                 "fractionPrinted"    : float("%.1f" % progress),
 
-                "firstLayerDuration" : 0.0,
-                "firstLayerHeight"   : 0.0,
+                "firstLayerDuration" : first_layer_time,
+                "firstLayerHeight"   : info['firstLayerHeight'],
                 "printDuration"      : printing_time,
-                "warmUpDuration"     : float("%.1f" % warmuptime),
+                "warmUpDuration"     : float("%.1f" % self.warmup_time),
 
                 "timesLeft": {
-                    "file"     : float("%.1f" % remaining_time),
-                    "filament" : 0.0,
-                    "layer"    : 0.0
+                    "file"     : float("%.1f" % remaining_time_file),
+                    "filament" : [ float("%.1f" % remaining_time_fila) ],
+                    "layer"    : float("%.1f" % remaining_time_layer),
                 }
             } )
         return status_block
+
+    def layer_changed(self, change_time):
+        if len(self.layer_stats) == 0 and self.first_layer_start is None:
+            # First layer started
+            self.logger.info(" ====== 1st LAYER ===== %s " % (change_time))
+            self.first_layer_start = change_time
+        else:
+            # last end is start time
+            if self.first_layer_start is not None:
+                start_time = self.first_layer_start
+                self.first_layer_start = None
+            else:
+                start_time = self.layer_stats[-1]['end time']
+            self.logger.info(" ====== LAYER CHANGED ===== %s - %s" % (start_time, change_time))
+            self.layer_stats.append(
+                {'start time': start_time,
+                 'layer time': (change_time - start_time),
+                 'end time': change_time} )
 
 
 def load_module(printer, config):
