@@ -501,6 +501,7 @@ class GCodeParser:
             self.move_with_transform(self.last_position, self.speed)
         except homing.EndstopError as e:
             raise error(str(e))
+    cmd_G4_aliases = ['G04']
     def cmd_G4(self, params):
         # Dwell
         if 'S' in params:
