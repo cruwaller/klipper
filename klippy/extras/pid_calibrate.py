@@ -50,8 +50,6 @@ class PIDCalibrate:
             calibrate.write_file('/tmp/heattest.txt')
         try:
             Kp, Ki, Kd = calibrate.calc_final_pid()
-        except calibrate.Timeout as err:
-            raise self.gcode.error(err)
         except Exception:
             raise self.gcode.error("Error during calibrarion.")
         self.logger.info("Autotune: final: Kp=%f Ki=%f Kd=%f", Kp, Ki, Kd)
@@ -82,8 +80,6 @@ class PIDCalibrate:
 TUNE_PID_DELTA = 5.0
 
 class ControlAutoTune:
-    class Timeout(Exception):
-        pass
     def __init__(self, tgt_heater, logger, count, time_per_round=20.):
         self.heater = tgt_heater
         self.logger = logger
@@ -98,9 +94,6 @@ class ControlAutoTune:
         self.last_pwm = 0.
         self.pwm_samples = []
         self.temp_samples = []
-        self.first_sample = None
-        self.max_time = count * time_per_round
-        self.timeout = self.target_reached = False
     # Heater control
     def set_pwm(self, read_time, value):
         if value != self.last_pwm:
@@ -110,7 +103,6 @@ class ControlAutoTune:
     def temperature_callback(self, read_time, temp):
         self.temp_samples.append((read_time, temp))
         if self.heating and temp >= self.heater.target_temp:
-            self.target_reached = True
             self.heating = False
             self.check_peaks()
         elif (not self.heating
@@ -128,11 +120,6 @@ class ControlAutoTune:
                 self.peak = temp
                 self.peak_time = read_time
     def check_busy(self, eventtime):
-        if self.first_sample is None or self.target_reached is False:
-            self.first_sample = eventtime
-        elif (eventtime - self.first_sample) > self.max_time:
-            self.timeout = True
-            return False
         if self.heating or len(self.peaks) < self.count:
             return True
         return False
@@ -162,8 +149,6 @@ class ControlAutoTune:
                          temp_diff, max_power, Ku, Tu, Kp, Ki, Kd)
         return Kp, Ki, Kd
     def calc_final_pid(self):
-        if self.timeout:
-            raise self.Timeout("Error: timeout during caliabration")
         if len(self.peaks) == 0:
             raise Exception("Internal error with peaks!")
         cycle_times = [(self.peaks[pos][1] - self.peaks[pos-2][1], pos)
