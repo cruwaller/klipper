@@ -260,10 +260,24 @@ class ToolHead:
         self.logger.info("max_accel: %s" % (self.max_accel))
         self.logger.info("max_accel_to_decel: %s" % (self.max_accel_to_decel))
         self.motor_cbs = []
+        self.z_hop_detect_cntr = 0
+        self.z_hop_detect = None
+        self.layer_change_cb = []
     def register_cb(self, cb_type, cb):
         if cb_type == "motor":
-            if not cb in self.motor_cbs:
+            if cb not in self.motor_cbs:
                 self.motor_cbs.append(cb)
+        elif cb_type == "layer":
+            # Arguments to cb are (change_time)
+            if cb not in self.layer_change_cb:
+                self.layer_change_cb.append(cb)
+    def deregister_cb(self, cb_type, cb):
+        if cb_type == "motor":
+            if cb in self.motor_cbs:
+                self.motor_cbs.remove(cb)
+        elif cb_type == "layer":
+            if cb in self.layer_change_cb:
+                self.layer_change_cb.remove(cb)
     # Print time tracking
     def update_move_time(self, movetime):
         self.print_time += movetime
@@ -358,8 +372,23 @@ class ToolHead:
         self.commanded_pos[:] = newpos
         self.kin.set_position(newpos, homing_axes)
     def move(self, newpos, speed, check=True):
+        # Calculate layer time
+        commanded_pos = self.commanded_pos
+        self.z_hop_detect_cntr += 1
+        if newpos[2] - commanded_pos[2] > 0:
+            if self.z_hop_detect is None:
+                self.z_hop_detect_cntr = 0
+                self.z_hop_detect = { 'pos' : newpos[2], 'time': self.print_time }
+        elif newpos[2] - commanded_pos[2] < 0:
+            self.z_hop_detect = None
+        if self.z_hop_detect_cntr >= 2 and self.z_hop_detect is not None:
+            change_time = self.z_hop_detect['time']
+            for cb in self.layer_change_cb:
+                cb(change_time)
+            self.z_hop_detect = None
+
         speed = min(speed, self.max_velocity)
-        move = Move(self, self.commanded_pos, newpos, speed)
+        move = Move(self, commanded_pos, newpos, speed)
         if not move.move_d:
             return
         if move.is_kinematic_move and check:
