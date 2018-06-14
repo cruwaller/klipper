@@ -209,19 +209,20 @@ class Printer:
         return eventtime + status_delay
     def try_load_module(self, config, section):
         if section in self.objects:
-            return
+            return self.objects[section]
         module_parts = section.split()
         module_name = module_parts[0]
         try:
             mod = importlib.import_module(module_name)
-        except ImportError as e:
-            return
+        except ImportError:
+            return None
         init_func = 'load_config'
         if len(module_parts) > 1:
             init_func = 'load_config_prefix'
         init_func = getattr(mod, init_func, None)
         if init_func is not None:
             self.objects[section] = init_func(config.getsection(section))
+        return self.objects.get(section, None)
     def _try_load_extensions(self, folder, func, config):
         files = os.listdir(os.path.join(os.path.dirname(__file__), folder))
         for module in files:
