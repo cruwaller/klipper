@@ -61,7 +61,7 @@ def calculate_steps(config, microsteps=None):
 class PrinterStepper:
     driver = mcu_stepper = None
     step_dist = inv_step_dist = None
-    step = step_const = step_itersolve = setup_itersolve = None
+    step_itersolve = setup_itersolve = None
     step_move = None
     def __init__(self, printer, config, logger=None):
         self.printer = printer
@@ -97,13 +97,11 @@ class PrinterStepper:
             dir_pin_params = ppins.lookup_pin('digital_out', config.get('dir_pin'))
             self.mcu_stepper.setup_dir_pin(dir_pin_params)
             self.mcu_stepper.setup_step_distance(self.step_dist)
-            self.step = self.mcu_stepper.step
-            self.step_const = self.mcu_stepper.step_const
             self.step_itersolve = self.mcu_stepper.step_itersolve
             self.setup_itersolve = self.mcu_stepper.setup_itersolve
         else:
             self.step_itersolve = driver.step_move
-            self.setup_itersolve = lambda param: None
+            self.setup_itersolve = (lambda *args: 0)
         self.enable = lookup_enable_pin(ppins, config.get('enable_pin', None))
         # Register STEPPER_BUZZ command
         stepper_buzz = printer.try_load_module(config, 'stepper_buzz')
@@ -291,7 +289,6 @@ class PrinterMultiStepper(PrinterHomingStepper):
         PrinterHomingStepper.__init__(self, printer, config)
         self.endstops = PrinterHomingStepper.get_endstops(self)
         self.extras = []
-        self.all_step_const = [self.step_const]
         self.all_step_itersolve = [self.step_itersolve]
         for i in range(1, 99):
             if not config.has_section(config.get_name() + str(i)):
@@ -299,7 +296,6 @@ class PrinterMultiStepper(PrinterHomingStepper):
             extraconfig = config.getsection(config.get_name() + str(i))
             extra = PrinterStepper(printer, extraconfig)
             self.extras.append(extra)
-            self.all_step_const.append(extra.step_const)
             self.all_step_itersolve.append(extra.step_itersolve)
             extraendstop = extraconfig.get('endstop_pin', None)
             if extraendstop is not None:
@@ -309,11 +305,7 @@ class PrinterMultiStepper(PrinterHomingStepper):
                 self.endstops.append((mcu_endstop, extra.name))
             else:
                 self.mcu_endstop.add_stepper(extra.mcu_stepper)
-        self.step_const = self.step_multi_const
         self.step_itersolve = self.step_multi_itersolve
-    def step_multi_const(self, print_time, start_pos, dist, start_v, accel):
-        for step_const in self.all_step_const:
-            step_const(print_time, start_pos, dist, start_v, accel)
     def step_multi_itersolve(self, cmove):
         for step_itersolve in self.all_step_itersolve:
             step_itersolve(cmove)
@@ -354,6 +346,9 @@ class PrinterDummyStepper:
     def __init__(self, printer):
         self.printer = printer
         self.mcu_stepper = DummyMcu()
+        self.step_itersolve = (lambda *args: 0)
+        self.setup_itersolve = (lambda *args: 0)
+        self.setup_cartesian_itersolve = (lambda *args: 0)
     def set_max_jerk(self, max_halt_velocity, max_accel):
         pass
     def set_position(self, pos):
@@ -361,9 +356,7 @@ class PrinterDummyStepper:
     def motor_enable(self, print_time, enable=0):
         pass
     def get_endstops(self):
-        pass
-    def step_const(self, *args, **kwargs):
-        pass
+        return []
 
 
 def LookupMultiHomingStepper(printer, config):
