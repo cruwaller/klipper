@@ -1141,7 +1141,5 @@ class RepRapGuiModule(object):
 
 
 def load_module(printer, config):
-    if not config.has_section("reprapgui"):
-        return None
-    return RepRapGuiModule(
-        printer, config.getsection("reprapgui"))
+    if config.has_section("reprapgui"):
+        RepRapGuiModule(printer, config.getsection("reprapgui"))
