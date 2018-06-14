@@ -7,6 +7,7 @@ import math
 import homing
 import extras.driver as driver_base
 
+
 # Tracking of shared stepper enable pins
 class StepperEnablePin:
     def __init__(self, mcu_enable, enable_count=0):
@@ -22,6 +23,7 @@ class StepperEnablePin:
             if not self.enable_count:
                 self.mcu_enable.set_digital(print_time, 0)
 
+
 def lookup_enable_pin(ppins, pin):
     if pin is None:
         return StepperEnablePin(None, 9999)
@@ -32,6 +34,7 @@ def lookup_enable_pin(ppins, pin):
         mcu_enable.setup_max_duration(0.)
         pin_params['class'] = enable = StepperEnablePin(mcu_enable)
     return enable
+
 
 def calculate_steps(config, microsteps=None):
     # Read config and send to driver
@@ -52,6 +55,7 @@ def calculate_steps(config, microsteps=None):
     else:
         inv_step_dist = 1. / step_dist
     return step_dist, inv_step_dist
+
 
 # Code storing the definitions for a stepper motor
 class PrinterStepper:
@@ -99,10 +103,8 @@ class PrinterStepper:
             self.step_move = driver.step_move
         self.enable = lookup_enable_pin(ppins, config.get('enable_pin', None))
         # Register STEPPER_BUZZ command
-        self.gcode = printer.lookup_object('gcode')
-        self.gcode.register_mux_command(
-            'STEPPER_BUZZ', 'STEPPER', config.get_name(), self.cmd_STEPPER_BUZZ,
-            desc=self.cmd_STEPPER_BUZZ_help)
+        stepper_buzz = printer.try_load_module(config, 'stepper_buzz')
+        stepper_buzz.register_stepper(self, config.get_name())
         self.logger.info("steps per mm {} , step in mm {}".
                          format(self.inv_step_dist, self.step_dist))
         printer.add_object(config.get_name(), self) # to get printer_state called
@@ -125,30 +127,7 @@ class PrinterStepper:
         if self.need_motor_enable != (not enable):
             self.enable.set_enable(print_time, enable)
         self.need_motor_enable = not enable
-    cmd_STEPPER_BUZZ_help = "Oscillate a given stepper to help id it"
-    def cmd_STEPPER_BUZZ(self, params):
-        self.logger.info("Stepper buzz %s", self.name)
-        need_motor_enable = self.need_motor_enable
-        # Move stepper
-        toolhead = self.printer.lookup_object('toolhead')
-        toolhead.wait_moves()
-        pos = self.mcu_stepper.get_commanded_position()
-        print_time = toolhead.get_last_move_time()
-        if need_motor_enable:
-            self.motor_enable(print_time, 1)
-            print_time += .1
-        was_ignore = self.mcu_stepper.set_ignore_move(False)
-        for i in range(10):
-            self.step_const(print_time, pos, 1., 4., 0.)
-            print_time += .3
-            self.step_const(print_time, pos + 1., -1., 4., 0.)
-            toolhead.reset_print_time(print_time + .7)
-            print_time = toolhead.get_last_move_time()
-        self.mcu_stepper.set_ignore_move(was_ignore)
-        if need_motor_enable:
-            print_time += .1
-            self.motor_enable(print_time, 0)
-            toolhead.reset_print_time(print_time)
+
 
 # Support for stepper controlled linear axis with an endstop
 class PrinterHomingStepper(PrinterStepper):
@@ -298,6 +277,7 @@ class PrinterHomingStepper(PrinterStepper):
                     self.name, pos, self.homing_endstop_phase))
         return (delta * self.step_dist) - self.homing_offset
 
+
 # Wrapper for dual stepper motor support
 class PrinterMultiStepper(PrinterHomingStepper):
     def __init__(self, printer, config):
@@ -339,11 +319,14 @@ class PrinterMultiStepper(PrinterHomingStepper):
     def get_endstops(self):
         return self.endstops
 
+
 class DummyMcu:
     def __init__(self):
         pass
     def get_commanded_position(self):
         return 0
+
+
 class PrinterDummyStepper:
     position_min = position_max = 0
     need_motor_enable = False
