@@ -77,65 +77,101 @@ class PrinterHeater:
             config.getfloat('protect_period', 10.0, above=0.0, maxval=120.0)
         self.protect_hyst_runaway = \
             config.getfloat('protect_hysteresis_runaway', 4.0, above=0.0)
+        self.protect_hyst_cooling = \
+            config.getfloat('protect_hysteresis_cooling', 1.0, above=0.0)
+        self.protect_hyst_idle = \
+            config.getfloat('protect_idle_max', 50.0, above=0.0)
         self.reactor = printer.reactor
         self.protection_timer = self.reactor.register_timer(self._check_heating)
-        self.protection_last_temp = None
+        self.protection_last_temp = 9999.
         self.protect_runaway_disabled = False
         self.heating_start_time = 0.
         self.heating_time = None
+    def printer_state(self, state):
+        if state == 'ready':
+            if not self.mcu_sensor.is_shutdown():
+                # Start checking
+                self.reactor.update_timer(self.protection_timer,
+                                          self.reactor.NOW)
+                self.logger.debug("Temperature protection timer started")
+        elif state == 'disconnect' or state == 'shutdown':
+            # stop checking
+            self.reactor.update_timer(self.protection_timer,
+                                      self.reactor.NEVER)
+            self.logger.debug("Temperature protection timer stopped")
+    protect_state = None
     def _check_heating(self, eventtime):
         next_time = 10.0  # next 10sec from now
         with self.lock:
             current_temp = self.last_temp
             target_temp = self.target_temp
-        if self.protection_last_temp is None:
-            self.is_heating = False
-            self.is_runaway = False
-            self.is_cooling = False
-            # Set init value
-            self.protection_last_temp = current_temp
-            if current_temp <= (target_temp - self.protect_hyst_runaway):
-                self.is_heating = True
+        # initiate protection
+        if self.protect_state is None:
+            if target_temp == 0:
+                self.protect_state = 'idle'
+            elif current_temp <= (target_temp - self.protect_hyst_runaway):
                 next_time = self.protection_period_heat
+                self.protect_state = 'heating'
             elif current_temp > target_temp > 0:
-                self.is_cooling = True
                 next_time = self.protection_period
+                self.protect_state = 'cooling'
             else:
-                self.is_runaway = True
                 next_time = self.protection_period
-        elif self.is_runaway:
+                self.protect_state = 'maintain'
+        elif self.protect_state == 'maintain':
             # Check hysteresis during maintain
             if self.protect_hyst_runaway < abs(current_temp - target_temp) and \
                     not self.protect_runaway_disabled:
                 self.__protect_error(
                     "Thermal runaway! current temp %s, last %s" %
                     (current_temp, self.protection_last_temp))
-            self.protection_last_temp = current_temp
             next_time = self.protection_period
-        elif self.is_cooling:
+        elif self.protect_state == 'idle':
+            #  check that temp is not increased over the limit
+            if target_temp:
+                if current_temp > target_temp:
+                    self.protect_state = "cooling"
+                else:
+                    self.protect_state = "heating"
+                next_time = .5
+            elif self.protect_hyst_idle < current_temp:
+                self.__protect_error(
+                    "Cooling error! current temp %s, idle limit %s" %
+                    (current_temp, self.protect_hyst_idle))
+        elif self.protect_state == 'cooling':
             next_time = self.protection_period_heat
-            if (current_temp - self.protect_hyst_runaway) < target_temp:
-                self.is_cooling = False
-                self.is_heating = True
-        elif self.is_heating:
-            # Check hysteresis during the preheating
+            # Heater off
+            if target_temp == 0 and \
+                    (current_temp - self.protect_hyst_idle) < self.protect_hyst_idle:
+                self.protect_state = 'idle'
+            # Check if cooling period is over
+            elif (current_temp - self.protect_hyst_runaway) < target_temp:
+                self.protect_state = 'heating'
+            # Check that heater is cooling
+            elif (self.protection_last_temp -
+                  self.protect_hyst_cooling) < current_temp:
+                self.__protect_error(
+                    "Cooling error! current temp %s, last %s" %
+                    (current_temp, self.protection_last_temp))
+        elif self.protect_state == 'heating':
+            next_time = self.protection_period_heat
+            # Check hysteresis during the heating
             if ((target_temp - self.protect_hyst_runaway)
                     <= current_temp <=
                     (target_temp + self.protect_hyst_runaway)):
                 # Heating over, start maintaining protect
-                self.is_runaway = True
+                self.protect_state = 'maintain'
             elif current_temp < target_temp:
                 if abs(current_temp - self.protection_last_temp) < self.protection_hysteresis_heat:
                     self.__protect_error(
                         "Heating error! current temp %s, last %s" %
                         (current_temp, self.protection_last_temp))
-            self.protection_last_temp = current_temp
-            next_time = self.protection_period_heat
-        self.logger.debug("check_heating(eventtime {}, next {}) {} / {}".
-                          format(eventtime, (eventtime + next_time),
-                                 current_temp, target_temp))
+        self.protection_last_temp = current_temp
+        #self.logger.debug("Protection at %s: state %s, temperatures %.2f / %.2f" %
+        #                  (eventtime, self.protect_state, current_temp, target_temp))
         if self.heating_time is None and \
                 current_temp >= target_temp:
+            self.logger.info("Heating time: ")
             self.heating_time = eventtime
         return eventtime + next_time
     def __protect_error(self, errorstr):
@@ -187,7 +223,7 @@ class PrinterHeater:
         else:
             self.temp_debug = temp
         # <<<<< DEBUG DEBUG DEBUG <<<<<
-        '''
+        #'''
         with self.lock:
             self.last_temp = temp
             self.last_temp_time = read_time
@@ -204,19 +240,11 @@ class PrinterHeater:
         self.protect_runaway_disabled = auto_tune
         with self.lock:
             self.target_temp = degrees
+        self.reactor.update_timer(self.protection_timer,
+                                  self.reactor.NOW)
         if degrees:
             self.heating_time = None
             self.heating_start_time = self.reactor.monotonic()
-            # Start checking
-            self.protection_last_temp = None
-            self.reactor.update_timer(self.protection_timer,
-                                      self.reactor.NOW)
-            self.logger.debug("Temperature protection timer started")
-        else:
-            # stop checking
-            self.reactor.update_timer(self.protection_timer,
-                                      self.reactor.NEVER)
-            self.logger.debug("Temperature protection timer stopped")
     def get_temp(self, eventtime):
         print_time = self.mcu_sensor.estimated_print_time(eventtime) - 5.
         with self.lock:
