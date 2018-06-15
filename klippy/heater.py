@@ -24,16 +24,16 @@ class PrinterHeater:
 
     def __init__(self, config):
         self.printer = printer = config.get_printer()
-        self.gcode = printer.lookup_object('gcode')
-        self.name = config.get_name()
+        self.gcode = gcode = printer.lookup_object('gcode')
+        self.name = name = config.get_name()
         try:
-            self.index = int(self.name[7:])
+            self.index = int(name[7:])
         except ValueError:
             self.index = -1  # Mark to bed
-        self.logger = printer.logger.getChild(self.name.replace(" ", "_"))
+        self.logger = printer.logger.getChild(name.replace(" ", "_"))
         sensor_name = config.get('sensor')
         self.logger.debug("Add heater '{}', index {}, sensor {}".
-                          format(self.name, self.index, sensor_name))
+                          format(name, self.index, sensor_name))
         self.sensor = sensors.load_sensor(
             config.getsection('sensor %s' % sensor_name))
         self.sensor.setup_callback(self.temperature_callback)
@@ -80,13 +80,58 @@ class PrinterHeater:
         self.protect_hyst_cooling = \
             config.getfloat('protect_hysteresis_cooling', 1.0, above=0.0)
         self.protect_hyst_idle = \
-            config.getfloat('protect_idle_max', 50.0, above=0.0)
+            config.getfloat('protect_idle_max', 50.0, above=0.0, maxval=60.0)
         self.reactor = printer.reactor
         self.protection_timer = self.reactor.register_timer(self._check_heating)
         self.protection_last_temp = 9999.
         self.protect_runaway_disabled = False
         self.heating_start_time = 0.
         self.heating_end_time = None
+
+        for _name in [name.replace(" ", "_").upper(), str(self.index)]:
+            gcode.register_mux_command("TEMP_PROTECTION", "HEATER", _name,
+                                       self.cmd_TEMP_PROTECTION,
+                                       desc=self.cmd_TEMP_PROTECTION_help)
+    cmd_TEMP_PROTECTION_help = "agrs: HEATER, IDLE_MAX, HYSTERESIS_COOLING, " \
+                               "PERIOD_HEAT, HYSTERESIS_HEAT," \
+                               "PERIOD_RUNAWAY, HYSTERESIS_RUNAWAY"
+    def cmd_TEMP_PROTECTION(self, params):
+        # Stop timer during the param update
+        self.reactor.update_timer(self.protection_timer,
+                                  self.reactor.NEVER)
+        # Heating
+        self.protection_period_heat = self.gcode.get_float(
+            'PERIOD_HEAT', params, self.protection_period_heat,
+            above=0.0, maxval=120.0)
+        self.protection_hysteresis_heat = self.gcode.get_float(
+            'HYSTERESIS_HEAT', params, self.protection_hysteresis_heat,
+            above=0.5)
+        # Maintain
+        self.protection_period = self.gcode.get_float(
+            'PERIOD_RUNAWAY', params, self.protection_period,
+            above=0.0, maxval=120.0)
+        self.protect_hyst_runaway = self.gcode.get_float(
+            'HYSTERESIS_RUNAWAY', params, self.protect_hyst_runaway,
+            above=0.0)
+        # Cooling
+        self.protect_hyst_cooling = self.gcode.get_float(
+            'HYSTERESIS_COOLING', params, self.protect_hyst_cooling,
+            above=0.0)
+        # Idle
+        self.protect_hyst_idle = self.gcode.get_float(
+            'IDLE_MAX', params, self.protect_hyst_idle,
+            above=0.0, maxval=60.)
+        # Star timer again
+        self.protect_state = None
+        self.reactor.update_timer(self.protection_timer,
+                                  self.reactor.NOW)
+        self.gcode.respond_info(
+            "Idle limit %.2fC, Cooling hysteresis %.2fC\n"
+            "Heating: period %.2fs, hysteresis %.2fC\n"
+            "Runaway: period %.2fs, hysteresis %.2fC" % (
+                self.protect_hyst_idle, self.protect_hyst_cooling,
+                self.protection_period_heat, self.protection_hysteresis_heat,
+                self.protection_period, self.protect_hyst_runaway))
     def printer_state(self, state):
         if state == 'ready':
             if not self.mcu_sensor.is_shutdown():
@@ -167,8 +212,8 @@ class PrinterHeater:
                         "Heating error! current temp %s, last %s" %
                         (current_temp, self.protection_last_temp))
         self.protection_last_temp = current_temp
-        self.logger.debug("Protection at %s: state %s, temperatures %.2f / %.2f" %
-                          (eventtime, self.protect_state, current_temp, target_temp))
+        #self.logger.debug("Protection at %s: state %s, temperatures %.2f / %.2f" %
+        #                  (eventtime, self.protect_state, current_temp, target_temp))
         return eventtime + next_time
     def __protect_error(self, errorstr):
         self.set_temp(0, 0)
