@@ -253,6 +253,7 @@ class ToolHead:
         gcode = printer.lookup_object('gcode')
         gcode.register_command('SET_VELOCITY_LIMIT', self.cmd_SET_VELOCITY_LIMIT,
                                desc=self.cmd_SET_VELOCITY_LIMIT_help)
+        gcode.register_command('M204', self.cmd_M204)
         self.logger.info("Kinematic created: %s" % self.kin.name)
         self.logger.info("max_accel: %s" % (self.max_accel))
         self.logger.info("max_accel_to_decel: %s" % (self.max_accel_to_decel))
@@ -502,6 +503,20 @@ class ToolHead:
                    junction_deviation))
         self.printer.set_rollover_info("toolhead", "toolhead: %s" % (msg,))
         gcode.respond_info(msg)
+    def cmd_M204(self, params):
+        # Set default acceleration
+        gcode = self.printer.lookup_object('gcode')
+        accel = gcode.get_float('A', params, None)
+        if accel is None:
+            accel = gcode.get_float('S', params, None, above=0.)
+        if accel is not None and 0. < accel:
+            self.max_accel = min(accel, self.config_max_accel)
+        decel = gcode.get_float('D', params, None)
+        if decel is not None and 0. < decel:
+            self.max_accel_to_decel = min(decel, self.max_accel)
+        gcode.respond("Accel %u, decel %u" % (
+            self.max_accel, self.max_accel_to_decel,))
+
 
 def add_printer_objects(printer, config):
     printer.add_object('toolhead', ToolHead(printer, config))

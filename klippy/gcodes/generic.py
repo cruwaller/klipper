@@ -5,7 +5,7 @@ class GenericGcode(object):
         self.printer = printer
         self.gcode = printer.lookup_object('gcode')
         self.toolhead = printer.lookup_object('toolhead')
-        for cmd in ['M0', 'M1', 'M37', 'M118', 'M204', 'M205',
+        for cmd in ['M0', 'M1', 'M37', 'M118', 'M205',
                     'M301', 'M302', 'M304',
                     'M851', 'M900']:
             self.gcode.register_command(
@@ -60,6 +60,7 @@ class GenericGcode(object):
     def cmd_M118(self, params):
         self.respond_info(params['#original'].replace(params['#command'], ""))
 
+    '''
     def cmd_M204(self, params):
         # Set default acceleration
         accel = self.gcode.get_int('A', params, None)
@@ -73,6 +74,8 @@ class GenericGcode(object):
             self.gcode.toolhead.max_accel_to_decel = 0.5 * accel
         self.respond_info("Accel %u, decel %u" % (self.gcode.toolhead.max_accel,
                                                   self.gcode.toolhead.max_accel_to_decel,))
+    '''
+
     def cmd_M205(self, params):
         # Set advanced settings
         value = self.gcode.get_float('X', params, None)
