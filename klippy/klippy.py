@@ -8,6 +8,7 @@ import sys, os, optparse, logging, time
 import collections, ConfigParser, importlib
 import util, reactor, queuelogger, msgproto
 import gcode, pins, mcu, toolhead, extruder
+import hostcpu
 
 # Include extras path to search dir
 sys.path.append(os.path.join(os.path.dirname(__file__), "extras"))
@@ -215,7 +216,7 @@ class Printer:
         init_func = getattr(mod, init_func, None)
         if init_func is not None:
             self.objects[section] = init_func(config.getsection(section))
-    def _try_load_extensions(self, folder, func, config=None):
+    def _try_load_extensions(self, folder, func, config):
         files = os.listdir(os.path.join(os.path.dirname(__file__), folder))
         for module in files:
             if module == '__init__.py' or module[-3:] != '.py':
@@ -229,10 +230,7 @@ class Printer:
                 continue
             init_func = getattr(mod, func, None)
             if init_func is not None:
-                if config is None:
-                    init_func(self)
-                else:
-                    init_func(self, config)
+                init_func(self, config)
     def _read_config(self):
         fileconfig = ConfigParser.RawConfigParser()
         config_file = self.start_args['config_file']
@@ -245,19 +243,18 @@ class Printer:
         # Create printer components
         config = ConfigWrapper(self, fileconfig, 'printer')
         # Read config
-        for m in [pins, mcu]:
+        for m in [pins, mcu, hostcpu]:
             m.add_printer_objects(self, config)
         self.logger.info("========================================")
         for section in fileconfig.sections():
-            if "driver" not in section:
-                self.try_load_module(config, section)
+            self.try_load_module(config, section)
         self.logger.info("========================================")
         self._extruders = {}
         for m in [toolhead, extruder]:
             m.add_printer_objects(self, config)
 
         # Load gcode extensions
-        self._try_load_extensions('gcodes', 'load_gcode')
+        self._try_load_extensions('gcodes', 'load_gcode', config)
         # Load modules
         self._try_load_extensions('modules', 'load_module', config)
 
