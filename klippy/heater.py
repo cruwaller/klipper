@@ -86,7 +86,7 @@ class PrinterHeater:
         self.protection_last_temp = 9999.
         self.protect_runaway_disabled = False
         self.heating_start_time = 0.
-        self.heating_time = None
+        self.heating_end_time = None
     def printer_state(self, state):
         if state == 'ready':
             if not self.mcu_sensor.is_shutdown():
@@ -167,12 +167,8 @@ class PrinterHeater:
                         "Heating error! current temp %s, last %s" %
                         (current_temp, self.protection_last_temp))
         self.protection_last_temp = current_temp
-        #self.logger.debug("Protection at %s: state %s, temperatures %.2f / %.2f" %
-        #                  (eventtime, self.protect_state, current_temp, target_temp))
-        if self.heating_time is None and \
-                current_temp >= target_temp:
-            self.logger.info("Heating time: ")
-            self.heating_time = eventtime
+        self.logger.debug("Protection at %s: state %s, temperatures %.2f / %.2f" %
+                          (eventtime, self.protect_state, current_temp, target_temp))
         return eventtime + next_time
     def __protect_error(self, errorstr):
         self.set_temp(0, 0)
@@ -230,7 +226,14 @@ class PrinterHeater:
             self.can_extrude = (self.min_extrude_temp_disabled or
                                 temp >= self.min_extrude_temp)
             self.control.temperature_callback(read_time, temp)
-        # self.logger.debug("read_time=%.3f read_value=%f temperature=%f",
+        if self.heating_end_time is None:
+            if self.heating_start_time is None:
+                self.heating_start_time = read_time
+            elif temp >= self.target_temp:
+                self.heating_end_time = read_time
+                #self.logger.debug("Heating ready: took %s seconds" % (
+                #    self.get_heating_time()))
+        #self.logger.debug("read_time=%.3f read_value=%f temperature=%f",
         #                  read_time, read_value, temp)
     # External commands
     def set_temp(self, print_time, degrees, auto_tune=False):
@@ -240,11 +243,12 @@ class PrinterHeater:
         self.protect_runaway_disabled = auto_tune
         with self.lock:
             self.target_temp = degrees
+        # Init temp protection for next read
+        self.protect_state = None
         self.reactor.update_timer(self.protection_timer,
                                   self.reactor.NOW)
         if degrees:
-            self.heating_time = None
-            self.heating_start_time = self.reactor.monotonic()
+            self.heating_end_time = self.heating_start_time = None
     def get_temp(self, eventtime):
         print_time = self.mcu_sensor.estimated_print_time(eventtime) - 5.
         with self.lock:
@@ -277,9 +281,9 @@ class PrinterHeater:
             last_temp = self.last_temp
         return {'temperature': last_temp, 'target': target_temp}
     def get_heating_time(self):
-        if self.heating_time is None:
+        if self.heating_end_time is None:
             return 0.
-        return self.heating_time - self.heating_start_time
+        return self.heating_end_time - self.heating_start_time
 
 
 ######################################################################
