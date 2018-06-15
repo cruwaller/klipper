@@ -85,7 +85,7 @@ gpio_adc_read(struct gpio_adc g)
 #if (CONFIG_SIMULATOR == 1)
     } else {
         (void)g;
-        return (uint16_t)(0.8f * CONFIG_ADC_MAX_VALUE);
+        return (uint16_t)(0.94f * CONFIG_ADC_MAX_VALUE);
 #endif
     }
 }
