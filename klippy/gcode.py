@@ -600,8 +600,8 @@ class GCodeParser:
             self.base_position[3] = last_e_pos - e_value * new_extrude_factor
             extr.extrude_factor = new_extrude_factor
     cmd_SET_GCODE_OFFSET_help = \
-        "Set a virtual offset to g-code positions. " \
-        "args: <axis>_ADJUST"
+        "Set a virtual offset to positions. " \
+        "args: [X|Y|Z_ADJUST=offset]"
     def cmd_SET_GCODE_OFFSET(self, params):
         for axis, pos in self.axis2pos.items():
             if axis in params:

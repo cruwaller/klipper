@@ -243,7 +243,7 @@ class PrinterExtruder:
             step_const(move_time, start_pos, -retract_d, retract_v, accel)
             start_pos -= retract_d
         self.extrude_pos = start_pos
-    cmd_SET_PRESSURE_ADVANCE_help = "args: EXTRUDER, ADVANCE, ADVANCE_LOOKAHEAD_TIME"
+    cmd_SET_PRESSURE_ADVANCE_help = "args: [EXTRUDER=] [ADVANCE=] [ADVANCE_LOOKAHEAD_TIME=]"
     def cmd_default_SET_PRESSURE_ADVANCE(self, params):
         extruder = self.printer.lookup_object('toolhead').get_extruder()
         extruder.cmd_SET_PRESSURE_ADVANCE(params)

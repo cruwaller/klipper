@@ -81,10 +81,9 @@ class GenericGcode(object):
             self.gcode.toolhead.get_kinematics().update_velocities()
         self.respond_info("Junction deviation %.2f" % (self.gcode.toolhead.junction_deviation,))
 
-    cmd_M302_help = "Allow cold extrusion. Args P0 to disable, " \
-                    "P1 to enable, S<temp> to set limit"
+    cmd_M302_help = "Cold Extrude. Args [P<bool>] [S<temp>]"
     def cmd_M302(self, params):
-        # Allow cold extrusion
+        # Cold extrusion
         #       M302         ; report current cold extrusion state
         #       M302 P0      ; enable cold extrusion checking
         #       M302 P1      ; disables cold extrusion checking
@@ -113,7 +112,7 @@ class GenericGcode(object):
         # M304: Set PID parameters - Bed
         self.gcode.respond_info("Obsolete, use SET_PID_PARAMS")
 
-    cmd_M851_help = "Set XYZ axes homing offsets"
+    cmd_M851_help = "Set axis offset. Args [X<offset] [Y<offset>] [Z<offset>]"
     def cmd_M851(self, params):
         # Set X, Y, Z offsets
         steppers = self.gcode.toolhead.get_kinematics().get_steppers()
@@ -131,5 +130,5 @@ class GenericGcode(object):
         self.gcode.respond_info("Obsolete, use SET_PRESSURE_ADVANCE")
 
 
-def load_gcode(printer):
+def load_gcode(printer, config):
     GenericGcode(printer)

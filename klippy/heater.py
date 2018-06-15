@@ -382,7 +382,8 @@ class ControlPID:
             gcode.register_mux_command("SET_PID_PARAMS", "HEATER", name,
                                        self.cmd_SET_PID_PARAMS,
                                        desc=self.cmd_SET_PID_PARAMS_help)
-    cmd_SET_PID_PARAMS_help = "HEATER, P, I, D, DERIV_TIME, INTEGRAL_MAX"
+    cmd_SET_PID_PARAMS_help = "Args: [HEATER=] [P=] [I=] [D=] " \
+                              "[DERIV_TIME=] [INTEGRAL_MAX=]"
     def cmd_SET_PID_PARAMS(self, params):
         self.Kp = self.gcode.get_float(
             'P', params, self.Kp*PID_PARAM_BASE, minval=0.) / PID_PARAM_BASE

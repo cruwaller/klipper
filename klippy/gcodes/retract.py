@@ -62,6 +62,7 @@ class GCodeRetract(object):
                                  self.return_speed))
             self.respond_dbg("short retract recover")
 
+    cmd_M207_help = "Set firmware retraction. Args: [F<feedrate>] [S<length>] [Z<hight>]"
     def cmd_M207(self, params):
         # M207 F<feedrate> S<length> Z<hight>
         self.retract_dist = self.gcode.get_float(
@@ -80,6 +81,7 @@ class GCodeRetract(object):
         self.respond_info("FW Retract: speed %s length %s z_hop %s" %
                           (self.retract_speed, self.retract_dist, self.z_hop))
 
+    cmd_M208_help = "Set fw retraction return. Args: [F<feedrate>] [S<length>]"
     def cmd_M208(self, params):
         # M208 F<feedrate> S<length>
         self.return_dist = self.gcode.get_float(

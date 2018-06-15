@@ -195,18 +195,15 @@ class ToolHead:
         self.mcu = self.all_mcus[0]
         self.max_velocity = config.getfloat('max_velocity', above=0.)
         self.max_accel = config.getfloat('max_accel', above=0.)
-        max_accel_to_decel_ratio = config.getfloat(
+        self.max_accel_to_decel_ratio = config.getfloat(
             'max_accel_to_decel_ratio', default=1.0, above=0.,
             maxval=1.)
         max_accel_to_decel = config.getfloat(
             'max_accel_to_decel', default=None
             , above=0., maxval=self.max_accel)
-        if max_accel_to_decel is not None:
-            self.requested_accel_to_decel = max_accel_to_decel
-        else:
-            self.requested_accel_to_decel = self.max_accel * max_accel_to_decel_ratio
-        self.max_accel_to_decel = min(self.requested_accel_to_decel,
-                                      self.max_accel)
+        if max_accel_to_decel is None:
+            max_accel_to_decel = self.max_accel * self.max_accel_to_decel_ratio
+        self.max_accel_to_decel = min(max_accel_to_decel, self.max_accel)
         self.junction_deviation = config.getfloat(
             'junction_deviation', 0.02, minval=0.)
         self.config_max_velocity = self.max_velocity
@@ -472,8 +469,8 @@ class ToolHead:
         return min(self.max_velocity,
                    math.sqrt(8. * self.junction_deviation * self.max_accel))
     cmd_SET_VELOCITY_LIMIT_help = "Set printer velocity limits. " \
-                                  "args: VELOCITY, ACCEL, JUNCTION_DEVIATION," \
-                                  "ACCEL_TO_DECEL"
+                                  "Args: [VELOCITY=] [ACCEL=] [JUNCTION_DEVIATION=]" \
+                                  " [ACCEL_TO_DECEL=] [ACCEL_TO_DECEL_RATIO=]"
     def cmd_SET_VELOCITY_LIMIT(self, params):
         print_time = self.get_last_move_time()
         gcode = self.printer.lookup_object('gcode')
@@ -486,17 +483,22 @@ class ToolHead:
         junction_deviation = gcode.get_float(
             'JUNCTION_DEVIATION', params, self.junction_deviation,
             minval=0., maxval=self.config_junction_deviation)
-        self.requested_accel_to_decel = gcode.get_float(
-            'ACCEL_TO_DECEL', params, self.requested_accel_to_decel, above=0.)
+        max_accel_to_decel = gcode.get_float(
+            'ACCEL_TO_DECEL', params, None, above=0.)
+        self.max_accel_to_decel_ratio = gcode.get_float(
+            'ACCEL_TO_DECEL_RATIO', params,
+            self.max_accel_to_decel_ratio, above=0.)
+        if max_accel_to_decel is None:
+            max_accel_to_decel = max_accel * self.max_accel_to_decel_ratio
         self.max_velocity = max_velocity
         self.max_accel = max_accel
-        self.max_accel_to_decel = min(self.requested_accel_to_decel, max_accel)
+        self.max_accel_to_decel = min(max_accel_to_decel, max_accel)
         self.junction_deviation = junction_deviation
         msg = ("max_velocity: %.6f\n"
                "max_accel: %.6f\n"
                "max_accel_to_decel: %.6f\n"
                "junction_deviation: %.6f"% (
-                   max_velocity, max_accel, self.requested_accel_to_decel,
+                   max_velocity, max_accel, self.max_accel_to_decel,
                    junction_deviation))
         self.printer.set_rollover_info("toolhead", "toolhead: %s" % (msg,))
         gcode.respond_info(msg)

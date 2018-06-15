@@ -13,7 +13,7 @@ class BabySteps(object):
         self.logger.info("BabySteps initialized")
         printer.add_object("babysteps", self)
 
-    cmd_M290_help = "Babystepping. Args: S to move or R to reset"
+    cmd_M290_help = "Babystepping. Args: [S<offset>] | [R]"
     def cmd_M290(self, params):
         absolutecoord = self.gcode.absolutecoord
         base_position = self.gcode.base_position
@@ -36,5 +36,5 @@ class BabySteps(object):
         self.gcode.base_position = base_position
         self.gcode.last_position = last_position
 
-def load_gcode(printer):
+def load_gcode(printer, config):
     BabySteps(printer)
