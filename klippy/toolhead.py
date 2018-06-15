@@ -471,7 +471,9 @@ class ToolHead:
         # determined experimentally.
         return min(self.max_velocity,
                    math.sqrt(8. * self.junction_deviation * self.max_accel))
-    cmd_SET_VELOCITY_LIMIT_help = "Set printer velocity limits"
+    cmd_SET_VELOCITY_LIMIT_help = "Set printer velocity limits. " \
+                                  "args: VELOCITY, ACCEL, JUNCTION_DEVIATION," \
+                                  "ACCEL_TO_DECEL"
     def cmd_SET_VELOCITY_LIMIT(self, params):
         print_time = self.get_last_move_time()
         gcode = self.printer.lookup_object('gcode')

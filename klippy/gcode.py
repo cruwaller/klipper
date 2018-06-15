@@ -70,6 +70,8 @@ class GCodeParser:
         if not (len(cmd) >= 2 and not cmd[0].isupper() and cmd[1].isdigit()):
             origfunc = func
             func = lambda params: origfunc(self.get_extended_params(params))
+        else:
+            raise self.printer.config_error("GCode must be is capitals! cmd: %s" % cmd)
         self.ready_gcode_handlers[cmd] = func
         if when_not_ready:
             self.base_gcode_handlers[cmd] = func
@@ -597,7 +599,9 @@ class GCodeParser:
             e_value = (last_e_pos - self.base_position[3]) / extr.extrude_factor
             self.base_position[3] = last_e_pos - e_value * new_extrude_factor
             extr.extrude_factor = new_extrude_factor
-    cmd_SET_GCODE_OFFSET_help = "Set a virtual offset to g-code positions"
+    cmd_SET_GCODE_OFFSET_help = \
+        "Set a virtual offset to g-code positions. " \
+        "args: <axis>_ADJUST"
     def cmd_SET_GCODE_OFFSET(self, params):
         for axis, pos in self.axis2pos.items():
             if axis in params:
@@ -643,10 +647,12 @@ class GCodeParser:
         # Turn fan off
         self.set_fan_speed(0., self.get_int('P', params, 0))
     # G-Code miscellaneous commands
+    cmd_M112_help = "Emergency shutdown"
     cmd_M112_when_not_ready = True
     def cmd_M112(self, params):
         # Emergency Stop
         self.printer.invoke_shutdown("Shutdown due to M112 command")
+    cmd_M115_help = "Get firmware version and capabilities"
     cmd_M115_when_not_ready = True
     def cmd_M115(self, params):
         # Get Firmware Version and Capabilities
@@ -665,6 +671,7 @@ class GCodeParser:
         res = homing.query_endstops(self.toolhead)
         self.respond(" ".join(["%s:%s" % (name, ["open", "TRIGGERED"][not not t])
                                for name, t in res]))
+    cmd_GET_POSITION_help = "Get current axes positions"
     cmd_GET_POSITION_when_not_ready = True
     def cmd_GET_POSITION(self, params):
         if self.toolhead is None:
@@ -712,6 +719,7 @@ class GCodeParser:
     cmd_FIRMWARE_RESTART_help = "Restart firmware, host, and reload config"
     def cmd_FIRMWARE_RESTART(self, params):
         self.request_restart('firmware_restart')
+    cmd_ECHO_help = "Repond same command back to sender"
     cmd_ECHO_when_not_ready = True
     def cmd_ECHO(self, params):
         self.respond_info(params['#original'])

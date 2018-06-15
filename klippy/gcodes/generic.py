@@ -8,20 +8,19 @@ class GenericGcode(object):
         for cmd in ['M0', 'M1', 'M37', 'M118', 'M204', 'M205',
                     'M301', 'M302', 'M304',
                     'M851', 'M900']:
-            self.gcode.register_command(cmd, getattr(self, 'cmd_' + cmd))
+            self.gcode.register_command(
+                cmd, getattr(self, 'cmd_' + cmd),
+                desc=getattr(self, 'cmd_%s_help' % cmd, None))
         # just discard
         for cmd in ['M120', 'M121', 'M122', "M141",
                     'M291', 'M292',
-                    'M752', 'M753', 'M754', 'M755', 'M756','M997']:
+                    'M752', 'M753', 'M754', 'M755', 'M756', 'M997']:
             self.gcode.register_command(cmd, self.gcode.cmd_IGNORE)
         # M999 to reset
         self.gcode.register_command('M999',
                                     self.gcode.cmd_FIRMWARE_RESTART,
                                     when_not_ready=True,
                                     desc="Alias to FIRMWARE_RESTART")
-        #self.gcode.register_command("SET_PRESSURE_ADVANCE",
-        #                            self.cmd_SET_PRESSURE_ADVANCE,
-        #                            desc=self.cmd_SET_PRESSURE_ADVANCE_help)
         self.respond_info = self.gcode.respond # self.gcode.respond_info
         self.axis2pos = self.gcode.axis2pos
         self.logger = self.gcode.logger
@@ -50,6 +49,7 @@ class GenericGcode(object):
         self.gcode.toolhead.wait_moves()
         self.motor_heater_off()
 
+    cmd_M37_help = "Enable P1 or disable P0 print simulation"
     def cmd_M37(self, params):
         simulation_enabled = self.gcode.get_int('P', params, 0)
         if simulation_enabled is 1:
@@ -81,6 +81,8 @@ class GenericGcode(object):
             self.gcode.toolhead.get_kinematics().update_velocities()
         self.respond_info("Junction deviation %.2f" % (self.gcode.toolhead.junction_deviation,))
 
+    cmd_M302_help = "Allow cold extrusion. Args P0 to disable, " \
+                    "P1 to enable, S<temp> to set limit"
     def cmd_M302(self, params):
         # Allow cold extrusion
         #       M302         ; report current cold extrusion state
@@ -111,6 +113,7 @@ class GenericGcode(object):
         # M304: Set PID parameters - Bed
         self.gcode.respond_info("Obsolete, use SET_PID_PARAMS")
 
+    cmd_M851_help = "Set XYZ axes homing offsets"
     def cmd_M851(self, params):
         # Set X, Y, Z offsets
         steppers = self.gcode.toolhead.get_kinematics().get_steppers()
