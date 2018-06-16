@@ -110,7 +110,7 @@ class GCodeParser:
             self.gcode_handlers = self.base_gcode_handlers
             self.dump_debug()
             if self.is_fileinput:
-                self.printer.request_exit()
+                self.printer.request_exit('error_exit')
             return
         elif state == 'connect':
             if not self.is_fileinput and self.fd_handle is None:
@@ -293,8 +293,10 @@ class GCodeParser:
         self.logger.error(msg.replace('\n', ". "))
         lines = msg.strip().split('\n')
         if len(lines) > 1:
-            self.respond_info("\n".join(lines[:-1]))
-        self.respond('!! %s' % (lines[-1].strip(),))
+            self.respond_info("\n".join(lines))
+        self.respond('!! %s' % (lines[0].strip(),))
+        if self.is_fileinput:
+            self.printer.request_exit('error_exit')
     # Parameter parsing helpers
     class sentinel: pass
     def get_str(self, name, params, default=sentinel, parser=str,

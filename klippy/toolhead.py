@@ -520,7 +520,7 @@ class ToolHead:
         # self.get_kinematics().update_velocities()
         gcode.respond("Accel %u, decel %u" % (
             self.max_accel, self.max_accel_to_decel,))
-l
+
 
 def add_printer_objects(printer, config):
     printer.add_object('toolhead', ToolHead(printer, config))

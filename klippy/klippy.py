@@ -175,6 +175,11 @@ class Printer:
         if default is ConfigWrapper.sentinel:
             return extruders.get(index)
         return extruders.get(index, default)
+    def _set_state(self, msg):
+        self.state_message = msg
+        if (msg != message_ready
+            and self.start_args.get('debuginput') is not None):
+            self.request_exit('error_exit')
     def add_object(self, name, obj):
         if obj in self.objects:
             raise self.config_error(
@@ -287,7 +292,7 @@ class Printer:
                 if self.state_message is not message_startup:
                     return self.reactor.NEVER
                 cb('connect')
-            self.state_message = message_ready
+            self._set_state(message_ready)
             for cb in self.state_cb:
                 if self.state_message is not message_ready:
                     return self.reactor.NEVER
@@ -296,17 +301,17 @@ class Printer:
                 self.reactor.update_timer(self.stats_timer, self.reactor.NOW)
         except (self.config_error, pins.error) as e:
             self.logger.exception("Config error")
-            self.state_message = "%s%s" % (str(e), message_restart)
+            self._set_state("%s%s" % (str(e), message_restart))
         except msgproto.error as e:
             self.logger.exception("Protocol error")
-            self.state_message = "%s%s" % (str(e), message_protocol_error)
+            self._set_state("%s%s" % (str(e), message_protocol_error))
         except mcu.error as e:
             self.logger.exception("MCU error during connect")
-            self.state_message = "%s%s" % (str(e), message_mcu_connect_error)
+            self._set_state("%s%s" % (str(e), message_mcu_connect_error))
         except:
             self.logger.exception("Unhandled exception during connect")
-            self.state_message = "Internal error during connect.%s" % (
-                message_restart,)
+            self._set_state("Internal error during connect.%s" % (
+                message_restart,))
         return self.reactor.NEVER
     def run(self):
         systime = time.time()
@@ -319,7 +324,7 @@ class Printer:
                 self.reactor.run()
             except:
                 self.logger.exception("Unhandled exception during run")
-                return "exit"
+                return "error_exit"
             # Check restart flags
             run_result = self.run_result
             try:
@@ -339,13 +344,13 @@ class Printer:
         if self.is_shutdown:
             return
         self.is_shutdown = True
-        self.state_message = "%s%s" % (msg, message_shutdown)
+        self._set_state("%s%s" % (msg, message_shutdown))
         for cb in self.state_cb:
             cb('shutdown')
     def invoke_async_shutdown(self, msg):
         self.async_shutdown_msg = msg
         self.request_exit("shutdown")
-    def request_exit(self, result="exit"):
+    def request_exit(self, result):
         self.run_result = result
         self.reactor.end()
 
@@ -411,12 +416,12 @@ def main():
     logging.getLogger().setLevel(debuglevel)
     logging.info("Starting Klippy...")
     start_args['software_version'] = util.get_git_version()
+    versions = "\n".join([
+        "Args: %s" % (sys.argv,),
+        "Git version: %s" % (repr(start_args['software_version']),),
+        "CPU: %s" % (util.get_cpu_info(),),
+        "Python: %s" % (repr(sys.version),)])
     if bglogger is not None:
-        versions = "\n".join([
-            "Args: %s" % (sys.argv,),
-            "Git version: %s" % (repr(start_args['software_version']),),
-            "CPU: %s" % (util.get_cpu_info(),),
-            "Python: %s" % (repr(sys.version),)])
         logging.info(versions)
 
     # Start Printer() class
@@ -426,7 +431,7 @@ def main():
             bglogger.set_rollover_info('versions', versions)
         printer = Printer(input_fd, bglogger, start_args)
         res = printer.run()
-        if res == 'exit':
+        if res in ['exit', 'error_exit']:
             break
         time.sleep(1.)
         logging.info("Restarting printer")
@@ -434,6 +439,10 @@ def main():
 
     if bglogger is not None:
         bglogger.stop()
+
+    if res == 'error_exit':
+        sys.exit(-1)
+
 
 if __name__ == '__main__':
     util.fix_sigint()
