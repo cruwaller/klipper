@@ -24,13 +24,17 @@ if machine in ["x86_64", "x86"]:
             pass
     GPIO = GpioTemp()
 else:
-    try:
-        import RPi.GPIO as GPIO
-    except RuntimeError:
-        raise Exception("Error importing RPi.GPIO! "
-                        "This is probably because you need superuser privileges. "
-                        "You can achieve this by using 'sudo' to run your script")
-    except ImportError:
+    if nodename == "raspberrypi":
+        try:
+            import RPi.GPIO as GPIO
+        except RuntimeError:
+            raise Exception("Error importing RPi.GPIO! "
+                            "This is probably because you need superuser privileges. "
+                            "You can achieve this by using 'sudo' to run your script")
+        except ImportError:
+            raise Exception("Error importing OPi.GPIO!"
+                            "Try to install it first: pip install OPi.GPIO")
+    elif "orangepi" in nodename:
         try:
             import OPi.GPIO as GPIO
         except ImportError:
@@ -175,6 +179,7 @@ class HostCpu(object):
                 format += "[!] "
             raise pins.error(
                 "Invalid pin description '%s'\n"
+
                 "Format is: %s pin_name" % (pin_desc, format))
         if pin in self.active_pins:
             pin_params = self.active_pins[pin]
