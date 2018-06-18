@@ -32,14 +32,14 @@ else:
                             "This is probably because you need superuser privileges. "
                             "You can achieve this by using 'sudo' to run your script")
         except ImportError:
-            raise Exception("Error importing OPi.GPIO!"
-                            "Try to install it first: pip install OPi.GPIO")
+            raise Exception("Error importing RPi.GPIO!"
+                            "Try to install it first: ~/klippy-env/bin/pip install RPi.GPIO")
     elif "orangepi" in nodename:
         try:
             import OPi.GPIO as GPIO
         except ImportError:
             raise Exception("Error importing OPi.GPIO!"
-                            "Try to install it first: pip install OPi.GPIO")
+                            "Try to install it first: ~/klippy-env/bin/pip install OPi.GPIO")
 
 if GPIO is not None:
     try:
