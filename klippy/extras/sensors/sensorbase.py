@@ -9,9 +9,10 @@ SAMPLE_COUNT_DEFAULT   = 8
 REPORT_TIME_DEFAULT    = 0.300
 
 VALID_SPI_SENSORS = {
-    'MAX6675' : 1, 'MAX31855' : 1,
+    'MAX31855' : 1,
     'MAX31856' : 2,
-    'MAX31865' : 4
+    'MAX31865' : 4,
+    'MAX6675'  : 8,
 }
 
 class error(Exception):
