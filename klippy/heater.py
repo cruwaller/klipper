@@ -181,7 +181,7 @@ class PrinterHeater:
                 next_time = .5
             elif self.protect_hyst_idle < current_temp:
                 self.__protect_error(
-                    "Cooling error! current temp %s, idle limit %s" %
+                    "Idle error! current temp %s, idle limit %s" %
                     (current_temp, self.protect_hyst_idle))
         elif self.protect_state == 'cooling':
             next_time = self.protection_period_heat
