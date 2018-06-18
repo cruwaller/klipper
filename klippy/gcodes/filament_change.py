@@ -9,9 +9,11 @@ class GCodeFilamentPause(object):
                 cmd, self.cmd_FILAMENT_CHANGE,
                 desc=getattr(self, 'cmd_' + cmd + '_help', None))
         self.respond = self.gcode.respond_info
-        self.script = filter(
-            None, [ cmd.strip() for cmd in
-                    config.get("commands").split('\n') ])
+        self.script = config.get("commands")
+        self.retract_speed = config.getfloat(
+            "retract_speed", 1200., above=0.)
+        self.load_speed = config.getfloat(
+            "load_speed", 1200., above=0.)
         self.logger.info("Script: %s" % self.script)
 
     cmd_M600_help = "Alias for FILAMENT_CHANGE"
@@ -28,7 +30,7 @@ class GCodeFilamentPause(object):
         """
         use_script = True
         get_float = self.gcode.get_float
-        process_commands = self.gcode.process_commands
+        run_script = self.gcode.run_script
         move = {}
         retract_len = get_float('E', params, None, minval=0.)
         load_len = get_float('L', params, None, minval=0.)
@@ -36,17 +38,17 @@ class GCodeFilamentPause(object):
         pos_y = get_float('Y', params, None, minval=0.)
         pos_z = get_float('Z', params, None, minval=0.)
         # Pause print first
-        process_commands(['M25 P0'], need_ack=False)
+        run_script('M25 P0\n')
         if retract_len is not None:
             use_script = False
-            process_commands(
-                ['G92 E0', 'G1 E-%s F1200' % retract_len, 'G92 E0'],
-                need_ack=False)
+            run_script('G92 E0\nG1 E-%s F%u' % (
+                retract_len, int(self.retract_speed)))
         if pos_z:
             use_script = False
-            process_commands(
-                ['G91', 'G1 Z%s F400' % pos_z, 'G90'],
-                need_ack=False)
+            if self.gcode.absolutecoord:
+                run_script('G91\nG1 Z%s F400\nG90' % pos_z)
+            else:
+                run_script('G1 Z%s F400' % pos_z)
         if pos_x is not None:
             move['X'] = pos_x
         if pos_y is not None:
@@ -56,11 +58,10 @@ class GCodeFilamentPause(object):
             self.gcode.cmd_G1(move)
         if load_len is not None:
             use_script = False
-            process_commands(
-                ['G92 E0', 'G1 E-%s F1200' % load_len, 'G92 E0'],
-                need_ack=False)
+            run_script('G92 E0\nG1 E-%s F%u' % (
+                load_len, int(self.load_speed)))
         if use_script:
-            process_commands(self.script, need_ack=False)
+            run_script(self.script)
 
 
 def load_config(config):
