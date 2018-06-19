@@ -14,6 +14,7 @@ MAX_HEAT_TIME = 5.0
 AMBIENT_TEMP = 25.
 PID_PARAM_BASE = 255.
 
+DEBUG_TARGET = 25.
 
 class error(Exception):
     pass
@@ -80,7 +81,7 @@ class PrinterHeater:
         self.protect_hyst_cooling = \
             config.getfloat('protect_hysteresis_cooling', 1.0, above=0.0)
         self.protect_hyst_idle = \
-            config.getfloat('protect_idle_max', 50.0, above=0.0, maxval=60.0)
+            config.getfloat('protect_hysteresis_idle', 1.0, above=0.0, maxval=5.0)
         self.reactor = printer.reactor
         self.protection_timer = self.reactor.register_timer(self._check_heating)
         self.protection_last_temp = 9999.
@@ -92,9 +93,9 @@ class PrinterHeater:
             gcode.register_mux_command("TEMP_PROTECTION", "HEATER", _name,
                                        self.cmd_TEMP_PROTECTION,
                                        desc=self.cmd_TEMP_PROTECTION_help)
-    cmd_TEMP_PROTECTION_help = "agrs: HEATER, IDLE_MAX, HYSTERESIS_COOLING, " \
-                               "PERIOD_HEAT, HYSTERESIS_HEAT," \
-                               "PERIOD_RUNAWAY, HYSTERESIS_RUNAWAY"
+    cmd_TEMP_PROTECTION_help = "agrs: HEATER= [HYSTERESIS_IDLE=] [HYSTERESIS_COOLING=] " \
+                               "[PERIOD_HEAT=] [HYSTERESIS_HEAT=] " \
+                               "[PERIOD_RUNAWAY=] [HYSTERESIS_RUNAWAY=]"
     def cmd_TEMP_PROTECTION(self, params):
         # Stop timer during the param update
         self.reactor.update_timer(self.protection_timer,
@@ -119,14 +120,14 @@ class PrinterHeater:
             above=0.0)
         # Idle
         self.protect_hyst_idle = self.gcode.get_float(
-            'IDLE_MAX', params, self.protect_hyst_idle,
+            'HYSTERESIS_IDLE', params, self.protect_hyst_idle,
             above=0.0, maxval=60.)
         # Star timer again
         self.protect_state = None
         self.reactor.update_timer(self.protection_timer,
                                   self.reactor.NOW)
         self.gcode.respond_info(
-            "Idle limit %.2fC, Cooling hysteresis %.2fC\n"
+            "Idle hysteresis %.2fC, Cooling hysteresis %.2fC\n"
             "Heating: period %.2fs, hysteresis %.2fC\n"
             "Runaway: period %.2fs, hysteresis %.2fC" % (
                 self.protect_hyst_idle, self.protect_hyst_cooling,
@@ -136,6 +137,7 @@ class PrinterHeater:
         if state == 'ready':
             if not self.mcu_sensor.is_shutdown():
                 # Start checking
+                self.protect_state = None
                 self.reactor.update_timer(self.protection_timer,
                                           self.reactor.NOW)
                 self.logger.debug("Temperature protection timer started")
@@ -146,12 +148,12 @@ class PrinterHeater:
             self.logger.debug("Temperature protection timer stopped")
     protect_state = None
     def _check_heating(self, eventtime):
-        next_time = 10.0  # next 10sec from now
+        next_time = 15.0  # next 15sec from now for idle
         with self.lock:
             current_temp = self.last_temp
             target_temp = self.target_temp
         # initiate protection
-        if self.protect_state is None:
+        if self.protect_state is None or self.protection_last_temp == 0:
             if target_temp == 0:
                 self.protect_state = 'idle'
             elif current_temp <= (target_temp - self.protect_hyst_runaway):
@@ -179,15 +181,15 @@ class PrinterHeater:
                 else:
                     self.protect_state = "heating"
                 next_time = .5
-            elif self.protect_hyst_idle < current_temp:
+            elif (self.protection_last_temp + self.protect_hyst_idle) < \
+                    current_temp:
                 self.__protect_error(
-                    "Idle error! current temp %s, idle limit %s" %
-                    (current_temp, self.protect_hyst_idle))
+                    "Idle error! temperatures: current %s last %s - idle hysteresis %s" %
+                    (current_temp, self.protection_last_temp, self.protect_hyst_idle))
         elif self.protect_state == 'cooling':
             next_time = self.protection_period_heat
             # Heater off
-            if target_temp == 0 and \
-                    (current_temp - self.protect_hyst_idle) < self.protect_hyst_idle:
+            if target_temp == 0:
                 self.protect_state = 'idle'
             # Check if cooling period is over
             elif (current_temp - self.protect_hyst_runaway) < target_temp:
@@ -257,12 +259,17 @@ class PrinterHeater:
         # >>>>> DEBUG DEBUG DEBUG >>>>>
         if self.target_temp:
             if self.last_pwm_value:
-                self.temp_debug += 1.
+                self.temp_debug += .5
             else:
-                self.temp_debug -= 1.
+                self.temp_debug -= .5
             temp = self.temp_debug
         else:
-            self.temp_debug = temp
+            if self.temp_debug > DEBUG_TARGET:
+                self.temp_debug -= .05
+            else:
+                self.temp_debug = DEBUG_TARGET
+            #self.temp_debug = temp
+            temp = self.temp_debug
         # <<<<< DEBUG DEBUG DEBUG <<<<<
         #'''
         with self.lock:
