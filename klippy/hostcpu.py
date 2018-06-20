@@ -1,7 +1,7 @@
 import os, re
 import pins
 
-(sysname, nodename, release, version, machine) = os.uname()
+(sysname, hostname, release, version, machine) = os.uname()
 
 GPIO = None
 
@@ -23,8 +23,8 @@ if machine in ["x86_64", "x86"]:
         def remove_event_detect(self, *args, **kwargs):
             pass
     GPIO = GpioTemp()
-else:
-    if nodename == "raspberrypi":
+elif sysname == "Linux":
+    if machine in ['armv6l', 'armv7l']:
         try:
             import RPi.GPIO as GPIO
         except RuntimeError:
@@ -34,7 +34,7 @@ else:
         except ImportError:
             raise Exception("Error importing RPi.GPIO!"
                             "Try to install it first: ~/klippy-env/bin/pip install RPi.GPIO")
-    elif "orangepi" in nodename:
+    elif machine == 'aarch64':
         try:
             import OPi.GPIO as GPIO
         except ImportError:
@@ -125,13 +125,12 @@ class HostCpu(object):
         self.logger = printer.logger.getChild("hostcpu")
         self.active_pins = {}
         pinmap = {}
-        if nodename == "raspberrypi":
-            if machine == "armv7l":
-                pinmap = self._rpi_v2_pins()
-            elif machine == "armv6l":
-                pinmap = self._rpi_v1_pins()
-        elif "orangepi" in nodename:
+        if machine in ["armv7l", 'aarch64']:
+            # Raspberry Pi3 or Orange Pi PC2
             pinmap = self._rpi_v2_pins()
+        elif machine == "armv6l":
+            # Raspberry Pi1
+            pinmap = self._rpi_v1_pins()
         self.available_pins = pinmap
         # printer.add_object("hostcpu", self)
     def __del__(self):
