@@ -60,6 +60,12 @@ class TMC2130(SpiDriver):
     isStallguard = False
     isStandstill = False
 
+    val_GCONF = 0
+    val_CHOPCONF = 0
+    val_COOLCONF = 0
+    val_PWMCONF = 0
+    val_IHOLD_IRUN = 0  # read only
+
     def __init__(self, config):
         self._direction = 0
         SpiDriver.__init__(self, config)
