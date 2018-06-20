@@ -377,6 +377,8 @@ class GCodeParser:
             eventtime = self.reactor.pause(eventtime + 1.)
     def set_temp(self, params, is_bed=False, wait=False):
         temp = self.get_float('S', params, 0.) if (self.simulate_print is False) else 0.
+        if temp == -273.15:
+            temp = 0.
         heater = None
         if is_bed:
             heater = self.printer.lookup_object('heater bed', None)
