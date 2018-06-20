@@ -25,6 +25,10 @@ class SensorBase(object):
                  sample_count = SAMPLE_COUNT_DEFAULT,
                  report_time  = REPORT_TIME_DEFAULT,
                  chip_type    = None):
+        if chip_type:
+            self.logger = config.get_printer().logger.getChild(chip_type)
+        else:
+            self.logger = config.get_printer().logger.getChild("sensor")
         self.oid = None
         self.sample_time = sample_time
         self.sample_count = sample_count
@@ -54,7 +58,7 @@ class SensorBase(object):
                     spi_mode, spi_speed))
             config_cmd = "".join("%02x" % b for b in self.get_configs())
             mcu.add_config_cmd("spi_send oid=%u data=%s" % (
-                spi_oid, config_cmd), is_init=True)
+                spi_oid, config_cmd), is_init=False)
             # Reader chip configuration
             self.oid = oid = mcu.create_oid()
             mcu.add_config_cmd(
@@ -90,6 +94,8 @@ class SensorBase(object):
                 self.oid, clock, self._report_clock,
                 self.min_sample_value, self.max_sample_value))
     def _handle_thermocouple_result(self, params):
+        #self.logger.debug("value: %s [0x%08X], fault: %s" % (
+        #    params['value'], int(params['value']), params['fault']))
         last_value      = params['value']
         next_clock      = self.mcu.clock32_to_clock64(params['next_clock'])
         last_read_clock = next_clock - self._report_clock

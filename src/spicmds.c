@@ -110,7 +110,7 @@ command_spi_send(uint32_t *args)
     struct spidev_s *spi = oid_lookup(oid, command_config_spi);
     uint8_t data_len = args[1];
     uint8_t *data = (void*)(size_t)args[2];
-    spidev_transfer(spi, 0, data_len, data);
+    spidev_transfer(spi, 1, data_len, data);
 }
 DECL_COMMAND(command_spi_send, "spi_send oid=%c data=%*s");
 
@@ -122,13 +122,13 @@ spidev_shutdown(void)
     struct spidev_s *spi;
     foreach_oid(oid, spi, command_config_spi) {
         if (spi->flags & SF_HAVE_PIN)
-            gpio_out_write(spi->pin, !!(spi->flags & SF_CS_INVERTED));
+            gpio_out_write(spi->pin, !(spi->flags & SF_CS_INVERTED));
     }
 
     // Send shutdown messages
     foreach_oid(oid, spi, command_config_spi) {
         if (spi->shutdown_msg_len)
-            spidev_transfer(spi, 0, spi->shutdown_msg_len, spi->shutdown_msg);
+            spidev_transfer(spi, 1, spi->shutdown_msg_len, spi->shutdown_msg);
     }
 }
 DECL_SHUTDOWN(spidev_shutdown);
