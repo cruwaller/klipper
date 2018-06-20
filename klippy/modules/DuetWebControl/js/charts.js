@@ -1,7 +1,7 @@
 /* Chart interface logic for Duet Web Control
- * 
+ *
  * written by Christian Hammacher (c) 2016-2017
- * 
+ *
  * licensed under the terms of the GPL v3
  * see http://www.gnu.org/licenses/gpl-3.0.html
  */
@@ -25,7 +25,7 @@ var tempChartOptions = 	{
 	},
 	yaxis: {
 		min: 0,
-		max: 280
+		max: 350
 	}
 };
 var tempChartPadding = 15;
