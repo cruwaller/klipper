@@ -54,6 +54,7 @@ import tornado.ioloop
 import tornado.web
 
 _PARENT = None
+KLIPPER_CFG_NAME = 'klipper_config.cfg'
 
 def dict_dump_json(data, logger):
     logger.info(json.dumps(data,
@@ -412,6 +413,19 @@ class rrHandler(tornado.web.RequestHandler):
                     printer_write("M24")
                 except self.parent.gcode.error:
                     respdata["err"] = 1
+            elif "M80" in gcode:
+                atx_on = self.parent.atx_on
+                if atx_on is not None:
+                    resp = os.popen(atx_on).read()
+                    self.parent.append_gcode_resp(resp)
+                    self.logger.info("ATX ON: %s" % resp)
+            elif "M81" in gcode:
+                # ATX OFF
+                atx_off = self.parent.atx_off
+                if atx_off is not None:
+                    resp = os.popen(atx_off).read()
+                    self.parent.append_gcode_resp(resp)
+                    self.logger.info("ATX OFF: %s" % resp)
             elif "T-1" in gcode:
                 # Skip...
                 pass
@@ -431,30 +445,25 @@ class rrHandler(tornado.web.RequestHandler):
         elif "rr_download" in path:
             # Download a specified file from the SD card.
             path = self.get_argument('name').replace("0:/", "").replace("0%3A%2F", "")
-            path = os.path.abspath(os.path.join(self.sd_path, path))
-
-            #self.logger.debug("GET rr_download: name={} [path: {}]".
-            #                  format(self.get_argument('name'),
-            #                         path))
-
+            if KLIPPER_CFG_NAME in path:
+                path = os.path.abspath(
+                    self.parent.printer.get_start_args()['config_file'])
+            else:
+                path = os.path.abspath(os.path.join(self.sd_path, path))
+            # Check if file exists and upload
             if not os.path.exists(path):
                 raise tornado.web.HTTPError(404)
             else:
                 self.set_header('Content-Type', 'application/force-download')
                 self.set_header('Content-Disposition', 'attachment; filename=%s' % os.path.basename(path))
-                with open(path, "rb") as f:
-                    try:
-                        while True:
-                            _buffer = f.read(4096)
-                            if _buffer:
-                                self.write(_buffer)
-                            else:
-                                f.close()
-                                self.finish()
-                            return
-                    except:
-                        raise tornado.web.HTTPError(404)
-                raise tornado.web.HTTPError(500)
+                try:
+                    with open(path, "rb") as f:
+                        self.write( f.read() )
+                except IOError:
+                    # raise tornado.web.HTTPError(500)
+                    raise tornado.web.HTTPError(404)
+                self.finish()
+                return
 
         # rr_delete?name=XXX
         elif "rr_delete" in path:
@@ -486,24 +495,22 @@ class rrHandler(tornado.web.RequestHandler):
                     1 = the directory doesn't exist
                     2 = the requested volume is not mounted
             '''
-            _dir = self.get_argument('dir').replace("0:/", "").replace("0%3A%2F", "")
-            respdata["dir"]   = self.get_argument('dir')
+            _dir = self.get_argument('dir')
+            respdata["dir"]   = _dir
             respdata["files"] = []
 
+            _dir = _dir.replace("0:/", "").replace("0%3A%2F", "")
             path = os.path.abspath(os.path.join(self.sd_path, _dir))
 
             if not os.path.exists(path):
                 respdata["err"] = 1
             else:
                 respdata["err"] = 0
-                del respdata["err"]
-
+                del respdata["err"] # err keyword need to be deleted
                 for _local in os.listdir(path):
                     if _local.startswith("."):
                         continue
-
                     filepath = os.path.join(path, _local)
-
                     if os.path.isfile(filepath):
                         data = {
                             "type" : "f",
@@ -522,7 +529,18 @@ class rrHandler(tornado.web.RequestHandler):
                                                    time.gmtime(os.path.getmtime(filepath))),
                         }
                         respdata["files"].append(data)
-            #self.logger.debug("rr_filelist: {}".format(respdata))
+
+                # Add printer.cfg into sys list
+                if "/sys" in path:
+                    cfg_file = os.path.abspath(
+                        self.parent.printer.get_start_args()['config_file'])
+                    respdata["files"].append({
+                        "type": "f",
+                        "name": KLIPPER_CFG_NAME, # os.path.basename(cfg_file),
+                        "size": os.path.getsize(cfg_file),
+                        "date": time.strftime("%Y-%m-%dT%H:%M:%S",
+                                              time.gmtime(os.path.getmtime(cfg_file))),
+                    })
 
         # rr_fileinfo?name=XXX
         elif "rr_fileinfo" in path:
@@ -580,8 +598,6 @@ class rrHandler(tornado.web.RequestHandler):
 
         # rr_mkdir?dir=XXX
         elif "rr_mkdir" in path:
-            #self.logger.debug("GET rr_mkdir: dir={}".
-            #                  format(self.get_argument('dir')))
             # {"err":[code]} , 0 if success
             respdata["err"] = 0
             directory = self.get_argument('dir').replace("0:/", "").replace("0%3A%2F", "")
@@ -595,6 +611,7 @@ class rrHandler(tornado.web.RequestHandler):
 
         # rr_config / rr_configfile
         elif "rr_configfile" in path:
+            self.logger.info("rr_configfile! %s" % self.request.uri)
             respdata = {
                 "err" : 0,
             }
@@ -604,8 +621,6 @@ class rrHandler(tornado.web.RequestHandler):
         elif "rr_reply" in path:
             if len(self.parent.gcode_resps):
                 self.write(self.parent.gcode_resps.pop(0))
-            #else:
-            #    self.write("GCode resps queue is empty")
             return
 
         else:
@@ -628,22 +643,30 @@ class rrHandler(tornado.web.RequestHandler):
             # /rr_upload?name=xxxxx&time=xxxx
             # /rr_upload?name=0:/filaments/PLA/unload.g&time=2017-11-30T11:46:50
 
-            path = self.get_argument('name').replace("0:/", "").replace("0%3A%2F", "")
-            path = os.path.abspath(os.path.join(self.sd_path, path))
+            size = int(self.request.headers['Content-Length'])
+            body_len = len(self.request.body)
+            if body_len != size or not body_len or not size:
+                self.logger.error("upload size error: %s != %s" % (body_len, size))
+            else:
+                path = self.get_argument('name').replace("0:/", "").replace("0%3A%2F", "")
+                if KLIPPER_CFG_NAME in path:
+                    path = os.path.abspath(
+                        self.parent.printer.get_start_args()['config_file'])
+                else:
+                    path = os.path.abspath(os.path.join(self.sd_path, path))
 
-            try:
-                os.makedirs(os.path.dirname(path))
-            except OSError as e:
-                if e.errno != errno.EEXIST:
-                    pass
-            try:
-                # Write request content to file
-                with open(path, 'w') as output_file:
-                    if self.request.body:
+                try:
+                    os.makedirs(os.path.dirname(path))
+                except OSError as e:
+                    if e.errno != errno.EEXIST:
+                        pass
+                try:
+                    # Write request content to file
+                    with open(path, 'w') as output_file:
                         output_file.write(self.request.body)
-                    respdata['err'] = 0
-            except IOError:
-                pass
+                        respdata['err'] = 0
+                except IOError:
+                    pass
 
         # Send response back to client
         respstr = json.dumps(respdata)
@@ -696,6 +719,9 @@ class RepRapGuiModule(object):
         self.passwd = config.get('password')
         feed_interval = config.getfloat('feedrate', minval=0., default=0.)
         camera = VideoCamera(config.getint('camera_index', default=0))
+        # - M80 / M81 ATX commands
+        self.atx_on = config.get('atx_cmd_on', default=None)
+        self.atx_off = config.get('atx_cmd_off', default=None)
         # ------------------------------
         # Create paths to virtual SD
         create_dir(os.path.join(self.sd.sdcard_dirname, "gcodes"))
@@ -791,6 +817,9 @@ class RepRapGuiModule(object):
         if self.send_resp:
             self.gcode_resps.append(msg)
             self.send_resp = False
+
+    def append_gcode_resp(self, msg):
+        self.gcode_resps.append(msg)
 
     def printer_state(self, state):
         if state == "connect":
