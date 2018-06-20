@@ -672,6 +672,7 @@ class rrHandler(tornado.web.RequestHandler):
         respstr = json.dumps(respdata)
         self.write(respstr)
 
+
 def create_dir(_dir):
     try:
         os.makedirs(_dir)
@@ -739,13 +740,13 @@ class RepRapGuiModule(object):
                     tornado.web.url(r'/login', LoginHandler,
                                     {"path": htmlroot, "parent": self}, name="login"),
                     tornado.web.url(r'/logout', LogoutHandler, name="logout"),
-                    tornado.web.url(r"/(.*)xml",    tornado.web.StaticFileHandler,
+                    tornado.web.url(r"/(.*\.xml)", tornado.web.StaticFileHandler,
                                     {"path": htmlroot}),
                     tornado.web.url(r"/fonts/(.*)", tornado.web.StaticFileHandler,
                                     {"path": os.path.join(htmlroot, "fonts")}),
-                    tornado.web.url(r"/js/(.*)",    tornado.web.StaticFileHandler,
+                    tornado.web.url(r"/js/(.*)", tornado.web.StaticFileHandler,
                                     {"path": os.path.join(htmlroot, "js")}),
-                    tornado.web.url(r"/css/(.*)",   tornado.web.StaticFileHandler,
+                    tornado.web.url(r"/css/(.*)", tornado.web.StaticFileHandler,
                                     {"path": os.path.join(htmlroot, "css")}),
                     tornado.web.url(r"/(rr_.*)", rrHandler, {"parent": self}),
                     tornado.web.url(r"/video", MJPEGHandler,
