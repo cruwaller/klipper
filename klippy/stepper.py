@@ -63,8 +63,8 @@ class PrinterStepper:
     step_dist = inv_step_dist = None
     step_itersolve = setup_itersolve = None
     step_move = None
-    def __init__(self, printer, config, logger=None):
-        self.printer = printer
+    def __init__(self, config, logger=None):
+        printer = config.get_printer()
         self.name = config.get_name()
         if self.name.startswith('stepper_'):
             self.name = self.name[8:]
@@ -132,9 +132,9 @@ class PrinterStepper:
 
 # Support for stepper controlled linear axis with an endstop
 class PrinterHomingStepper(PrinterStepper):
-    def __init__(self, printer, config, need_position_minmax=True,
+    def __init__(self, config, need_position_minmax=True,
                  default_position_endstop=None):
-        PrinterStepper.__init__(self, printer, config)
+        PrinterStepper.__init__(self, config)
         # Endstop and its position
         if default_position_endstop is None:
             self.position_endstop = config.getfloat('position_endstop')
@@ -201,7 +201,8 @@ class PrinterHomingStepper(PrinterStepper):
                 cfgval = 'endstop_max_pin' if self.homing_positive_dir \
                     else 'endstop_min_pin'
                 endstop_pin = config.get(cfgval)
-            self.mcu_endstop = printer.lookup_object('pins').setup_pin('endstop', endstop_pin)
+            ppins = config.get_printer().lookup_object('pins')
+            self.mcu_endstop = ppins.setup_pin('endstop', endstop_pin)
             self.mcu_endstop.add_stepper(self.mcu_stepper)
             # Endstop stepper phase position tracking
             self.homing_stepper_phases = config.getint(
@@ -285,8 +286,8 @@ class PrinterHomingStepper(PrinterStepper):
 
 # Wrapper for dual stepper motor support
 class PrinterMultiStepper(PrinterHomingStepper):
-    def __init__(self, printer, config):
-        PrinterHomingStepper.__init__(self, printer, config)
+    def __init__(self, config):
+        PrinterHomingStepper.__init__(self, config)
         self.endstops = PrinterHomingStepper.get_endstops(self)
         self.extras = []
         self.all_step_itersolve = [self.step_itersolve]
@@ -294,12 +295,12 @@ class PrinterMultiStepper(PrinterHomingStepper):
             if not config.has_section(config.get_name() + str(i)):
                 break
             extraconfig = config.getsection(config.get_name() + str(i))
-            extra = PrinterStepper(printer, extraconfig)
+            extra = PrinterStepper(extraconfig)
             self.extras.append(extra)
             self.all_step_itersolve.append(extra.step_itersolve)
             extraendstop = extraconfig.get('endstop_pin', None)
             if extraendstop is not None:
-                ppins = printer.lookup_object('pins')
+                ppins = config.get_printer().lookup_object('pins')
                 mcu_endstop = ppins.setup_pin('endstop', extraendstop)
                 mcu_endstop.add_stepper(extra.mcu_stepper)
                 self.endstops.append((mcu_endstop, extra.name))
@@ -343,8 +344,7 @@ class PrinterDummyStepper:
     position_min = position_max = 0
     need_motor_enable = False
     dummy = True
-    def __init__(self, printer):
-        self.printer = printer
+    def __init__(self):
         self.mcu_stepper = DummyMcu()
         self.step_itersolve = (lambda *args: 0)
         self.setup_itersolve = (lambda *args: 0)
@@ -359,9 +359,9 @@ class PrinterDummyStepper:
         return []
 
 
-def LookupMultiHomingStepper(printer, config):
+def LookupMultiHomingStepper(config):
     if not config.has_section(config.get_name() + '1'):
         if config.has_section(config.get_name()):
-            return PrinterHomingStepper(printer, config)
-        return PrinterDummyStepper(printer)
-    return PrinterMultiStepper(printer, config)
+            return PrinterHomingStepper(config)
+        return PrinterDummyStepper()
+    return PrinterMultiStepper(config)

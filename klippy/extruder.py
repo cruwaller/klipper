@@ -10,8 +10,8 @@ EXTRUDE_DIFF_IGNORE = 1.02
 
 
 class PrinterExtruder:
-    def __init__(self, printer, config):
-        self.printer = printer
+    def __init__(self, config):
+        self.printer = printer = config.get_printer()
         self.name = config.get_name()
         self.logger = printer.logger.getChild(self.name)
         self.config = config
@@ -19,7 +19,7 @@ class PrinterExtruder:
         self.heater = printer.lookup_object(config.get('heater'))
         self.heater.set_min_extrude_temp(config.getfloat('min_extrude_temp',
                                                          170.0))
-        self.stepper = stepper.PrinterStepper(printer, config, self.logger)
+        self.stepper = stepper.PrinterStepper(config, self.logger)
         self.nozzle_diameter = config.getfloat('nozzle_diameter', above=0.)
         filament_diameter = config.getfloat(
             'filament_diameter', minval=self.nozzle_diameter)
@@ -250,4 +250,4 @@ def add_printer_objects(printer, config):
     else:
         extruders = config.get_prefix_sections('extruder')
         for s in extruders:
-            printer.extruder_add( PrinterExtruder(printer, s) )
+            printer.extruder_add( PrinterExtruder(s) )

@@ -10,16 +10,13 @@ StepList = (0, 1, 2)
 
 class CoreXYKinematics:
     name = "coreXY"
-    def __init__(self, toolhead, printer, config, coresign=1.):
+    def __init__(self, toolhead, config, coresign=1.):
         self.toolhead = toolhead
-        self.logger = printer.logger.getChild(self.name)
+        self.logger = config.get_printer().logger.getChild(self.name)
         self.steppers = [
-            stepper.PrinterHomingStepper(
-                printer, config.getsection('stepper_x')),
-            stepper.PrinterHomingStepper(
-                printer, config.getsection('stepper_y')),
-            stepper.LookupMultiHomingStepper(
-                printer, config.getsection('stepper_z'))]
+            stepper.PrinterHomingStepper(config.getsection('stepper_x')),
+            stepper.PrinterHomingStepper(config.getsection('stepper_y')),
+            stepper.LookupMultiHomingStepper(config.getsection('stepper_z'))]
         self.combined_endstops = config.getboolean('combined_endstops', False)
         if self.combined_endstops:
             # endstops are always triggered both
@@ -227,5 +224,5 @@ class CoreXYKinematics:
 
 class CoreYXKinematics(CoreXYKinematics):
     name = "coreYX"
-    def __init__(self, toolhead, printer, config):
-        CoreXYKinematics.__init__(self, toolhead, printer, config, coresign=-1.)
+    def __init__(self, toolhead, config):
+        CoreXYKinematics.__init__(self, toolhead, config, coresign=-1.)
