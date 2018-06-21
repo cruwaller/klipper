@@ -144,7 +144,7 @@ class CartKinematics:
         for i in StepList:
             if move.axes_d[i]:
                 self.steppers[i].motor_enable(print_time, 1)
-            need_motor_enable |= self.steppers[i].need_motor_enable
+            need_motor_enable |= not self.steppers[i].is_motor_enabled()
         self.need_motor_enable = need_motor_enable
         self.toolhead.motor_on(print_time)
     def _check_endstops(self, move):
