@@ -66,12 +66,10 @@ class PrinterStepper:
     def __init__(self, config, logger=None):
         printer = config.get_printer()
         self.name = config.get_name()
-        if self.name.startswith('stepper_'):
-            self.name = self.name[8:]
         if logger is None:
-            self.logger = printer.logger.getChild('stepper.%s' % self.name)
+            self.logger = printer.logger.getChild(self.name)
         else:
-            self.logger = logger.getChild('stepper')
+            self.logger = logger.getChild(self.name)
         self.need_motor_enable = True
         # get a driver
         driver = microsteps = None
@@ -109,6 +107,10 @@ class PrinterStepper:
         self.logger.info("steps per mm {} , step in mm {}".
                          format(self.inv_step_dist, self.step_dist))
         printer.add_object(config.get_name(), self) # to get printer_state called
+    def get_name(self, short=False):
+        if short and self.name.startswith('stepper_'):
+            return self.name[8:]
+        return self.name
     @staticmethod
     def _dist_to_time(dist, start_velocity, accel):
         # Calculate the time it takes to travel a distance with constant accel
@@ -187,7 +189,7 @@ class PrinterHomingStepper(PrinterStepper):
                 else:
                     raise config.error(
                         "Unable to infer homing_positive_dir in section '%s'" % (
-                            self.name,))
+                            self.get_name(),))
         # Endstop
         if hasattr(self.mcu_stepper, "set_homing_dir"):
             homedir = 'max' if self.homing_positive_dir else 'min'
@@ -226,8 +228,8 @@ class PrinterHomingStepper(PrinterStepper):
                               + phase_offset)
                     if es_pos != self.position_endstop:
                         self.logger.info("Changing %s endstop position to %.3f"
-                                         " (from %.3f)", self.name, es_pos,
-                                         self.position_endstop)
+                                         " (from %.3f)", self.get_name(short=True),
+                                         es_pos, self.position_endstop)
                         self.position_endstop = es_pos
                 if endstop_accuracy is None:
                     self.homing_endstop_accuracy = self.homing_stepper_phases//2 - 1
@@ -239,12 +241,12 @@ class PrinterHomingStepper(PrinterStepper):
                         endstop_accuracy / self.step_dist))
                 if self.homing_endstop_accuracy >= self.homing_stepper_phases // 2:
                     self.logger.info("Endstop for %s is not accurate enough for stepper"
-                                     " phase adjustment", self.name)
+                                     " phase adjustment", self.get_name(short=True))
                     self.homing_stepper_phases = None
                 if self.mcu_endstop.get_mcu().is_fileoutput():
                     self.homing_endstop_accuracy = self.homing_stepper_phases
         # Valid for CoreXY and Cartesian Z axis
-        if 'Z' in self.name.upper():
+        if 'Z' in self.get_name(short=True).upper():
             self.homing_pos_x = config.getfloat('homing_pos_x', default=None,
                                                 minval=self.position_min,
                                                 maxval=self.position_max)
@@ -264,14 +266,15 @@ class PrinterHomingStepper(PrinterStepper):
         self.setup_itersolve(ffi_main.gc(
             ffi_lib.cartesian_stepper_alloc(axis), ffi_lib.free))
     def get_endstops(self):
-        return [(self.mcu_endstop, self.name)]
+        return [(self.mcu_endstop, self.get_name(short=True))]
     def get_homed_offset(self):
         if not self.homing_stepper_phases or self.need_motor_enable:
             return 0. - self.homing_offset
         pos = self.mcu_stepper.get_mcu_position()
         pos %= self.homing_stepper_phases
         if self.homing_endstop_phase is None:
-            self.logger.info("Setting %s endstop phase to %d", self.name, pos)
+            self.logger.info("Setting %s endstop phase to %d",
+                             self.get_name(short=True), pos)
             self.homing_endstop_phase = pos
             return 0. - self.homing_offset
         delta = (pos - self.homing_endstop_phase) % self.homing_stepper_phases
@@ -280,7 +283,7 @@ class PrinterHomingStepper(PrinterStepper):
         elif delta > self.homing_endstop_accuracy:
             raise homing.EndstopError(
                 "Endstop %s incorrect phase (got %d vs %d)" % (
-                    self.name, pos, self.homing_endstop_phase))
+                self.get_name(short=True), pos, self.homing_endstop_phase))
         return (delta * self.step_dist) - self.homing_offset
 
 
@@ -303,7 +306,7 @@ class PrinterMultiStepper(PrinterHomingStepper):
                 ppins = config.get_printer().lookup_object('pins')
                 mcu_endstop = ppins.setup_pin('endstop', extraendstop)
                 mcu_endstop.add_stepper(extra.mcu_stepper)
-                self.endstops.append((mcu_endstop, extra.name))
+                self.endstops.append((mcu_endstop, extra.get_name(short=True)))
             else:
                 self.mcu_endstop.add_stepper(extra.mcu_stepper)
         self.step_itersolve = self.step_multi_itersolve
