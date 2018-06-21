@@ -20,12 +20,13 @@ class DeltaKinematics:
                            for n in ['a', 'b', 'c']]
         stepper_a = stepper.PrinterHomingStepper(
             stepper_configs[0], need_position_minmax=False)
+        a_endstop = stepper_a.get_homing_info().position_endstop
         stepper_b = stepper.PrinterHomingStepper(
             stepper_configs[1], need_position_minmax = False,
-            default_position_endstop=stepper_a.position_endstop)
+            default_position_endstop=a_endstop)
         stepper_c = stepper.PrinterHomingStepper(
             stepper_configs[2], need_position_minmax = False,
-            default_position_endstop=stepper_a.position_endstop)
+            default_position_endstop=a_endstop)
         self.steppers = [stepper_a, stepper_b, stepper_c]
         self.need_motor_enable = self.need_home = True
         self.radius = radius = config.getfloat('delta_radius', above=0.)
@@ -34,10 +35,12 @@ class DeltaKinematics:
             sconfig.getfloat('arm_length', arm_length_a, above=radius)
             for sconfig in stepper_configs]
         self.arm2 = [arm**2 for arm in arm_lengths]
-        self.endstops = [s.position_endstop + math.sqrt(arm2 - radius**2)
+        self.endstops = [(s.get_homing_info().position_endstop
+                          + math.sqrt(arm2 - radius**2))
                          for s, arm2 in zip(self.steppers, self.arm2)]
         self.limit_xy2 = -1.
-        self.max_z = min([s.position_endstop for s in self.steppers])
+        self.max_z = min([s.get_homing_info().position_endstop
+                          for s in self.steppers])
         self.min_z = config.getfloat('minimum_z_position', 0, maxval=self.max_z)
         self.limit_z = min([ep - arm
                             for ep, arm in zip(self.endstops, arm_lengths)])
@@ -110,28 +113,28 @@ class DeltaKinematics:
         # All axes are homed simultaneously
         homing_state.set_axes([0, 1, 2])
         endstops = [es for s in self.steppers for es in s.get_endstops()]
-        s = self.steppers[0] # Assume homing speed same for all steppers
-        # Initial homing
-        homing_speed = min(s.homing_speed, self.max_z_velocity)
+        # Initial homing - assume homing speed same for all steppers
+        hi = self.steppers[0].get_homing_info()
+        homing_speed = min(hi.speed, self.max_z_velocity)
         homepos = [0., 0., self.max_z, None]
         coord = list(homepos)
         coord[2] = -1.5 * math.sqrt(max(self.arm2)-self.max_xy2)
         homing_state.home(coord, homepos, endstops, homing_speed,
                           init_sensor=sensor_funcs)
         # Retract
-        coord[2] = homepos[2] - s.homing_retract_dist
+        coord[2] = homepos[2] - hi.retract_dist
         homing_state.retract(coord, homing_speed)
         # Home again
-        coord[2] -= s.homing_retract_dist
+        coord[2] -= hi.retract_dist
         homing_state.home(coord, homepos, endstops,
-                          homing_speed/s.homing_slowdown, second_home=True,
+                          hi.speed_slow, second_home=True,
                           init_sensor=sensor_funcs)
         # Set final homed position
         spos = [ep + s.get_homed_offset()
                 for ep, s in zip(self.endstops, self.steppers)]
         # Apply fine tune to towers after homing
-        fine_tune = [s.tune_after_homing for s in self.steppers]
-        spos = [ a-b for a,b in zip(spos, fine_tune) ]
+        fine_tune = [s.get_tune_after_homing() for s in self.steppers]
+        spos = [ a-b for a, b in zip(spos, fine_tune) ]
         cart_pos = self._actuator_to_cartesian(spos)
         homing_state.retract(cart_pos, homing_speed, check=False) # could be neagtive
         # Reset X and Y to 0 since delta should be in center after homing

@@ -3,7 +3,7 @@
 # Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import math
+import math, collections
 import homing, chelper
 import extras.driver as driver_base
 
@@ -261,6 +261,8 @@ class PrinterHomingStepper(PrinterStepper):
             self.homing_pos_y = None
         self.retract_after_home = config.getfloat(
             'homing_retract_dist_after', 0., minval=0.)
+    def get_tune_after_homing(self):
+        return self.tune_after_homing
     def set_homing_offset(self, offset):
         self.homing_offset = offset
     def setup_cartesian_itersolve(self, axis):
@@ -269,6 +271,18 @@ class PrinterHomingStepper(PrinterStepper):
             ffi_lib.cartesian_stepper_alloc(axis), ffi_lib.free))
     def get_range(self):
         return self.position_min, self.position_max
+    def get_homing_info(self):
+        homing_info = collections.namedtuple('homing_info', [
+            'speed', 'speed_slow', 'position_endstop',
+            'retract_dist', 'positive_dir',
+            'homing_pos',
+            'retract_after_home'])(
+                self.homing_speed, (self.homing_speed / self.homing_slowdown),
+                self.position_endstop,
+                self.homing_retract_dist, self.homing_positive_dir,
+                [self.homing_pos_x, self.homing_pos_y, None, None],
+                self.retract_after_home)
+        return homing_info
     def get_endstops(self):
         return [(self.mcu_endstop, self.get_name(short=True))]
     def get_homed_offset(self):
@@ -287,7 +301,7 @@ class PrinterHomingStepper(PrinterStepper):
         elif delta > self.homing_endstop_accuracy:
             raise homing.EndstopError(
                 "Endstop %s incorrect phase (got %d vs %d)" % (
-                self.get_name(short=True), pos, self.homing_endstop_phase))
+                    self.get_name(short=True), pos, self.homing_endstop_phase))
         return (delta * self.step_dist) - self.homing_offset
 
 
