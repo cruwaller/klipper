@@ -366,9 +366,9 @@ class PrinterRail:
     def set_max_jerk(self, max_halt_velocity, max_accel, max_velocity=0):
         for stepper in self.steppers:
             stepper.set_max_jerk(max_halt_velocity, max_accel, max_velocity)
-    def set_position(self, pos):
+    def set_position(self, newpos):
         for stepper in self.steppers:
-            stepper.set_position(pos)
+            stepper.set_position(newpos)
     def motor_enable(self, print_time, enable=0):
         for stepper in self.steppers:
             stepper.motor_enable(print_time, enable)
