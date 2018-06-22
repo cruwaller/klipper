@@ -5,8 +5,6 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import stepper, homing, chelper
 
-StepList = (0, 1, 2)
-
 class CartKinematics:
     name = "cartesian"
     def __init__(self, toolhead, config):
@@ -131,15 +129,15 @@ class CartKinematics:
         self.need_motor_enable = True
     def _check_motor_enable(self, print_time, move):
         need_motor_enable = False
-        for i in StepList:
+        for i, rail in enumerate(self.rails):
             if move.axes_d[i]:
-                self.rails[i].motor_enable(print_time, 1)
-            need_motor_enable |= not self.rails[i].is_motor_enabled()
+                rail.motor_enable(print_time, 1)
+            need_motor_enable |= not rail.is_motor_enabled()
         self.need_motor_enable = need_motor_enable
         self.toolhead.motor_on(print_time)
     def _check_endstops(self, move):
         end_pos = move.end_pos
-        for i in StepList:
+        for i in (0, 1, 2):
             if (move.axes_d[i]
                 and (end_pos[i] < self.limits[i][0]
                      or end_pos[i] > self.limits[i][1])):
@@ -172,13 +170,13 @@ class CartKinematics:
             move.start_pos[0], move.start_pos[1], move.start_pos[2],
             move.axes_d[0], move.axes_d[1], move.axes_d[2],
             move.start_v, move.cruise_v, move.accel)
-        for i in StepList:
+        for i, rail in enumerate(self.rails):
             if move.axes_d[i]:
-                self.rails[i].step_itersolve(self.cmove)
+                rail.step_itersolve(self.cmove)
     def is_homed(self):
         ret = [1, 1, 1]
         if self.toolhead.sw_limit_check_enabled is True:
-            for i in StepList:
+            for i in (0, 1, 2):
                 if self.limits[i][0] > self.limits[i][1]:
                     ret[i] = 0
         return ret
