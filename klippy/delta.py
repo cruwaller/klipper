@@ -1,6 +1,6 @@
 # Code for handling the kinematics of linear delta robots
 #
-# Copyright (C) 2016,2017  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math
@@ -18,16 +18,16 @@ class DeltaKinematics:
         self.logger = config.get_printer().logger.getChild(self.name)
         stepper_configs = [config.getsection('stepper_' + n)
                            for n in ['a', 'b', 'c']]
-        stepper_a = stepper.PrinterHomingStepper(
-            stepper_configs[0], need_position_minmax=False)
-        a_endstop = stepper_a.get_homing_info().position_endstop
-        stepper_b = stepper.PrinterHomingStepper(
+        rail_a = stepper.PrinterRail(
+            stepper_configs[0], need_position_minmax = False)
+        a_endstop = rail_a.get_homing_info().position_endstop
+        rail_b = stepper.PrinterRail(
             stepper_configs[1], need_position_minmax = False,
             default_position_endstop=a_endstop)
-        stepper_c = stepper.PrinterHomingStepper(
+        rail_c = stepper.PrinterRail(
             stepper_configs[2], need_position_minmax = False,
             default_position_endstop=a_endstop)
-        self.steppers = [stepper_a, stepper_b, stepper_c]
+        self.rails = [rail_a, rail_b, rail_c]
         self.need_motor_enable = self.need_home = True
         self.radius = radius = config.getfloat('delta_radius', above=0.)
         arm_length_a = stepper_configs[0].getfloat('arm_length', above=radius)
@@ -35,12 +35,12 @@ class DeltaKinematics:
             sconfig.getfloat('arm_length', arm_length_a, above=radius)
             for sconfig in stepper_configs]
         self.arm2 = [arm**2 for arm in arm_lengths]
-        self.endstops = [(s.get_homing_info().position_endstop
+        self.endstops = [(rail.get_homing_info().position_endstop
                           + math.sqrt(arm2 - radius**2))
-                         for s, arm2 in zip(self.steppers, self.arm2)]
+                         for rail, arm2 in zip(self.rails, self.arm2)]
         self.limit_xy2 = -1.
-        self.max_z = min([s.get_homing_info().position_endstop
-                          for s in self.steppers])
+        self.max_z = min([rail.get_homing_info().position_endstop
+                          for rail in self.rails])
         self.min_z = config.getfloat('minimum_z_position', 0, maxval=self.max_z)
         self.limit_z = min([ep - arm
                             for ep, arm in zip(self.endstops, arm_lengths)])
@@ -53,8 +53,8 @@ class DeltaKinematics:
             'max_z_velocity', self.max_velocity,
             above=0., maxval=self.max_velocity)
         max_halt_velocity = toolhead.get_max_axis_halt()
-        for s in self.steppers:
-            s.set_max_jerk(max_halt_velocity, self.max_accel, self.max_velocity)
+        for rail in self.rails:
+            rail.set_max_jerk(max_halt_velocity, self.max_accel, self.max_velocity)
         if toolhead.allow_move_wo_homing is True:
             self.need_home = False
         # Determine tower locations in cartesian space
@@ -68,13 +68,14 @@ class DeltaKinematics:
         ffi_main, ffi_lib = chelper.get_ffi()
         self.cmove = ffi_main.gc(ffi_lib.move_alloc(), ffi_lib.free)
         self.move_fill = ffi_lib.move_fill
-        for s, a, t in zip(self.steppers, self.arm2, self.towers):
+        for r, a, t in zip(self.rails, self.arm2, self.towers):
             sk = ffi_main.gc(ffi_lib.delta_stepper_alloc(a, t[0], t[1]),
                              ffi_lib.free)
-            s.setup_itersolve(sk)
+            r.setup_itersolve(sk)
         # Find the point where an XY move could result in excessive
         # tower movement
-        half_min_step_dist = min([s.step_dist for s in self.steppers]) * .5
+        half_min_step_dist = min([r.get_steppers()[0].get_step_dist()
+                                  for r in self.rails]) * .5
         min_arm_length = min(arm_lengths)
 
         def ratio_to_dist(ratio):
@@ -90,8 +91,8 @@ class DeltaKinematics:
             % (math.sqrt(self.max_xy2), math.sqrt(self.slow_xy2),
                math.sqrt(self.very_slow_xy2)))
         self.set_position([0., 0., 0.], ())
-    def get_steppers(self, flags=""):
-        return list(self.steppers)
+    def get_rails(self, flags=""):
+        return list(self.rails)
     def _cartesian_to_actuator(self, coord):
         return [math.sqrt(self.arm2[i] - (self.towers[i][0] - coord[0])**2
                           - (self.towers[i][1] - coord[1])**2) + coord[2]
@@ -99,28 +100,27 @@ class DeltaKinematics:
     def _actuator_to_cartesian(self, pos):
         return actuator_to_cartesian(self.towers, self.arm2, pos)
     def get_position(self):
-        spos = [s.mcu_stepper.get_commanded_position() for s in self.steppers]
+        spos = [rail.get_commanded_position() for rail in self.rails]
         return self._actuator_to_cartesian(spos)
     def set_position(self, newpos, homing_axes):
         pos = self._cartesian_to_actuator(newpos)
         for i in StepList:
-            self.steppers[i].set_position(pos[i])
+            self.rails[i].set_position(pos[i])
         self.limit_xy2 = -1.
         if tuple(homing_axes) == StepList:
             self.need_home = False
     def home(self, homing_state):
-        sensor_funcs = [ getattr(s.driver, 'init_home', None) for s in self.steppers ]
         # All axes are homed simultaneously
         homing_state.set_axes([0, 1, 2])
-        endstops = [es for s in self.steppers for es in s.get_endstops()]
+        endstops = [es for rail in self.rails for es in rail.get_endstops()]
         # Initial homing - assume homing speed same for all steppers
-        hi = self.steppers[0].get_homing_info()
+        hi = self.rails[0].get_homing_info()
         homing_speed = min(hi.speed, self.max_z_velocity)
         homepos = [0., 0., self.max_z, None]
         coord = list(homepos)
         coord[2] = -1.5 * math.sqrt(max(self.arm2)-self.max_xy2)
         homing_state.home(coord, homepos, endstops, homing_speed,
-                          init_sensor=sensor_funcs)
+                          init_sensor=hi.init_home_funcs)
         # Retract
         coord[2] = homepos[2] - hi.retract_dist
         homing_state.retract(coord, homing_speed)
@@ -128,12 +128,12 @@ class DeltaKinematics:
         coord[2] -= hi.retract_dist
         homing_state.home(coord, homepos, endstops,
                           hi.speed_slow, second_home=True,
-                          init_sensor=sensor_funcs)
+                          init_sensor=hi.init_home_funcs)
         # Set final homed position
-        spos = [ep + s.get_homed_offset()
-                for ep, s in zip(self.endstops, self.steppers)]
+        spos = [ep + rail.get_homed_offset()
+                for ep, rail in zip(self.endstops, self.rails)]
         # Apply fine tune to towers after homing
-        fine_tune = [s.get_tune_after_homing() for s in self.steppers]
+        fine_tune = [rail.get_tune_after_homing() for rail in self.rails]
         spos = [ a-b for a, b in zip(spos, fine_tune) ]
         cart_pos = self._actuator_to_cartesian(spos)
         homing_state.retract(cart_pos, homing_speed, check=False) # could be neagtive
@@ -143,14 +143,14 @@ class DeltaKinematics:
         homing_state.set_homed_position(cart_pos)
     def motor_off(self, print_time):
         self.limit_xy2 = -1.
-        for stepper in self.steppers:
-            stepper.motor_enable(print_time, 0)
+        for rail in self.rails:
+            rail.motor_enable(print_time, 0)
         if self.toolhead.require_home_after_motor_off is True:
             self.need_home = True
         self.need_motor_enable = True
     def _check_motor_enable(self, print_time):
         for i in StepList:
-            self.steppers[i].motor_enable(print_time, 1)
+            self.rails[i].motor_enable(print_time, 1)
         self.need_motor_enable = False
         self.toolhead.motor_on(print_time)
     def check_move(self, move):
@@ -191,23 +191,19 @@ class DeltaKinematics:
             move.start_pos[0], move.start_pos[1], move.start_pos[2],
             move.axes_d[0], move.axes_d[1], move.axes_d[2],
             move.start_v, move.cruise_v, move.accel)
-        for stepper in self.steppers:
-            if stepper.step_move:
-                # TODO: Check params!
-                stepper.step_move(print_time)
-                continue
-            stepper.step_itersolve(self.cmove)
+        for rail in self.rails:
+            rail.step_itersolve(self.cmove)
     # Helper functions for DELTA_CALIBRATE script
     def get_stable_position(self):
-        return [int((ep - s.mcu_stepper.get_commanded_position())
-                    / s.mcu_stepper.get_step_dist() + .5)
-                * s.mcu_stepper.get_step_dist()
-                for ep, s in zip(self.endstops, self.steppers)]
+        steppers = [rail.get_steppers()[0] for rail in self.rails]
+        return [int((ep - s.get_commanded_position()) / s.get_step_dist() + .5)
+                * s.get_step_dist()
+                for ep, s in zip(self.endstops, steppers)]
     def get_calibrate_params(self):
         return {
-            'endstop_a': self.steppers[0].position_endstop,
-            'endstop_b': self.steppers[1].position_endstop,
-            'endstop_c': self.steppers[2].position_endstop,
+            'endstop_a': self.rails[0].position_endstop,
+            'endstop_b': self.rails[1].position_endstop,
+            'endstop_c': self.rails[2].position_endstop,
             'angle_a': self.angles[0], 'angle_b': self.angles[1],
             'angle_c': self.angles[2], 'radius': self.radius,
             'arm_a': self.arm_lengths[0], 'arm_b': self.arm_lengths[1],
@@ -221,8 +217,8 @@ class DeltaKinematics:
     def update_velocities(self):
         max_halt_velocity = self.toolhead.get_max_axis_halt()
         self.max_velocity, self.max_accel = self.toolhead.get_max_velocity()
-        for s in self.steppers:
-            s.set_max_jerk(max_halt_velocity, self.max_accel)
+        for rail in self.rails:
+            rail.set_max_jerk(max_halt_velocity, self.max_accel)
 
 
 ######################################################################

@@ -6,7 +6,7 @@
 
 class DriverBase(object):
     __inv_step_dist = __step_dist = microsteps = None
-    def __init__(self, config, has_step_pin=True):
+    def __init__(self, config, has_step_dir_pins=True, has_endstop=False):
         printer = config.get_printer()
         self.name = name = config.get_name()[7:]
         self.logger = printer.logger.getChild("driver.%s" % name)
@@ -14,7 +14,8 @@ class DriverBase(object):
         # Driver class can override existing stepper config steps
         self.step_dist = config.getfloat('step_distance', default=None, above=0.)
         self.inv_step_dist = config.getfloat('steps_per_mm', default=None, above=0.)
-        self.has_step_pin = has_step_pin
+        self.__has_step_dir_pins = has_step_dir_pins
+        self.__has_endstop = has_endstop
     @property
     def inv_step_dist(self):
         return self.__inv_step_dist
@@ -33,11 +34,17 @@ class DriverBase(object):
             self.__inv_step_dist = 1. / dist
     def get_step_dist(self):
         return self.__step_dist
+    @property
+    def has_step_dir_pins(self):
+        return self.__has_step_dir_pins
+    @property
+    def has_endstop(self):
+        return self.__has_endstop
 
 
 class SpiDriver(DriverBase):
-    def __init__(self, config, has_step_pin=True):
-        DriverBase.__init__(self, config, has_step_pin)
+    def __init__(self, config, has_step_dir_pins=True, has_endstop=False):
+        DriverBase.__init__(self, config, has_step_dir_pins, has_endstop)
         printer = config.get_printer()
         # ========== SPI config ==========
         cs_pin = config.get('ss_pin')
