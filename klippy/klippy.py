@@ -11,7 +11,8 @@ import gcode, pins, mcu, toolhead, extruder
 import hostcpu
 
 # Include extras path to search dir
-sys.path.append(os.path.join(os.path.dirname(__file__), "extras"))
+sys.path.append(os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "extras")))
 
 status_delay = 1.0
 
@@ -226,7 +227,7 @@ class Printer:
                 mod_path = ".".join([folder, mod_name])
                 mod = importlib.import_module(mod_path)
             except ImportError as e:
-                self.logger.error("module '%s' load failed : %s " % (mod_name, str(e)))
+                self.logger.error("module '%s' load failed : %s " % (module, str(e)))
                 continue
             init_func = getattr(mod, func, None)
             if init_func is not None:
