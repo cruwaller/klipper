@@ -60,22 +60,6 @@ class GenericGcode(object):
     def cmd_M118(self, params):
         self.respond_info(params['#original'].replace(params['#command'], ""))
 
-    '''
-    def cmd_M204(self, params):
-        # Set default acceleration
-        accel = self.gcode.get_int('A', params, None)
-        if accel is not None and 0. < accel:
-            self.gcode.toolhead.max_accel = accel
-            self.gcode.toolhead.get_kinematics().update_velocities()
-        decel = self.gcode.get_int('D', params, None)
-        if decel is not None and 0. < decel:
-            self.gcode.toolhead.max_accel_to_decel = decel
-        elif accel is not None and 0. < accel:
-            self.gcode.toolhead.max_accel_to_decel = 0.5 * accel
-        self.respond_info("Accel %u, decel %u" % (self.gcode.toolhead.max_accel,
-                                                  self.gcode.toolhead.max_accel_to_decel,))
-    '''
-
     def cmd_M205(self, params):
         # Set advanced settings
         value = self.gcode.get_float('X', params, None)

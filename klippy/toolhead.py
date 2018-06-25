@@ -253,7 +253,7 @@ class ToolHead:
         gcode = printer.lookup_object('gcode')
         gcode.register_command('SET_VELOCITY_LIMIT', self.cmd_SET_VELOCITY_LIMIT,
                                desc=self.cmd_SET_VELOCITY_LIMIT_help)
-        gcode.register_command('M204', self.cmd_M204)
+        gcode.register_command('M204', self.cmd_M204, desc=self.cmd_M204_help)
         self.logger.info("Kinematic created: %s" % self.kin.name)
         self.logger.info("max_accel: %s" % (self.max_accel))
         self.logger.info("max_accel_to_decel: %s" % (self.max_accel_to_decel))
@@ -495,6 +495,7 @@ class ToolHead:
         self.max_accel = max_accel
         self.max_accel_to_decel = min(max_accel_to_decel, max_accel)
         self.junction_deviation = junction_deviation
+        # self.get_kinematics().update_velocities() # needed?
         msg = ("max_velocity: %.6f\n"
                "max_accel: %.6f\n"
                "max_accel_to_decel: %.6f\n"
@@ -503,20 +504,23 @@ class ToolHead:
                    junction_deviation))
         self.printer.set_rollover_info("toolhead", "toolhead: %s" % (msg,))
         gcode.respond_info(msg)
+    cmd_M204_help = "Set max accel/decel. [Sval|Pval] [Dval]"
     def cmd_M204(self, params):
         # Set default acceleration
         gcode = self.printer.lookup_object('gcode')
-        accel = gcode.get_float('A', params, None)
+        accel = gcode.get_float('P', params, None)
         if accel is None:
             accel = gcode.get_float('S', params, None, above=0.)
         if accel is not None and 0. < accel:
             self.max_accel = min(accel, self.config_max_accel)
         decel = gcode.get_float('D', params, None)
-        if decel is not None and 0. < decel:
-            self.max_accel_to_decel = min(decel, self.max_accel)
+        if decel is None:
+            decel = self.max_accel * self.max_accel_to_decel_ratio
+        self.max_accel_to_decel = min(decel, self.max_accel)
+        # self.get_kinematics().update_velocities()
         gcode.respond("Accel %u, decel %u" % (
             self.max_accel, self.max_accel_to_decel,))
-
+l
 
 def add_printer_objects(printer, config):
     printer.add_object('toolhead', ToolHead(printer, config))
