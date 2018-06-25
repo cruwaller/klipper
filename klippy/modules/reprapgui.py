@@ -68,48 +68,74 @@ try:
     import cv2
     class VideoCamera(object):
         def __init__(self, index=0):
-            self.video = cv2.VideoCapture(index)
+            self.index = index
+            self.video = video = cv2.VideoCapture(index)
+            video.set(cv2.CAP_PROP_FPS, 0.)
+            self.lock = threading.Lock()
         def __del__(self):
             self.video.release()
-        def get_frame(self):
-            success, image = self.video.read()
-            if image is not None:
-                ret, jpeg = cv2.imencode('.jpg', image)
-                return jpeg.tostring()
-            return ""
+        def get_frame(self, skip=0):
+            with self.lock:
+                video = self.video
+                for idx in range(0, skip):
+                    success, image = video.read()
+                success, image = video.read()
+                if image is not None:
+                    ret, jpeg = cv2.imencode('.jpg', image)
+                    return jpeg.tostring()
+                return ""
 except ImportError:
     class VideoCamera(object):
         def __init__(self, index=0):
             pass
         def __del__(self):
             pass
-        def get_frame(self):
+        def get_frame(self, skip=0):
             return ""
 
 
-class MJPEGHandler(tornado.web.RequestHandler):
+class JpegHandler(tornado.web.RequestHandler):
+    camera = logger = None
+    def initialize(self, camera):
+        self.camera = camera
+    @tornado.web.asynchronous
+    @tornado.gen.coroutine
+    def get(self):
+        self.set_header(
+            'Cache-Control',
+            'no-store, no-cache, must-revalidate, '
+            'pre-check=0, post-check=0, max-age=0')
+        self.set_header('Connection', 'close')
+        self.set_header('Content-Type',
+                        'multipart/x-mixed-replace;boundary=--boundarydonotcross')
+        self.set_header('Expires', 'Mon, 3 Jan 2000 12:34:56 GMT')
+        self.set_header('Pragma', 'no-cache')
+
+        img = self.camera.get_frame(skip=4)
+        self.write("--boundarydonotcross\n")
+        self.write("Content-type: image/jpeg\r\n")
+        self.write("Content-length: %s\r\n\r\n" % len(img))
+        self.write(str(img))
+
+
+class JpegStreamHandler(tornado.web.RequestHandler):
+    camera = interval = logger = None
     def initialize(self, camera, interval, logger):
         self.camera = camera
-        self.interval = interval if 0 <= interval else 0
+        self.interval = interval
         self.logger = logger
     @tornado.web.asynchronous
     @tornado.gen.coroutine
     def get(self):
-        #self.logger.info("MJPEGHandler get() args: %s boby: %s" % (self.request.arguments, self.request.body));
-        #self.logger.info("  header: %s" % (self.request.headers))
-        self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, pre-check=0, post-check=0, max-age=0')
+        self.set_header(
+            'Cache-Control',
+            'no-store, no-cache, must-revalidate, '
+            'pre-check=0, post-check=0, max-age=0')
         self.set_header('Connection', 'close')
-        self.set_header('Content-Type', 'multipart/x-mixed-replace;boundary=--boundarydonotcross')
+        self.set_header('Content-Type',
+                        'multipart/x-mixed-replace;boundary=--boundarydonotcross')
         self.set_header('Expires', 'Mon, 3 Jan 2000 12:34:56 GMT')
         self.set_header('Pragma', 'no-cache')
-
-        if self.interval == 0:
-            img = self.camera.get_frame()
-            self.write("--boundarydonotcross\n")
-            self.write("Content-type: image/jpeg\r\n")
-            self.write("Content-length: %s\r\n\r\n" % len(img))
-            self.write(str(img))
-            return
 
         ioloop = tornado.ioloop.IOLoop.current()
         served_image_timestamp = time.time()
@@ -124,7 +150,9 @@ class MJPEGHandler(tornado.web.RequestHandler):
                 served_image_timestamp = time.time()
                 yield tornado.gen.Task(self.flush)
             else:
-                yield tornado.gen.Task(ioloop.add_timeout, ioloop.time() + self.interval)
+                yield tornado.gen.Task(ioloop.add_timeout,
+                                       ioloop.time() + self.interval)
+
 
 class ParseError(Exception):
     pass
@@ -706,6 +734,7 @@ class RepRapGuiModule(object):
         self.starttime = time.time()
         self.curr_state = 'C'
         self.gcode_resps = []
+        self.lock = threading.Lock()
 
         # Read config
         self.name = config.getsection('printer').get(
@@ -718,8 +747,9 @@ class RepRapGuiModule(object):
         self.logger.debug("html root: %s" % (htmlroot,))
         self.user = config.get('user')
         self.passwd = config.get('password')
-        feed_interval = config.getfloat('feedrate', minval=0., default=0.)
-        camera = VideoCamera(config.getint('camera_index', default=0))
+        # Camera information
+        self.feed_interval = config.getfloat('feedrate', minval=.0, default=.1)
+        self.camera = VideoCamera(config.getint('camera_index', default=0))
         # - M80 / M81 ATX commands
         self.atx_on = config.get('atx_cmd_on', default=None)
         self.atx_off = config.get('atx_cmd_off', default=None)
@@ -749,8 +779,11 @@ class RepRapGuiModule(object):
                     tornado.web.url(r"/css/(.*)", tornado.web.StaticFileHandler,
                                     {"path": os.path.join(htmlroot, "css")}),
                     tornado.web.url(r"/(rr_.*)", rrHandler, {"parent": self}),
-                    tornado.web.url(r"/video", MJPEGHandler,
-                                    {"camera": camera, "interval": feed_interval, "logger": self.logger}),
+                    tornado.web.url(r"/jpeg", JpegHandler, {"camera": self.camera}),
+                    tornado.web.url(r"/video", JpegStreamHandler,
+                                    { "camera": self.camera,
+                                      "interval": self.feed_interval,
+                                      "logger": self.logger}),
                 ],
                 cookie_secret="16d35553-3331-4569-b419-8748d22aa599",
                 log_function=self.Tornado_LoggerCb,
@@ -807,10 +840,18 @@ class RepRapGuiModule(object):
         http_server.listen(port)
         tornado.ioloop.IOLoop.current().start()
 
+    def camera_get_pic(self):
+        return self.camera.get_frame(skip=4)
+
+    def printer_write_no_update(self, cmd):
+        with self.lock:
+            os.write(self.pipe_write, "%s\n" % cmd)
+
     send_resp = False
     def printer_write(self, cmd):
         self.logger.debug("GCode command: %s" % (cmd,))
-        os.write(self.pipe_write, "%s\n" % cmd)
+        with self.lock:
+            os.write(self.pipe_write, "%s\n" % cmd)
         self.send_resp = True
 
     def gcode_resp_handler(self, msg):
