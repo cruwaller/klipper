@@ -163,10 +163,6 @@ class ParseError(Exception):
 ANALYSED_GCODE_FILES = {}
 
 def analyse_gcode_file(filepath):
-    if filepath in ANALYSED_GCODE_FILES:
-        return ANALYSED_GCODE_FILES[filepath]
-    elif os.path.join("gcode", filepath) in ANALYSED_GCODE_FILES:
-        return ANALYSED_GCODE_FILES[filepath]
     # Set initial values
     info = {
         "slicer" : "unknown",
@@ -175,6 +171,12 @@ def analyse_gcode_file(filepath):
         "firstLayerHeight": 0,
         "filament" : []
     }
+    if filepath is None:
+        return info
+    if filepath in ANALYSED_GCODE_FILES:
+        return ANALYSED_GCODE_FILES[filepath]
+    elif os.path.join("gcode", filepath) in ANALYSED_GCODE_FILES:
+        return ANALYSED_GCODE_FILES[filepath]
     absolutecoord = True
     last_position = .0
     try:
@@ -688,7 +690,10 @@ class rrHandler(tornado.web.RequestHandler):
 
             size = int(self.request.headers['Content-Length'])
             body_len = len(self.request.body)
-            if body_len != size or not body_len or not size:
+            if body_len == 0:
+                # e.g. filament create
+                respdata["err"] = 0
+            elif body_len != size or not size:
                 self.logger.error("upload size error: %s != %s" % (body_len, size))
             else:
                 path = self.get_argument('name').replace("0:/", "").replace("0%3A%2F", "")
@@ -1153,13 +1158,11 @@ class RepRapGuiModule(object):
             status_block["tools"] = tools
 
         elif _type == 3:
-            try:
-                self.last_used_file = fname = self.sd.current_file.name
-            except AttributeError:
-                fname = "NA"
-                if self.last_used_file is not None:
-                    fname = self.last_used_file
+            fname = self.sd.get_current_file_name()
+            if fname is None:
+                fname = self.last_used_file
             info = analyse_gcode_file(fname)
+            self.last_used_file = fname
 
             printing_time = toolhead.get_print_time()
             curr_layer = len(self.layer_stats)

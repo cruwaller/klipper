@@ -27,6 +27,11 @@ class VirtualSD:
         for cmd in ['M28', 'M29', 'M30']:
             self.gcode.register_command(cmd, self.cmd_error)
         self.done_cb = []
+    def get_current_file_name(self):
+        try:
+            return self.current_file.name
+        except AttributeError:
+            return None
     def printer_state(self, state):
         if state == 'shutdown' and self.work_timer is not None:
             self.must_pause_work = True
