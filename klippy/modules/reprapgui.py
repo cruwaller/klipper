@@ -609,7 +609,7 @@ class rrHandler(tornado.web.RequestHandler):
                 path = self.get_argument('name').replace("0:/", "").replace("0%3A%2F", "")
                 path = os.path.abspath(os.path.join(sd_path, path))
             # info about the requested file
-            if not os.path.exists(path):
+            if path is None or not os.path.exists(path):
                 respdata["err"] = 1
             else:
                 info = analyse_gcode_file(path)
