@@ -7,6 +7,8 @@
 #           and use environment variable 'export TORNADO_PATH=<path to tornado folder>'
 #     Install opencv for video streaming
 #         - $sudo apt-get install python-opencv
+#     Create SSL cert:
+#         - openssl req -newkey rsa:2048 -new -nodes -x509 -days 3650 -keyout <path>/key.pem -out <path>/cert.pem
 #
 """
 Example config sections:
@@ -55,6 +57,7 @@ import tornado.web
 
 _PARENT = None
 KLIPPER_CFG_NAME = 'klipper_config.cfg'
+KLIPPER_LOG_NAME = "klippy.log"
 
 def dict_dump_json(data, logger):
     logger.info(json.dumps(data,
@@ -120,10 +123,9 @@ class JpegHandler(tornado.web.RequestHandler):
 
 class JpegStreamHandler(tornado.web.RequestHandler):
     camera = interval = logger = None
-    def initialize(self, camera, interval, logger):
+    def initialize(self, camera, interval):
         self.camera = camera
         self.interval = interval
-        self.logger = logger
     @tornado.web.asynchronous
     @tornado.gen.coroutine
     def get(self):
@@ -328,9 +330,9 @@ class MainHandler(BaseHandler):
 
 class LoginHandler(BaseHandler):
     path = parent = None
-    def initialize(self, path, parent):
+    def initialize(self, path):
         self.path = path
-        self.parent = _PARENT #parent
+        self.parent = _PARENT
     @tornado.gen.coroutine
     def get(self):
         incorrect = self.get_secure_cookie("incorrect")
@@ -368,17 +370,17 @@ class LogoutHandler(BaseHandler):
         self.redirect(self.get_argument("next", self.reverse_url("main")))
 
 class rrHandler(tornado.web.RequestHandler):
-    parent = sd_path = logger = None
+    parent = printer = sd_path = logger = None
 
-    def initialize(self, parent):
-        self.parent = _PARENT # parent
-        self.sd_path = parent.sd.sdcard_dirname
-        self.logger = parent.logger
+    def initialize(self, sd_path):
+        self.parent = _PARENT
+        self.printer = self.parent.printer
+        self.sd_path = sd_path
+        self.logger = self.parent.logger
 
     def get(self, path, *args, **kwargs):
-        respdata = {
-            "err" : 10
-        }
+        sd_path = self.sd_path
+        respdata = {"err" : 10}
 
         # rr_connect?password=XXX&time=YYY
         if "rr_connect" in path:
@@ -435,7 +437,7 @@ class rrHandler(tornado.web.RequestHandler):
                     gco_f = gco_f.replace('"', '')
                     if not gco_f.startswith("gcodes"):
                         gco_f = os.path.join("gcodes", gco_f)
-                    analyse_gcode_file(os.path.join(self.parent.sd.sdcard_dirname, gco_f))
+                    analyse_gcode_file(os.path.join(sd_path, gco_f))
                     self.parent.gcode.simulate_print = False
                     printer_write("M23 %s" % gco_f)
                     printer_write("M24")
@@ -475,9 +477,12 @@ class rrHandler(tornado.web.RequestHandler):
             path = self.get_argument('name').replace("0:/", "").replace("0%3A%2F", "")
             if KLIPPER_CFG_NAME in path:
                 path = os.path.abspath(
-                    self.parent.printer.get_start_args()['config_file'])
+                    self.printer.get_start_arg('config_file'))
+            elif KLIPPER_LOG_NAME in path:
+                path = os.path.abspath(
+                    self.printer.get_start_arg('logfile'))
             else:
-                path = os.path.abspath(os.path.join(self.sd_path, path))
+                path = os.path.abspath(os.path.join(sd_path, path))
             # Check if file exists and upload
             if not os.path.exists(path):
                 raise tornado.web.HTTPError(404)
@@ -498,21 +503,24 @@ class rrHandler(tornado.web.RequestHandler):
             # resp: `{"err":[code]}`
             respdata["err"] = 0
             directory = self.get_argument('name').replace("0:/", "").replace("0%3A%2F", "")
-            directory = os.path.abspath(os.path.join(self.sd_path, directory))
-            #self.logger.debug("delete: absolute path {}".format(directory))
-            try:
-                for root, dirs, files in os.walk(directory, topdown=False):
-                    for name in files:
-                        os.remove(os.path.join(root, name))
-                    for name in dirs:
-                        os.rmdir(os.path.join(root, name))
-                if os.path.isdir(directory):
-                    os.rmdir(directory)
-                else:
-                    os.remove(directory)
-            except OSError as e:
-                self.logger.error("rr_delete: %s" % (e.strerror,))
-                respdata["err"] = 1
+            if KLIPPER_CFG_NAME in directory or KLIPPER_LOG_NAME in directory:
+                pass
+            else:
+                directory = os.path.abspath(os.path.join(sd_path, directory))
+                #self.logger.debug("delete: absolute path {}".format(directory))
+                try:
+                    for root, dirs, files in os.walk(directory, topdown=False):
+                        for name in files:
+                            os.remove(os.path.join(root, name))
+                        for name in dirs:
+                            os.rmdir(os.path.join(root, name))
+                    if os.path.isdir(directory):
+                        os.rmdir(directory)
+                    else:
+                        os.remove(directory)
+                except OSError as e:
+                    self.logger.error("rr_delete: %s" % (e.strerror,))
+                    respdata["err"] = 1
 
         # rr_filelist?dir=XXX
         elif "rr_filelist" in path:
@@ -528,7 +536,7 @@ class rrHandler(tornado.web.RequestHandler):
             respdata["files"] = []
 
             _dir = _dir.replace("0:/", "").replace("0%3A%2F", "")
-            path = os.path.abspath(os.path.join(self.sd_path, _dir))
+            path = os.path.abspath(os.path.join(sd_path, _dir))
 
             if not os.path.exists(path):
                 respdata["err"] = 1
@@ -561,16 +569,25 @@ class rrHandler(tornado.web.RequestHandler):
                 # Add printer.cfg into sys list
                 if "/sys" in path:
                     cfg_file = os.path.abspath(
-                        self.parent.printer.get_start_args()['config_file'])
+                        self.printer.get_start_args()['config_file'])
                     respdata["files"].append({
                         "type": "f",
-                        "name": KLIPPER_CFG_NAME, # os.path.basename(cfg_file),
+                        "name": KLIPPER_CFG_NAME,
                         "size": os.path.getsize(cfg_file),
                         "date": time.strftime("%Y-%m-%dT%H:%M:%S",
                                               time.gmtime(os.path.getmtime(cfg_file))),
                     })
+                    logfile = self.printer.get_start_arg('logfile', None)
+                    if logfile is not None:
+                        respdata["files"].append({
+                            "type": "f",
+                            "name": KLIPPER_LOG_NAME,
+                            "size": os.path.getsize(logfile),
+                            "date": time.strftime("%Y-%m-%dT%H:%M:%S",
+                                                  time.gmtime(os.path.getmtime(logfile))),
+                        })
 
-        # rr_fileinfo?name=XXX
+            # rr_fileinfo?name=XXX
         elif "rr_fileinfo" in path:
             name = self.get_argument('name', default=None)
             #self.logger.debug("rr_fileinfo: {} , name: {}".format(self.request.uri, name))
@@ -588,7 +605,7 @@ class rrHandler(tornado.web.RequestHandler):
                     path = None
             else:
                 path = self.get_argument('name').replace("0:/", "").replace("0%3A%2F", "")
-                path = os.path.abspath(os.path.join(self.sd_path, path))
+                path = os.path.abspath(os.path.join(sd_path, path))
             # info about the requested file
             if not os.path.exists(path):
                 respdata["err"] = 1
@@ -608,28 +625,31 @@ class rrHandler(tornado.web.RequestHandler):
                 if is_printing is True:
                     # Current file information
                     respdata["printDuration"] = self.parent.toolhead.get_print_time()
-                    respdata["fileName"] = os.path.relpath(path, self.sd_path) # os.path.basename ?
+                    respdata["fileName"] = os.path.relpath(path, sd_path) # os.path.basename ?
 
         # rr_move?old=XXX&new=YYY
         elif "rr_move" in path:
             # {"err":[code]} , code 0 if success
             respdata["err"] = 0
             _from = self.get_argument('old').replace("0:/", "").replace("0%3A%2F", "")
-            _from = os.path.abspath(os.path.join(self.sd_path, _from))
-            _to   = self.get_argument('new').replace("0:/", "").replace("0%3A%2F", "")
-            _to   = os.path.abspath(os.path.join(self.sd_path, _to))
-            try:
-                os.rename(_from, _to)
-            except OSError as e:
-                self.logger.error("rr_move: %s" % (e.strerror,))
-                respdata["err"] = 1
+            if KLIPPER_CFG_NAME in _from or KLIPPER_LOG_NAME in _from:
+                pass
+            else:
+                _from = os.path.abspath(os.path.join(sd_path, _from))
+                _to   = self.get_argument('new').replace("0:/", "").replace("0%3A%2F", "")
+                _to   = os.path.abspath(os.path.join(sd_path, _to))
+                try:
+                    os.rename(_from, _to)
+                except OSError as e:
+                    self.logger.error("rr_move: %s" % (e.strerror,))
+                    respdata["err"] = 1
 
         # rr_mkdir?dir=XXX
         elif "rr_mkdir" in path:
             # {"err":[code]} , 0 if success
             respdata["err"] = 0
             directory = self.get_argument('dir').replace("0:/", "").replace("0%3A%2F", "")
-            directory = os.path.abspath(os.path.join(self.sd_path, directory))
+            directory = os.path.abspath(os.path.join(sd_path, directory))
             try:
                 os.makedirs(directory)
             except OSError as e:
@@ -639,10 +659,8 @@ class rrHandler(tornado.web.RequestHandler):
 
         # rr_config / rr_configfile
         elif "rr_configfile" in path:
-            self.logger.info("rr_configfile! %s" % self.request.uri)
-            respdata = {
-                "err" : 0,
-            }
+            respdata = { "err" : 0 }
+
         elif "rr_config" in path:
             respdata = self.parent.web_getconfig()
 
@@ -663,10 +681,7 @@ class rrHandler(tornado.web.RequestHandler):
         #                        indent=4, separators=(',', ': ')))
 
     def post(self, path, *args, **kwargs):
-        respdata = {
-            "err" : 1
-        }
-
+        respdata = { "err" : 1 }
         if "rr_upload" in self.request.path:
             # /rr_upload?name=xxxxx&time=xxxx
             # /rr_upload?name=0:/filaments/PLA/unload.g&time=2017-11-30T11:46:50
@@ -679,22 +694,25 @@ class rrHandler(tornado.web.RequestHandler):
                 path = self.get_argument('name').replace("0:/", "").replace("0%3A%2F", "")
                 if KLIPPER_CFG_NAME in path:
                     path = os.path.abspath(
-                        self.parent.printer.get_start_args()['config_file'])
+                        self.printer.get_start_args('config_file'))
+                elif KLIPPER_LOG_NAME in path:
+                    path = None
+                    respdata['err'] = 0
                 else:
                     path = os.path.abspath(os.path.join(self.sd_path, path))
-
-                try:
-                    os.makedirs(os.path.dirname(path))
-                except OSError as e:
-                    if e.errno != errno.EEXIST:
+                if path is not None:
+                    try:
+                        os.makedirs(os.path.dirname(path))
+                    except OSError as e:
+                        if e.errno != errno.EEXIST:
+                            pass
+                    try:
+                        # Write request content to file
+                        with open(path, 'w') as output_file:
+                            output_file.write(self.request.body)
+                            respdata['err'] = 0
+                    except IOError:
                         pass
-                try:
-                    # Write request content to file
-                    with open(path, 'w') as output_file:
-                        output_file.write(self.request.body)
-                        respdata['err'] = 0
-                except IOError:
-                    pass
 
         # Send response back to client
         respstr = json.dumps(respdata)
@@ -717,11 +735,11 @@ class RepRapGuiModule(object):
     first_layer_start = None
     last_used_file = None
     htmlroot = None
-    def __init__(self, printer, config):
+    def __init__(self, config):
         global _TORNADO_THREAD
         global _PARENT
         _PARENT = self
-        self.printer = printer
+        self.printer = printer = config.get_printer()
         self.logger = printer.logger.getChild("DuetWebControl")
         self.logger_tornado = self.logger.getChild("tornado")
         self.logger_tornado.setLevel(logging.INFO)
@@ -729,8 +747,7 @@ class RepRapGuiModule(object):
         self.toolhead = printer.lookup_object('toolhead')
         self.toolhead.register_cb('layer', self.layer_changed)
         self.babysteps = printer.lookup_object('babysteps')
-        printer.try_load_module(config, "virtual_sdcard")
-        self.sd = printer.lookup_object('virtual_sdcard')
+        self.sd = printer.try_load_module(config, "virtual_sdcard")
         self.starttime = time.time()
         self.curr_state = 'C'
         self.gcode_resps = []
@@ -743,7 +760,7 @@ class RepRapGuiModule(object):
         htmlroot = os.path.normpath(os.path.join(os.path.dirname(__file__)))
         htmlroot = os.path.join(htmlroot, "DuetWebControl")
         if not os.path.exists(os.path.join(htmlroot, 'reprap.htm')):
-            raise self.printer.config_error("DuetWebControl files not found '%s'" % htmlroot)
+            raise printer.config_error("DuetWebControl files not found '%s'" % htmlroot)
         self.logger.debug("html root: %s" % (htmlroot,))
         self.user = config.get('user')
         self.passwd = config.get('password')
@@ -755,10 +772,11 @@ class RepRapGuiModule(object):
         self.atx_off = config.get('atx_cmd_off', default=None)
         # ------------------------------
         # Create paths to virtual SD
-        create_dir(os.path.join(self.sd.sdcard_dirname, "gcodes"))
-        create_dir(os.path.join(self.sd.sdcard_dirname, "macros"))
-        create_dir(os.path.join(self.sd.sdcard_dirname, "filaments"))
-        create_dir(os.path.join(self.sd.sdcard_dirname, "sys"))
+        sdcard_dirname = self.sd.sdcard_dirname
+        create_dir(os.path.join(sdcard_dirname, "gcodes"))
+        create_dir(os.path.join(sdcard_dirname, "macros"))
+        create_dir(os.path.join(sdcard_dirname, "filaments"))
+        create_dir(os.path.join(sdcard_dirname, "sys"))
         self.sd.register_done_cb(self.sd_print_done)
         # ------------------------------
         # Start tornado webserver
@@ -768,7 +786,7 @@ class RepRapGuiModule(object):
                     tornado.web.url(r"/", MainHandler,
                                     {"path": htmlroot}, name="main"),
                     tornado.web.url(r'/login', LoginHandler,
-                                    {"path": htmlroot, "parent": self}, name="login"),
+                                    {"path": htmlroot}, name="login"),
                     tornado.web.url(r'/logout', LogoutHandler, name="logout"),
                     tornado.web.url(r"/(.*\.xml)", tornado.web.StaticFileHandler,
                                     {"path": htmlroot}),
@@ -778,12 +796,11 @@ class RepRapGuiModule(object):
                                     {"path": os.path.join(htmlroot, "js")}),
                     tornado.web.url(r"/css/(.*)", tornado.web.StaticFileHandler,
                                     {"path": os.path.join(htmlroot, "css")}),
-                    tornado.web.url(r"/(rr_.*)", rrHandler, {"parent": self}),
+                    tornado.web.url(r"/(rr_.*)", rrHandler, {"sd_path": sdcard_dirname}),
                     tornado.web.url(r"/jpeg", JpegHandler, {"camera": self.camera}),
                     tornado.web.url(r"/video", JpegStreamHandler,
                                     { "camera": self.camera,
-                                      "interval": self.feed_interval,
-                                      "logger": self.logger}),
+                                      "interval": self.feed_interval}),
                 ],
                 cookie_secret="16d35553-3331-4569-b419-8748d22aa599",
                 log_function=self.Tornado_LoggerCb,
@@ -941,33 +958,49 @@ class RepRapGuiModule(object):
 
     # ================================================================================
     def web_getconfig(self):
-        _extrs = self.printer.extruder_get()
+        printer = self.printer
+        _extrs = printer.extruder_get()
         num_extruders = len(_extrs)
         toolhead = self.toolhead
-        steppers = toolhead.kin.get_steppers()
+        kinematic = toolhead.get_kinematics()
+        steppers = kinematic.get_steppers()
         num_steppers = len(steppers)
         currents = [0.00] * (num_steppers + num_extruders)
+        # max_velocity, max_accel = toolhead.get_max_velocity()
+        max_feedrates = [0] * num_steppers
+        accelerations = [0] * num_steppers
+        axisMins = []
+        axisMaxes = []
         for idx, stp in enumerate(steppers):
+            _min, _max = stp.get_range()
+            axisMins.append(_min)
+            axisMaxes.append(_max)
             get_current = getattr(stp.driver, "get_current", None)
             if get_current is not None:
                 currents[idx] = int(get_current())
+            _vel, _accel = stp.get_max_velocity()
+            max_feedrates[idx] = int(_vel)
+            accelerations[idx] = int(_accel)
         for idx, e in _extrs.items():
+            _vel, _accel = e.get_max_velocity()
+            max_feedrates.append(int(_vel))
+            accelerations.append(int(_accel))
             get_current = getattr(e.stepper.driver, "get_current", None)
             if get_current is not None:
                 currents[idx] = int(get_current())
         return {
-            "axisMins"            : [ s.position_min for s in steppers ],
-            "axisMaxes"           : [ s.position_max for s in steppers ],
-            "accelerations"       : [ toolhead.max_accel ] * (num_steppers + num_extruders),
+            "axisMins"            : axisMins,
+            "axisMaxes"           : axisMaxes,
+            "accelerations"       : accelerations,
             "currents"            : currents,
             "firmwareElectronics" : util.get_cpu_info(),
             "firmwareName"        : "Klipper",
-            "firmwareVersion"     : self.printer.get_start_args().get('software_version'),
+            "firmwareVersion"     : printer.get_start_arg('software_version', 'Unknown'),
             "firmwareDate"        : "2017-12-01",
-            "idleCurrentFactor"   : 1.0,
+            "idleCurrentFactor"   : 0.0,
             "idleTimeout"         : toolhead.motor_off_time,
             "minFeedrates"        : [0.00] * (num_steppers + num_extruders),
-            "maxFeedrates"        : [toolhead.max_velocity] * (num_steppers + num_extruders)
+            "maxFeedrates"        : max_feedrates
             }
 
     def web_getstatus(self, _type=1):
@@ -976,6 +1009,7 @@ class RepRapGuiModule(object):
             False : 0,
             True  : 2
         }
+        curr_extruder = toolhead.get_extruder()
         curr_pos = toolhead.get_position()
         fans     = [ fan.last_fan_value * 100.0 for fan in
                      self.printer.lookup_module_objects("fan") ]
@@ -990,18 +1024,16 @@ class RepRapGuiModule(object):
             "seq": len(self.gcode_resps),
             "coords": {
                 "axesHomed": toolhead.kin.is_homed(),
-                "SKIP_SKIP_extr": [curr_pos[3] if toolhead.extruder == e else 0.0
-                                   for i, e in _extrs.items()],  # coords_extr,
                 "extr": [e.extrude_pos
                          for i, e in _extrs.items()],
                 "xyz": curr_pos[:3],
             },
-            "currentTool": toolhead.extruder.index,
+            "currentTool": curr_extruder.index,
             "params": {
                 "atxPower": 0,
                 "fanPercent": fans,
                 "speedFactor": self.gcode.speed_factor * 60. * 100.0,
-                "extrFactors": [e.extrude_factor * 100.0 for i, e in _extrs.items()],
+                "extrFactors": [e.get_extrude_factor(procent=True) for i, e in _extrs.items()],
                 "babystep": float("%.3f" % self.babysteps.babysteps),
             },
             "sensors": {
@@ -1027,7 +1059,7 @@ class RepRapGuiModule(object):
         if chamber is not None:
             status_block["temps"].update( {
                 "chamber": {
-                    "active"  : float("%.2f" % heatbed.target_temp),
+                    "active"  : float("%.2f" % chamber.target_temp),
                     "heater"  : chamber.heater.index,
                 },
             } )
@@ -1039,6 +1071,13 @@ class RepRapGuiModule(object):
                 },
             } )
         '''
+        status_block["temps"].update({
+            "Heater 0": {
+                "active": 2.,
+                "heater": 0,
+            },
+        })
+
         htr_current = [0.0] * total_htrs
         # HS_off = 0, HS_standby = 1, HS_active = 2, HS_fault = 3, HS_tuning = 4
         htr_state   = [  3] * total_htrs
@@ -1047,7 +1086,8 @@ class RepRapGuiModule(object):
             if htr == heatbed:
                 index = (total_htrs-1)
             htr_current[index] = float("%.2f" % htr.last_temp)
-            htr_state[index]   = states[True if htr.last_pwm_value > 0.0 else False]
+            # htr_state[index]   = states[True if htr.last_pwm_value > 0.0 else False]
+            htr_state[index] = states[(htr.target_temp > 0.0)]
         status_block["temps"].update( {
             "current" : htr_current,
             "state"   : htr_state, # 0: off, 1: standby, 2: active, 3: fault (same for bed)
@@ -1065,18 +1105,20 @@ class RepRapGuiModule(object):
         if _type == 2:
             max_temp  = 0.0
             cold_temp = 0.0
-            if hasattr(toolhead.extruder, "get_heater"):
-                heater = toolhead.extruder.get_heater()
+            if hasattr(curr_extruder, "get_heater"):
+                heater = curr_extruder.get_heater()
                 max_temp  = heater.max_temp
                 cold_temp = heater.min_extrude_temp
                 if heater.min_extrude_temp_disabled:
                     cold_temp = 0.0
+            endstops_hit = 0
+            for idx, state in enumerate(toolhead.get_kinematics().is_homed()):
+                endstops_hit |= (state << idx)
             status_block.update( {
                 "coldExtrudeTemp" : cold_temp,
                 "coldRetractTemp" : cold_temp,
                 "tempLimit"       : max_temp,
-                # NEW: As of 1.09n-ch, this field provides a bitmap of all stopped drive endstops
-                "endstops_IGN"    : 7,
+                "endstops"        : endstops_hit,
                 "firmwareName"    : "Klipper",
                 "geometry"        : toolhead.kin.name, # cartesian, coreXY, delta
                 "axes"            : 3,                # Subject to deprecation - may be dropped in RRF 1.20
@@ -1213,4 +1255,4 @@ class RepRapGuiModule(object):
 
 def load_module(printer, config):
     if config.has_section("reprapgui"):
-        RepRapGuiModule(printer, config.getsection("reprapgui"))
+        RepRapGuiModule(config.getsection("reprapgui"))
