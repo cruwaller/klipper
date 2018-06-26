@@ -156,6 +156,12 @@ class Printer:
         self.stats_cb = []
         self.state_cb = []
         self._extruders = {}
+    class sentinel:
+        pass
+    def get_start_arg(self, name, default=sentinel):
+        if default is not self.sentinel:
+            return self.start_args.get(name, default)
+        return self.start_args[name]
     def get_start_args(self):
         return self.start_args
     def get_reactor(self):
@@ -411,6 +417,7 @@ def main():
         start_args['debugoutput'] = options.debugoutput
         start_args.update(options.dictionary)
     if options.logfile:
+        start_args['logfile'] = options.logfile
         bglogger = queuelogger.setup_bg_logging(options.logfile, debuglevel)
     else:
         logging.basicConfig(level=debuglevel, format=queuelogger.LOGFORMAT)
