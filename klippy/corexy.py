@@ -51,10 +51,10 @@ class CoreXYKinematics:
         # Setup stepper max halt velocity
         max_halt_velocity = toolhead.get_max_axis_halt()
         max_xy_halt_velocity = max_halt_velocity * math.sqrt(2.)
-        self.steppers[0].set_max_jerk(max_xy_halt_velocity, max_accel)
-        self.steppers[1].set_max_jerk(max_xy_halt_velocity, max_accel)
+        self.steppers[0].set_max_jerk(max_xy_halt_velocity, max_accel, max_velocity)
+        self.steppers[1].set_max_jerk(max_xy_halt_velocity, max_accel, max_velocity)
         self.steppers[2].set_max_jerk(
-            min(max_halt_velocity, self.max_z_velocity), self.max_z_accel)
+            min(max_halt_velocity, self.max_z_velocity), self.max_z_accel, self.max_z_velocity)
         self.coresign = coresign
         self.experimental = config.getboolean(
             'experimental', False)

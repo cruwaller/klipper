@@ -63,6 +63,7 @@ class PrinterStepper:
     step_dist = inv_step_dist = None
     step_itersolve = setup_itersolve = None
     step_move = None
+    max_velocity = max_accel = 0
     def __init__(self, config, logger=None):
         printer = config.get_printer()
         self.name = config.get_name()
@@ -116,7 +117,9 @@ class PrinterStepper:
         # Calculate the time it takes to travel a distance with constant accel
         time_offset = start_velocity / accel
         return math.sqrt(2. * dist / accel + time_offset**2) - time_offset
-    def set_max_jerk(self, max_halt_velocity, max_accel):
+    def set_max_jerk(self, max_halt_velocity, max_accel, max_velocity=0):
+        self.max_velocity = max_velocity
+        self.max_accel = max_accel
         # Calculate the firmware's maximum halt interval time
         last_step_time = self._dist_to_time(
             self.step_dist, max_halt_velocity, max_accel)
@@ -132,6 +135,8 @@ class PrinterStepper:
         self.need_motor_enable = not enable
     def is_motor_enabled(self):
         return not self.need_motor_enable
+    def get_max_velocity(self):
+        return self.max_velocity, self.max_accel
 
 
 # Support for stepper controlled linear axis with an endstop

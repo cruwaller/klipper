@@ -36,10 +36,10 @@ class CartKinematics:
             s.setup_cartesian_itersolve(a)
         # Setup stepper max halt velocity
         max_halt_velocity = toolhead.get_max_axis_halt()
-        self.steppers[0].set_max_jerk(max_halt_velocity, max_accel)
-        self.steppers[1].set_max_jerk(max_halt_velocity, max_accel)
+        self.steppers[0].set_max_jerk(max_halt_velocity, max_accel, max_velocity)
+        self.steppers[1].set_max_jerk(max_halt_velocity, max_accel, max_velocity)
         self.steppers[2].set_max_jerk(
-            min(max_halt_velocity, self.max_z_velocity), max_accel)
+            min(max_halt_velocity, self.max_z_velocity), max_accel, self.max_z_velocity)
         # Check for dual carriage support
         self.dual_carriage_axis = None
         self.dual_carriage_steppers = []

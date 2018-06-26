@@ -54,7 +54,7 @@ class DeltaKinematics:
             above=0., maxval=self.max_velocity)
         max_halt_velocity = toolhead.get_max_axis_halt()
         for s in self.steppers:
-            s.set_max_jerk(max_halt_velocity, self.max_accel)
+            s.set_max_jerk(max_halt_velocity, self.max_accel, self.max_velocity)
         if toolhead.allow_move_wo_homing is True:
             self.need_home = False
         # Determine tower locations in cartesian space
@@ -216,7 +216,7 @@ class DeltaKinematics:
     def is_homed(self):
         ret = [1, 1, 1]
         if self.need_home is True:
-            ret[i] = [0, 0, 0]
+            ret = [0, 0, 0]
         return ret
     def update_velocities(self):
         max_halt_velocity = self.toolhead.get_max_axis_halt()
