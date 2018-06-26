@@ -213,12 +213,14 @@ class Printer:
             self.logger.info("Stats %.1f: %s", eventtime,
                              ' '.join([s[1] for s in stats]))
         return eventtime + status_delay
-    def try_load_module(self, config, section):
+    def try_load_module(self, config, section, folder=None):
         if section in self.objects:
             return self.objects[section]
         module_parts = section.split()
         module_name = module_parts[0]
         try:
+            if folder is not None:
+                module_name = ".".join([folder, module_name])
             mod = importlib.import_module(module_name)
         except ImportError:
             return None
@@ -258,19 +260,18 @@ class Printer:
         # Read config
         for m in [pins, mcu, hostcpu]:
             m.add_printer_objects(self, config)
-        self.logger.info("========================================")
         for section in fileconfig.sections():
             self.try_load_module(config, section)
-        self.logger.info("========================================")
         self._extruders = {}
         for m in [toolhead, extruder]:
             m.add_printer_objects(self, config)
 
         # Load gcode extensions
         self._try_load_extensions('gcodes', 'load_gcode', config)
-        # Load modules
+        # Load 'auto' modules
         self._try_load_extensions('modules', 'load_module', config)
-
+        for section in fileconfig.sections():
+            self.try_load_module(config, section, folder="modules")
         '''
         # Validate that there are no undefined parameters in the config file
         valid_sections = { s: 1 for s, o in self.all_config_options }

@@ -20,9 +20,9 @@ _TELEGRAM_BOT = None
 class TelegramModule(object):
     bot = updater = None
     state = "initiated"
-    def __init__(self, printer, config):
+    def __init__(self, config):
         global _TELEGRAM_BOT
-        self.printer = printer
+        self.printer = printer = config.get_printer()
         self.logger = printer.logger.getChild("telegram")
         # self.logger.setLevel(_TELEGRAM_LOG_LEVEL)
         self.gcode = printer.lookup_object('gcode')
@@ -30,7 +30,8 @@ class TelegramModule(object):
         printer.try_load_module(config, "virtual_sdcard")
         self.sd = printer.lookup_object('virtual_sdcard')
         self.sd.register_done_cb(self.sd_print_cb)
-        self.webgui = printer.lookup_object('webgui')
+        self.webgui = printer.try_load_module(
+            config, 'reprapgui', folder='modules')
         # Get telegram token key
         self.token = config.get('token')
         self.chat_ids = []
@@ -84,7 +85,6 @@ class TelegramModule(object):
             bot.sendMessage(chat_id=chat_id,
                 text="Hi,\nBot '%s' at your service" % self.webgui.name)
         # Add into printer objects
-        printer.add_object("telegram", self)
         self.logger.info("TelegramBot started")
     def __del__(self):
         self.updater.stop()
@@ -259,7 +259,5 @@ class TelegramModule(object):
         update.message.reply_text('Successfully stopped!')
 
 
-def load_module(printer, config):
-    if config.has_section("telegram"):
-        TelegramModule(
-            printer, config.getsection("telegram"))
+def load_config(config):
+    return TelegramModule(config)

@@ -132,7 +132,6 @@ class HostCpu(object):
             # Raspberry Pi1
             pinmap = self._rpi_v1_pins()
         self.available_pins = pinmap
-        # printer.add_object("hostcpu", self)
     def __del__(self):
         if GPIO is not None:
             GPIO.cleanup()

@@ -1,8 +1,8 @@
 import os
 
 class HostCmd(object):
-    def __init__(self, printer, config):
-        self.printer = printer
+    def __init__(self, config):
+        self.printer = printer = config.get_printer()
         self.gcode = gcode = printer.lookup_object('gcode')
         self.cmd_list = []
         commands = config.get("commands").splitlines()
@@ -34,6 +34,5 @@ class Command(object):
         msg = os.popen(self.command).read()
         self.gcode.respond_info(msg)
 
-def load_module(printer, config):
-    if config.has_section("hostcmd"):
-        HostCmd(printer, config.getsection("hostcmd"))
+def load_config(config):
+    return HostCmd(config)

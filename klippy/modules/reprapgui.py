@@ -834,7 +834,6 @@ class RepRapGuiModule(object):
 
         self.gcode.write_resp = self.gcode_resp_handler
         # ------------------------------
-        printer.add_object("webgui", self)
         self.logger.info("RepRep Web GUI loaded")
 
     def Tornado_LoggerCb(self, req):
@@ -1256,6 +1255,5 @@ class RepRapGuiModule(object):
                  'end time': change_time} )
 
 
-def load_module(printer, config):
-    if config.has_section("reprapgui"):
-        RepRapGuiModule(config.getsection("reprapgui"))
+def load_config(config):
+    return RepRapGuiModule(config)
