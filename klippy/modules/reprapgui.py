@@ -949,14 +949,15 @@ class RepRapGuiModule(object):
             self.printer_write("M23 %s" % (gco_f,))
             self.printer_write("M24")
     def cmd_M98(self, params):
-        if 'P' in params:
-            gcode = params['#original']
-            macro = gcode[gcode.find("P") + 1:].split()[0].strip()
-            macro = macro.replace('"', '')
-            self.logger.info("Executing macro %s" % (macro,))
-            self.gcode.simulate_print = False
-            self.printer_write("M23 %s" % (macro,))
-            self.printer_write("M24")
+        gcode = params['#original']
+        macro = gcode[gcode.find("M98") + 3:].split()[0].strip()
+        macro = macro.replace('"', '')
+        if macro[0] == 'P':
+            macro = macro[1:]
+        self.logger.info("Executing macro %s" % (macro,))
+        self.gcode.simulate_print = False
+        self.printer_write("M23 %s" % (macro,))
+        self.printer_write("M24")
     def cmd_M550(self, params):
         if 'P' in params:
             self.name = params['P']
