@@ -1051,7 +1051,7 @@ class RepRapGuiModule(object):
             status_block["temps"].update( {
                 "bed": {
                     "active"  : float("%.2f" % heatbed.target_temp),
-                    "heater"  : (total_htrs-1),
+                    "heater"  : 0,
                 },
             } )
 
@@ -1071,26 +1071,24 @@ class RepRapGuiModule(object):
                 },
             } )
         '''
-        status_block["temps"].update({
-            "Heater 0": {
-                "active": 2.,
-                "heater": 0,
-            },
-        })
 
         htr_current = [0.0] * total_htrs
         # HS_off = 0, HS_standby = 1, HS_active = 2, HS_fault = 3, HS_tuning = 4
         htr_state   = [  3] * total_htrs
         for htr in _heaters:
-            index = htr.index
+            index = htr.index + 1
             if htr == heatbed:
-                index = (total_htrs-1)
+                index = 0
             htr_current[index] = float("%.2f" % htr.last_temp)
             # htr_state[index]   = states[True if htr.last_pwm_value > 0.0 else False]
             htr_state[index] = states[(htr.target_temp > 0.0)]
+
         status_block["temps"].update( {
             "current" : htr_current,
             "state"   : htr_state, # 0: off, 1: standby, 2: active, 3: fault (same for bed)
+            "heads": {
+                "state": htr_state[1:],
+            },
         } )
 
         # Tools target temps
@@ -1147,7 +1145,7 @@ class RepRapGuiModule(object):
                 values = {
                     "number"   : extr.index,
                     "name"     : extr.name,
-                    "heaters"  : [ extr.heater.index ],
+                    "heaters"  : [ extr.heater.index + 1 ],
                     "drives"   : [ 3+extr.index ],
                     #"filament" : "N/A",
                 }
