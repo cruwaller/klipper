@@ -228,6 +228,12 @@ class PrinterExtruder:
                    pressure_advance, pressure_advance_lookahead_time))
         self.printer.set_rollover_info(self.name, "%s: %s" % (self.name, msg))
         gcode.respond_info(msg)
+    def get_max_velocity(self):
+        return self.max_e_velocity, self.max_e_accel
+    def get_extrude_factor(self, procent=False):
+        if procent:
+            return self.extrude_factor * 100.
+        return self.extrude_factor
 
 # Dummy extruder class used when a printer has no extruder at all
 class DummyExtruder:
