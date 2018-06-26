@@ -412,10 +412,10 @@ class ToolHead:
         self.need_motor_off = False
         self.logger.debug('; Max time of %f', last_move_time)
         for cb in self.motor_cbs:
-            cb('off', last_move_time);
+            cb('off', last_move_time)
     def motor_on(self, print_time):
         for cb in self.motor_cbs:
-            cb('on', print_time);
+            cb('on', print_time)
     def wait_moves(self):
         self._flush_lookahead()
         if self.mcu.is_fileoutput():
