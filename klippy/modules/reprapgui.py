@@ -571,7 +571,7 @@ class rrHandler(tornado.web.RequestHandler):
                 # Add printer.cfg into sys list
                 if "/sys" in path:
                     cfg_file = os.path.abspath(
-                        self.printer.get_start_args()['config_file'])
+                        self.printer.get_start_arg('config_file'))
                     respdata["files"].append({
                         "type": "f",
                         "name": KLIPPER_CFG_NAME,
@@ -699,7 +699,7 @@ class rrHandler(tornado.web.RequestHandler):
                 path = self.get_argument('name').replace("0:/", "").replace("0%3A%2F", "")
                 if KLIPPER_CFG_NAME in path:
                     path = os.path.abspath(
-                        self.printer.get_start_args('config_file'))
+                        self.printer.get_start_arg('config_file'))
                 elif KLIPPER_LOG_NAME in path:
                     path = None
                     respdata['err'] = 0
