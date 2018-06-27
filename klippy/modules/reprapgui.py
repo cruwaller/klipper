@@ -966,34 +966,37 @@ class RepRapGuiModule(object):
     def web_getconfig(self):
         printer = self.printer
         _extrs = printer.extruder_get()
-        num_extruders = len(_extrs)
         toolhead = self.toolhead
         kinematic = toolhead.get_kinematics()
-        steppers = kinematic.get_steppers()
-        num_steppers = len(steppers)
-        currents = [0.00] * (num_steppers + num_extruders)
-        # max_velocity, max_accel = toolhead.get_max_velocity()
-        max_feedrates = [0] * num_steppers
-        accelerations = [0] * num_steppers
+        rails = kinematic.get_rails()
+        currents = []
+        max_feedrates = []
+        accelerations = []
         axisMins = []
         axisMaxes = []
-        for idx, stp in enumerate(steppers):
-            _min, _max = stp.get_range()
-            axisMins.append(_min)
-            axisMaxes.append(_max)
-            get_current = getattr(stp.driver, "get_current", None)
-            if get_current is not None:
-                currents[idx] = int(get_current())
-            _vel, _accel = stp.get_max_velocity()
-            max_feedrates[idx] = int(_vel)
-            accelerations[idx] = int(_accel)
+        for rail in rails:
+            _min, _max = rail.get_range()
+            steppers = rail.get_steppers()
+            for idx, stp in enumerate(steppers):
+                axisMins.append(_min)
+                axisMaxes.append(_max)
+                get_current = getattr(stp.driver, "get_current", None)
+                if get_current is not None:
+                    currents.append(int(get_current()))
+                else:
+                    currents.append(-1)
+                _vel, _accel = stp.get_max_velocity()
+                max_feedrates.append(int(_vel))
+                accelerations.append(int(_accel))
         for idx, e in _extrs.items():
             _vel, _accel = e.get_max_velocity()
             max_feedrates.append(int(_vel))
             accelerations.append(int(_accel))
             get_current = getattr(e.stepper.driver, "get_current", None)
             if get_current is not None:
-                currents[idx] = int(get_current())
+                currents.append(int(get_current()))
+            else:
+                currents.append(-1)
         return {
             "axisMins"            : axisMins,
             "axisMaxes"           : axisMaxes,
@@ -1005,7 +1008,7 @@ class RepRapGuiModule(object):
             "firmwareDate"        : "2017-12-01",
             "idleCurrentFactor"   : 0.0,
             "idleTimeout"         : toolhead.motor_off_time,
-            "minFeedrates"        : [0.00] * (num_steppers + num_extruders),
+            "minFeedrates"        : [0.00] * (len(max_feedrates) + len(_extrs)),
             "maxFeedrates"        : max_feedrates
             }
 
