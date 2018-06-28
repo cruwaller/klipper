@@ -1227,7 +1227,7 @@ class RepRapGuiModule(object):
                 # How much filament would have been printed without extrusion factors applied
                 "extrRaw"            : [ float("%0.1f" % e.raw_filament)
                                          for i, e in _extrs.items() ],
-                "fractionPrinted"    : float("%.1f" % progress),
+                "fractionPrinted"    : float("%.1f" % (progress * 100.)),
 
                 "firstLayerDuration" : first_layer_time,
                 "firstLayerHeight"   : info['firstLayerHeight'],

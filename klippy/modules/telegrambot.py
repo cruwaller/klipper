@@ -152,7 +152,7 @@ class TelegramModule(object):
                 if self.gcostat == "finished":
                     progress = 100.
                 else:
-                    progress = sd.get_progress()
+                    progress = sd.get_progress() * 100.
                 status.append("  File '%s':" % self.gcof)
                 status.append('    progress : %.1f%%' % (progress,))
                 status.append('    state    : %s' % self.gcostat)
