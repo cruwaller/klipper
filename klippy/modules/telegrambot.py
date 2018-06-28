@@ -149,9 +149,12 @@ class TelegramModule(object):
             if self.gcof is None:
                 status.append("  Not printing.")
             else:
-                sd_stat = sd.get_status(0)
+                if self.gcostat == "finished":
+                    progress = 100.
+                else:
+                    progress = sd.get_progress()
                 status.append("  File '%s':" % self.gcof)
-                status.append('    progress : %.1f%%' % sd_stat['progress'])
+                status.append('    progress : %.1f%%' % (progress,))
                 status.append('    state    : %s' % self.gcostat)
             self.__send_photo(_id)
             self.__send_message("\n".join(status), chat_id=_id)
