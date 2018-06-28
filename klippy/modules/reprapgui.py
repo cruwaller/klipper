@@ -468,9 +468,9 @@ class rrHandler(tornado.web.RequestHandler):
                         gcode = gcode.replace('G10', 'M1010') # M1000 + cmd nbr for RepRap
                 if "M106" in gcode:
                     gcode = gcode.replace('M106', 'M1106')
-                if "M0" in gcode and self.curr_state == "S":
+                if "M0" in gcode and self.parent.curr_state == "S":
                     # Cancel print after pause, change state to idle
-                    self.curr_state = "I"
+                    self.parent.curr_state = "I"
                 try:
                     printer_write(gcode)
                 except self.parent.gcode.error as e:
