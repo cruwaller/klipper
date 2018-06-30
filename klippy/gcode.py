@@ -260,7 +260,7 @@ class GCodeParser:
                 self.process_pending()
             self.is_processing_data = False
         return True
-    def run_script(self, script):
+    def run_script_from_command(self, script):
         prev_need_ack = self.need_ack
         try:
             self.process_commands(script.split('\n'), need_ack=False)
@@ -446,7 +446,7 @@ class GCodeParser:
         if self.extruder is e:
             return
         if self.extruder is not None:
-            self.run_script(self.extruder.get_activate_gcode(False))
+            self.run_script_from_command(self.extruder.get_activate_gcode(False))
         try:
             self.toolhead.set_extruder(e)
         except homing.EndstopError as e:
@@ -454,7 +454,7 @@ class GCodeParser:
         self.extruder = e
         self.reset_last_position()
         self.base_position[3] = self.last_position[3]
-        self.run_script(self.extruder.get_activate_gcode(True))
+        self.run_script_from_command(self.extruder.get_activate_gcode(True))
     def cmd_mux(self, params):
         key, values = self.mux_commands[params['#command']]
         if None in values:

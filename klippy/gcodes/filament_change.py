@@ -53,7 +53,7 @@ class GCodeFilamentPause(object):
         """
         gcode = self.printer.lookup_object('gcode')
         get_float = gcode.get_float
-        run_script = gcode.run_script
+        run_script = gcode.run_script_from_command
         # Pause print first
         run_script('M25 P0\n')
         self.printer.lookup_object('toolhead').wait_moves()
@@ -92,17 +92,17 @@ class GCodeFilamentPause(object):
     def cmd_FILAMENT_CHANGE_READY(self, params):
         gcode = self.printer.lookup_object('gcode')
         if self.script_load:
-            gcode.run_script(self.script_load)
+            gcode.run_script_from_command(self.script_load)
         else:
             # Load filament
-            gcode.run_script('G92 E0\nG1 E%s F%u' % (
+            gcode.run_script_from_command('G92 E0\nG1 E%s F%u' % (
                 self.len_unload, int(self.load_speed)))
             # Move head back to original position
             move = " ".join(["G1", "F%u" % int(self.travel_speed),
                             'Y%f' % self.last_position[1],
                              'X%f' % self.last_position[0]])
-            gcode.run_script(move)
-            gcode.run_script('G1 Z%f F400' % self.last_position[2])
+            gcode.run_script_from_command(move)
+            gcode.run_script_from_command('G1 Z%f F400' % self.last_position[2])
         # restore coordinate system
         gcode.absolutecoord = self.absolutecoord
         # Restore original SD resume

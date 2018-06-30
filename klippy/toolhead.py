@@ -301,7 +301,7 @@ class ToolHead:
             self.wait_moves()
             orig = gcode.absolutecoord
             gcode.absolutecoord = True
-            gcode.run_script(self.idle_position)
+            gcode.run_script_from_command(self.idle_position)
             gcode.absolutecoord = orig
     # Print time tracking
     def update_move_time(self, movetime):

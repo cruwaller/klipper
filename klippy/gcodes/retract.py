@@ -37,12 +37,12 @@ class GCodeRetract(object):
             return
         short = self.gcode.get_int('S', params, 0)
         if self.retract_dist and short == 0:
-            self.gcode.run_script(
+            self.gcode.run_script_from_command(
                 "G92 E0\nG1 E-%f F%u" % (
                     self.retract_dist, self.retract_speed))
             self.respond_dbg("retract")
         elif self.retract_dist_short:
-            self.gcode.run_script(
+            self.gcode.run_script_from_command(
                 "G92 E0\nG1 E-%f F%u" % (
                     self.retract_dist_short, self.retract_speed))
             self.respond_dbg("short retract")
@@ -53,13 +53,13 @@ class GCodeRetract(object):
             return
         short = self.gcode.get_int('S', params, 0)
         if self.retract_dist and short == 0:
-            self.gcode.run_script(
+            self.gcode.run_script_from_command(
                 "G92 E0\nG1 E%f F%u" % (
                     (self.retract_dist + self.return_extra),
                     self.return_speed))
             self.respond_dbg("retract recover")
         elif self.retract_dist_short:
-            self.gcode.run_script(
+            self.gcode.run_script_from_command(
                 "G92 E0\nG1 E%f F%u" % (
                     (self.retract_dist_short + self.return_extra_short),
                     self.return_speed))
