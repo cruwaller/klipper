@@ -249,14 +249,33 @@ class ToolHead:
                     'coreyx': corexy.CoreYXKinematics,
                     'delta': delta.DeltaKinematics}
         self.kin = config.getchoice('kinematics', kintypes)(self, config)
+        # Pause/Idle position
+        self.idle_position = idle_position = config.get('idle_position', default='')
+        if not idle_position:
+            idle_x = config.getfloat("idle_position_x", default=.0)
+            idle_y = config.getfloat("idle_position_y", default=.0)
+            idle_z_lift = config.getfloat("idle_position_z_lift", default=.4)
+            idle_travel_s = config.getint("idle_position_travel_speed", default=6000)
+            moves = []
+            if idle_z_lift:
+                moves.append("G1 Z%s F%s" % (idle_z_lift, idle_travel_s))
+            moves.append("G1 X%s Y%s F%s" % (idle_x, idle_y, idle_travel_s))
+            self.idle_position = "\n".join(moves)
+            self.logger.info("Idle position: X:%s Y:%s Zlift:%s" % (
+                idle_x, idle_y, idle_z_lift))
+        else:
+            self.logger.info("Idle position script: '%s'" %
+                self.idle_position.replace("\n", ", "))
         # SET_VELOCITY_LIMIT command
         gcode = self.printer.lookup_object('gcode')
         gcode.register_command('SET_VELOCITY_LIMIT', self.cmd_SET_VELOCITY_LIMIT,
                                desc=self.cmd_SET_VELOCITY_LIMIT_help)
         gcode.register_command('M204', self.cmd_M204, desc=self.cmd_M204_help)
+        gcode.register_command('IDLE_POSITION', self.move_to_idle_pos,
+                               desc="Move head to defined idle position")
         self.logger.info("Kinematic created: %s" % self.kin.name)
-        self.logger.info("max_accel: %s" % (self.max_accel))
-        self.logger.info("max_accel_to_decel: %s" % (self.max_accel_to_decel))
+        self.logger.info("max_accel: %s" % (self.max_accel,))
+        self.logger.info("max_accel_to_decel: %s" % (self.max_accel_to_decel,))
         self.motor_cbs = []
         self.z_hop_detect_cntr = 0
         self.z_hop_detect = None
@@ -276,6 +295,14 @@ class ToolHead:
         elif cb_type == "layer":
             if cb in self.layer_change_cb:
                 self.layer_change_cb.remove(cb)
+    def move_to_idle_pos(self, *args):
+        if self.idle_position:
+            gcode = self.printer.lookup_object('gcode')
+            self.wait_moves()
+            orig = gcode.absolutecoord
+            gcode.absolutecoord = True
+            gcode.run_script(self.idle_position)
+            gcode.absolutecoord = orig
     # Print time tracking
     def update_move_time(self, movetime):
         self.print_time += movetime

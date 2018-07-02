@@ -12,7 +12,6 @@ class VirtualSD:
         # sdcard state
         sd = config.get('path')
         self.sdcard_dirname = os.path.normpath(os.path.expanduser(sd))
-        self.pause_pos = config.get('pause', default='')
         self.current_file = None
         self.file_position = self.file_size = 0
         # Work timer
@@ -139,8 +138,8 @@ class VirtualSD:
         # Move head to parking position before pause
         pause = self.gcode.get_int(
             'P', params, default=1, minval=0, maxval=1)
-        if pause and self.pause_pos:
-            self.gcode.run_script(self.pause_pos)
+        if pause:
+            self.printer.lookup_object('toolhead').move_to_idle_pos()
     def cmd_M26(self, params):
         # Set SD position
         if self.work_timer is not None:
