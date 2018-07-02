@@ -77,6 +77,8 @@ class GCodeParser:
             self.base_gcode_handlers[cmd] = func
         if desc is not None:
             self.gcode_help[cmd] = desc
+    def get_command_handler(self, cmd):
+        return self.ready_gcode_handlers.get(cmd, None)
     def register_mux_command(self, cmd, key, value, func, desc=None):
         prev = self.mux_commands.get(cmd)
         if prev is None:
