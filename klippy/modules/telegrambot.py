@@ -66,7 +66,6 @@ class TelegramModule(object):
         dispatcher.add_handler(CommandHandler(["help", "h", "start"], self.help))
         dispatcher.add_handler(CommandHandler("id", self.get_user_id))
         dispatcher.add_handler(CommandHandler("status", self.get_status))
-        dispatcher.add_handler(CommandHandler("pause", self.pause_print))
         dispatcher.add_handler(CommandHandler("stop", self.stop_print))
         dispatcher.add_handler(CommandHandler("kill", self.kill))
         dispatcher.add_handler(CommandHandler("restart", self.restart_printer))
@@ -93,7 +92,10 @@ class TelegramModule(object):
     # ============= Private ==============
     def printer_state(self, state):
         self.state = state
-        self.__send_message("State is changed to '%s'" % state)
+        if state == 'shutdown':
+            self.__send_message("  Machine is stopped")
+        elif state == 'ready':
+            self.__send_message("  Machine is running now")
     gcof = None
     gcostat = "Unknown"
     def sd_print_cb(self, status):
@@ -112,7 +114,7 @@ class TelegramModule(object):
             self.gcostat = "finished"
             self.__send_status()
         elif status == 'loaded':
-            self.gcof = os.path.basename(self.sd.current_file.name)
+            self.gcof = self.sd.get_current_file_name()
             self.gcostat = 'initiated'
 
     # ============= Reporting ============
@@ -153,7 +155,7 @@ class TelegramModule(object):
                     progress = 100.
                 else:
                     progress = sd.get_progress() * 100.
-                status.append("  File '%s':" % self.gcof)
+                status.append("  File '%s':" % os.path.basename(self.gcof))
                 status.append('    progress : %.1f%%' % (progress,))
                 status.append('    state    : %s' % self.gcostat)
             self.__send_photo(_id)
@@ -162,9 +164,8 @@ class TelegramModule(object):
     def __send_buttons(update, msg=""):
         buttons = [
             [KeyboardButton("/status")],
-            [KeyboardButton("/pause")],
-            [KeyboardButton("/stop")],
-            [KeyboardButton("/kill")],
+            # [KeyboardButton("/stop")],
+            # [KeyboardButton("/kill")],
         ]
         reply_mrk = ReplyKeyboardMarkup(buttons)
         update.message.reply_text(
@@ -186,11 +187,9 @@ class TelegramModule(object):
                     "  /status    current status of the printer\n" \
                     "  /set <sec> periodic status reporting while printing\n" \
                     "  /unset     disable periodic status reporting\n" \
-                    "  /pause     pause ongoing print\n" \
                     "  /stop      stops ongoing print\n" \
                     "  /kill      call emergency stop\n" \
                     "  /restart   restart firmware\n"
-            # self.__send_message(msg, chat_id=_id)
             self.__send_buttons(update, msg)
         elif not self.chat_ids:
             self.get_user_id(bot, update)
@@ -204,17 +203,10 @@ class TelegramModule(object):
     def get_status(self, bot, update):
         _id = update.message.from_user['id']
         self.__send_status(_id)
-    def pause_print(self, bot, update):
-        if update.message.from_user['id'] in self.chat_ids:
-            self.webgui.printer_write_no_update('M25 P1')
-            if self.gcostat == "printing":
-                update.message.reply_text('print paused')
-            else:
-                update.message.reply_text('not printing')
     def stop_print(self, bot, update):
         if update.message.from_user['id'] in self.chat_ids:
             self.webgui.printer_write_no_update('M25 P1')
-            # TODO Stop heaters etc...
+            self.webgui.printer_write_no_update('M1')
             if self.gcostat == "printing":
                 update.message.reply_text('print stopped')
             else:
