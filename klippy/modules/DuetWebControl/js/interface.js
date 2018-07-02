@@ -1,7 +1,7 @@
 /* Main interface logic for Duet Web Control
- * 
+ *
  * written by Christian Hammacher (c) 2016-2017
- * 
+ *
  * licensed under the terms of the GPL v3
  * see http://www.gnu.org/licenses/gpl-3.0.html
  */
@@ -518,7 +518,7 @@ function resetGui() {
 	setFanVisibility(2, settings.showFan3);
 	numFans = undefined;						// let the next status response callback hide fans that are not available
 	$('#slider_fan_print').slider("setValue", 35);
-	
+
 	$('#slider_speed').slider("setValue", 100);
 	for(var extr = 1; extr <= maxExtruders; extr++) {
 		$("#slider_extr_" + extr).slider("setValue", 100);
@@ -1130,9 +1130,9 @@ $(".btn-move").click(function(e) {
 		axis = axisNames[axisNumber];
 	}
 
-	var moveString = "M120\nG91\nG1 ";
+	var moveString = "G91\nG1 ";
 	moveString += axis + $(this).data("amount");
-	moveString += " F" + settings.moveFeedrate + "\nM121";
+	moveString += " F" + settings.moveFeedrate + "\nG90";
 	sendGCode(moveString);
 	e.preventDefault();
 });

@@ -1,7 +1,7 @@
 /* Settings management for Duet Web Control
- * 
+ *
  * written by Christian Hammacher (c) 2016-2017
- * 
+ *
  * licensed under the terms of the GPL v3
  * see http://www.gnu.org/licenses/gpl-3.0.html
  */
@@ -53,12 +53,13 @@ var settings = {
 
 	defaultActiveTemps: [0, 180, 190, 200, 210, 220, 235],
 	defaultStandbyTemps: [0, 95, 120, 140, 155, 170],
-	defaultBedTemps: [0, 55, 60, 65, 90, 110, 120],
+	defaultBedTemps: [0, 50, 55, 60, 65, 90, 110, 120],
 	defaultGCodes: [
 		["M0", "Stop"],
 		["M1", "Sleep"],
 		["M84", "Motors Off"],
-		["M561", "Disable bed compensation"]
+		["M999", "Restart"],
+		["G90\nG1 Z0", "Move Z down"]
 	]
 };
 
@@ -554,4 +555,3 @@ Piecon.setOptions({
 	shadow: "#fff",			// Outer ring color
 	fallback: "force"		// Toggles displaying percentage in the title bar (possible values - true, false, 'force')
 });
-
