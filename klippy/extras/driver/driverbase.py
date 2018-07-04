@@ -40,6 +40,8 @@ class DriverBase(object):
     @property
     def has_endstop(self):
         return self.__has_endstop
+    def setup_step_distance(self, step_dist): # needed?
+        self.step_dist = step_dist
 
 
 class SpiDriver(DriverBase):

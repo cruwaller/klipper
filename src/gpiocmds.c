@@ -143,7 +143,7 @@ soft_pwm_toggle_event(struct timer *timer)
 {
     struct soft_pwm_s *s = container_of(timer, struct soft_pwm_s, timer);
 #if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-    printf("SoftPWM toggle event\n");
+    //printf("SoftPWM toggle event @ %u [val %u]\n", s->timer.waketime, !!(s->flags & SPF_ON));
 #endif
     gpio_out_toggle_noirq(s->pin);
     s->flags ^= SPF_ON;
@@ -167,7 +167,7 @@ soft_pwm_load_event(struct timer *timer)
 {
     struct soft_pwm_s *s = container_of(timer, struct soft_pwm_s, timer);
 #if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-    printf("SoftPWM load event\n");
+    //printf("SoftPWM load event\n");
 #endif
     if (!(s->flags & SPF_HAVE_NEXT))
         shutdown("Missed scheduling of next pwm event");
@@ -243,6 +243,9 @@ command_schedule_soft_pwm_out(uint32_t *args)
         sched_add_timer(&s->timer);
     }
     irq_enable();
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    printf("SoftPWM schedule event (value %u): ON %u, OFF %u, MAX %u\n", value, next_on_duration, next_off_duration, s->max_duration);
+#endif
 }
 DECL_COMMAND(command_schedule_soft_pwm_out,
              "schedule_soft_pwm_out oid=%c clock=%u value=%hu");

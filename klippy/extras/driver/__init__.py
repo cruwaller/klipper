@@ -6,10 +6,7 @@
 
 from driverbase import DriverBase
 from tmc2130    import TMC2130
-try:
-    from tmc5130 import TMC5130
-except ImportError:
-    TMC5130 = DriverBase
+from tmc51xx    import TMC51xx
 
 DRV_MAPPING = {
     'DEFAULT' : DriverBase,
@@ -17,7 +14,8 @@ DRV_MAPPING = {
     'DRV8825' : DriverBase,
     'TMC2100' : DriverBase,
     'TMC2130' : TMC2130,
-    'TMC5130' : TMC5130,
+    'TMC5130' : TMC51xx,
+    'TMC5160' : TMC51xx,
 }
 
 def load_driver(config):
