@@ -10,3 +10,4 @@ out
 *.bin
 
 lib/hub-ctrl/hub-ctrl
+.idea

@@ -1,4 +1,4 @@
-import os, re
+import os, re, ConfigParser
 import pins
 
 (sysname, hostname, release, version, machine) = os.uname()
@@ -7,9 +7,14 @@ GPIO = None
 
 if machine in ["x86_64", "x86"]:
     class GpioTemp:
-        PUD_UP = PUD_DOWN = 0
-        IN = OUT = 0
         RISING = FALLING = BOTH = 0
+        PUD_UP = 2
+        PUD_DOWN = 1
+        PUD_OFF = 0
+        IN = 1
+        OUT = 0
+        HIGH = 1
+        LOW = 0
         def __init__(self, *args, **kwargs):
             pass
         def setup(self, *args, **kwargs):
@@ -22,6 +27,17 @@ if machine in ["x86_64", "x86"]:
             pass
         def remove_event_detect(self, *args, **kwargs):
             pass
+        class PWM:
+            def __init__(self, ch, f):
+                pass
+            def start(self, duty):
+                pass
+            def stop(self):
+                pass
+            def ChangeFrequency(self, f):
+                pass
+            def ChangeDutyCycle(self, d):
+                pass
     GPIO = GpioTemp()
 elif sysname == "Linux":
     if machine in ['armv6l', 'armv7l']:
@@ -55,12 +71,11 @@ class HostGpioIn:
         pull_up_down = GPIO.PUD_UP if pin_params['pullup'] else GPIO.PUD_DOWN
         GPIO.setup(channel, GPIO.IN, pull_up_down=pull_up_down)
     def read(self):
-        if self.invert:
-            return not GPIO.input(self.channel)
-        return GPIO.input(self.channel)
+        return GPIO.input(self.channel) ^ self.invert
 
 class HostGpioEvent:
     def __init__(self, pin_params):
+        self.invert = pin_params['invert']
         self.channel = channel = \
             pin_params['chip'].get_pin_number(pin_params['pin'])
         pull_up_down = GPIO.PUD_UP if pin_params['pullup'] else GPIO.PUD_DOWN
@@ -73,6 +88,9 @@ class HostGpioEvent:
         eventc = {"rising": GPIO.RISING,
                   "falling": GPIO.FALLING,
                   "both": GPIO.BOTH}
+        if self.invert:
+            eventc["rising"] = GPIO.FALLING
+            eventc["falling"] = GPIO.RISING
         GPIO.add_event_detect(self.channel, eventc[edge],
                               callback=cb, bouncetime=bounce)
 
@@ -85,34 +103,42 @@ class HostGpioOut:
         GPIO.setup(channel, GPIO.OUT,
                    pull_up_down=GPIO.PUD_OFF, initial=state)
     def write(self, state):
-        state = not state if self.invert else state
-        GPIO.output(self.channel, state)
+        GPIO.output(self.channel, bool(state) ^ self.invert)
 
 class HostPwm:
     def __init__(self, pin_params):
         if PWM is None:
-            raise Exception("PWM is not supported!")
-        self.freq = 1.
+            raise ConfigParser.Error("PWM is not supported!")
         channel = pin_params['chip'].get_pin_number(pin_params['pin'])
         GPIO.setup(channel, GPIO.OUT)
-        self.pwm = GPIO.PWM(channel, self.freq)
+        self.pwm = GPIO.PWM(channel, 1) # 1Hz
+        self.pwm.start(0)
+        self.duty = .0
+        self.freq = 1
+    def __del__(self):
+        self.pwm.stop()
     def set_freq(self, freq):
         self.freq = freq
         self.pwm.ChangeFrequency(freq)
     def write(self, duty, freq=None):
+        """ Duty can be 0.0 ... 1.0 """
         if freq is not None:
+            self.freq = freq
             self.pwm.ChangeFrequency(freq)
-        self.pwm.start(duty)
-    def stop(self):
-        self.pwm.stop()
+        self.duty = duty
+        self.pwm.ChangeDutyCycle(duty * 100.)
+    def get_duty(self):
+        return self.duty
+    def get_freq(self):
+        return self.freq
 
 class HostSpi:
     def __init__(self):
-        raise Exception("Host SPI is not implemented yet")
+        raise ConfigParser.Error("Host SPI is not implemented yet")
 
 class HostI2C:
     def __init__(self):
-        raise Exception("Host I2C is not implemented yet")
+        raise ConfigParser.Error("Host I2C is not implemented yet")
 
 class HostCpu(object):
     def __init__(self, printer):
@@ -145,20 +171,25 @@ class HostCpu(object):
         return gpios
     def _orangepi_pins(self):
         return self._rpi_v2_pins()
+    def get_logger(self, child=None):
+        if child is not None:
+            return self.logger.getChild(child)
+        return self.logger
     def get_pin_number(self, pin):
         return self.available_pins.get(pin, None)
     def setup_pin(self, pin_type, pin_desc):
         pin_params = self.lookup_pin(pin_type, pin_desc)
         pcs = {'gpio_in': HostGpioIn, 'gpio_out': HostGpioOut,
                'spi': HostSpi, 'i2c': HostI2C, 'pwm': HostPwm,
-               'event': HostGpioEvent}
+               'gpio_event': HostGpioEvent}
         pin_type = pin_params['type']
         if pin_type not in pcs:
             raise pins.error("pin type %s not supported on mcu" % (pin_type,))
-        co = pcs[pin_type](self, pin_params)
+        co = pcs[pin_type](pin_params)
         return co
     def lookup_pin(self, pin_type, pin_desc, share_type=None):
-        if pin_type not in ['gpio_in', 'gpio_out', 'spi', 'i2c', 'pwm', 'event']:
+        if pin_type not in ['gpio_in', 'gpio_out', 'gpio_event',
+                            'spi', 'i2c', 'pwm']:
             raise pins.error("Invalid pin type %s" % pin_type)
         can_invert = pin_type in ['gpio_in', 'gpio_out']
         can_pullup = pin_type == 'gpio_in'

@@ -272,6 +272,8 @@ class Printer:
         self._try_load_extensions('modules', 'load_module', config)
         for section in fileconfig.sections():
             self.try_load_module(config, section, folder="modules")
+        for section in fileconfig.sections():
+            self.try_load_module(config, section, folder="modules_host")
         '''
         # Validate that there are no undefined parameters in the config file
         valid_sections = { s: 1 for s, o in self.all_config_options }
