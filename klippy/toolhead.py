@@ -201,6 +201,9 @@ class ToolHead:
         self.reactor = printer.get_reactor()
         self.all_mcus = printer.lookup_module_objects('mcu')
         self.mcu = self.all_mcus[0]
+        self.move_queue = MoveQueue()
+        self.commanded_pos = [0., 0., 0., 0.]
+        # Velocity and acceleration control
         self.max_velocity = config.getfloat('max_velocity', above=0.)
         self.max_accel = config.getfloat('max_accel', above=0.)
         self.max_accel_to_decel_ratio = config.getfloat(
@@ -212,13 +215,13 @@ class ToolHead:
         if max_accel_to_decel is None:
             max_accel_to_decel = self.max_accel * self.max_accel_to_decel_ratio
         self.max_accel_to_decel = min(max_accel_to_decel, self.max_accel)
-        self.junction_deviation = config.getfloat(
-            'junction_deviation', 0.02, minval=0.)
+        self.square_corner_velocity = config.getfloat(
+            'square_corner_velocity', 5., minval=0.)
         self.config_max_velocity = self.max_velocity
         self.config_max_accel = self.max_accel
-        self.config_junction_deviation = self.junction_deviation
-        self.move_queue = MoveQueue()
-        self.commanded_pos = [0., 0., 0., 0.]
+        self.config_square_corner_velocity = self.square_corner_velocity
+        self.junction_deviation = 0.
+        self._calc_junction_deviation()
         self.homing_order = config.get('homing_order', 'XYZ').upper()
         self.require_home_after_motor_off = config.getboolean(
             'require_home_after_motor_off', True)
@@ -226,6 +229,7 @@ class ToolHead:
             'sw_limit_check_enabled', True)
         self.allow_move_wo_homing = config.getboolean(
             'allow_move_without_home', False)
+
         # Print time tracking
         self.buffer_time_low = config.getfloat(
             'buffer_time_low', 1.000, above=0.)
@@ -287,12 +291,12 @@ class ToolHead:
                                desc=self.cmd_SET_VELOCITY_LIMIT_help)
         gcode.register_command('IDLE_POSITION', self.move_to_idle_pos,
                                desc="Move head to defined idle position")
+        # gcode.register_command('M204', self.cmd_M204)
         self.logger.info("Kinematic created: %s" % self.kin.name)
         self.logger.info("max_accel: %s" % (self.max_accel,))
         self.logger.info("max_accel_to_decel: %s" % (self.max_accel_to_decel,))
+        self.logger.info("junction_deviation: %s" % (self.junction_deviation,))
         self.motor_cbs = []
-        self.z_hop_detect_cntr = 0
-        self.z_hop_detect = None
         self.layer_change_cb = []
     def register_cb(self, cb_type, cb):
         if cb_type == "motor":
@@ -508,8 +512,11 @@ class ToolHead:
         # determined experimentally.
         return min(self.max_velocity,
                    math.sqrt(8. * self.junction_deviation * self.max_accel))
+    def _calc_junction_deviation(self):
+        scv2 = self.square_corner_velocity**2
+        self.junction_deviation = scv2 * (math.sqrt(2.) - 1.) / self.max_accel
     cmd_SET_VELOCITY_LIMIT_help = "Set printer velocity limits. " \
-                                  "Args: [VELOCITY=] [ACCEL=] [JUNCTION_DEVIATION=]" \
+                                  "Args: [VELOCITY=] [ACCEL=] [SQUARE_CORNER_VELOCITY=]" \
                                   " [ACCEL_TO_DECEL=] [ACCEL_TO_DECEL_RATIO=]"
     def cmd_SET_VELOCITY_LIMIT(self, params):
         print_time = self.get_last_move_time()
@@ -520,9 +527,9 @@ class ToolHead:
         max_accel = gcode.get_float(
             'ACCEL', params, self.max_accel,
             above=0., maxval=self.config_max_accel)
-        junction_deviation = gcode.get_float(
-            'JUNCTION_DEVIATION', params, self.junction_deviation,
-            minval=0., maxval=self.config_junction_deviation)
+        square_corner_velocity = gcode.get_float(
+            'SQUARE_CORNER_VELOCITY', params, self.square_corner_velocity,
+            minval=0., maxval=self.config_square_corner_velocity)
         max_accel_to_decel = gcode.get_float(
             'ACCEL_TO_DECEL', params, None, above=0.)
         self.max_accel_to_decel_ratio = gcode.get_float(
@@ -533,16 +540,22 @@ class ToolHead:
         self.max_velocity = max_velocity
         self.max_accel = max_accel
         self.max_accel_to_decel = min(max_accel_to_decel, max_accel)
-        self.junction_deviation = junction_deviation
+        self.square_corner_velocity = square_corner_velocity
+        self._calc_junction_deviation()
         msg = ("max_velocity: %.6f\n"
                "max_accel: %.6f\n"
                "max_accel_to_decel: %.6f\n"
-               "junction_deviation: %.6f"% (
+               "square_corner_velocity: %.6f\n"
+               "junction_deviation: %.6f" % (
                    max_velocity, max_accel, self.max_accel_to_decel,
-                   junction_deviation))
+                   square_corner_velocity, self.junction_deviation))
         self.printer.set_rollover_info("toolhead", "toolhead: %s" % (msg,))
         params['#input'].respond_info(msg)
-
+    def cmd_M204(self, params):
+        gcode = self.printer.lookup_object('gcode')
+        accel = gcode.get_float('S', params, above=0.)
+        self.max_accel = min(accel, self.config_max_accel)
+        self._calc_junction_deviation()
 
 def add_printer_objects(config):
     config.get_printer().add_object('toolhead', ToolHead(config))
