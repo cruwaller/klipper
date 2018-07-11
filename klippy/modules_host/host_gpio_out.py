@@ -17,7 +17,7 @@ class HostGpioOut(object):
     def cmd_write(self, params):
         value = self.gcode.get_float('VALUE', params)
         self.pin.write(value)
-        self.gcode.respond_info("Pin set ok")
+        params['#input'].respond_info("Pin set ok")
 
 
 def load_config_prefix(config):

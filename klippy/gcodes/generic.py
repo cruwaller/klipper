@@ -1,11 +1,10 @@
-import extruder
 
 class GenericGcode(object):
     def __init__(self, printer):
         self.printer = printer
         self.gcode = printer.lookup_object('gcode')
         self.toolhead = printer.lookup_object('toolhead')
-        for cmd in ['M0', 'M1', 'M37', 'M118', 'M205',
+        for cmd in ['M0', 'M1', 'M118', 'M205',
                     'M301', 'M302', 'M304',
                     'M851', 'M900']:
             self.gcode.register_command(
@@ -21,7 +20,6 @@ class GenericGcode(object):
                                     self.gcode.cmd_FIRMWARE_RESTART,
                                     when_not_ready=True,
                                     desc="Alias to FIRMWARE_RESTART")
-        self.respond_info = self.gcode.respond # self.gcode.respond_info
         self.axis2pos = self.gcode.axis2pos
         self.logger = self.gcode.logger
         self.logger.info("Generic GCode extension initialized")
@@ -49,16 +47,8 @@ class GenericGcode(object):
         self.gcode.toolhead.wait_moves()
         self.motor_heater_off()
 
-    cmd_M37_help = "Enable P1 or disable P0 print simulation"
-    def cmd_M37(self, params):
-        simulation_enabled = self.gcode.get_int('P', params, 0)
-        if simulation_enabled is 1:
-            self.gcode.simulate_print = True
-        else:
-            self.gcode.simulate_print = False
-
     def cmd_M118(self, params):
-        self.respond_info(params['#original'].replace(params['#command'], ""))
+        params['#input'].respond(params['#original'].replace(params['#command'], ""))
 
     def cmd_M205(self, params):
         # Set advanced settings
@@ -66,7 +56,7 @@ class GenericGcode(object):
         if value is not None and 0. < value:
             self.gcode.toolhead.junction_deviation = value
             self.gcode.toolhead.get_kinematics().update_velocities()
-        self.respond_info("Junction deviation %.2f" % (self.gcode.toolhead.junction_deviation,))
+        params['#input'].respond("Junction deviation %.2f" % (self.gcode.toolhead.junction_deviation,))
 
     cmd_M302_help = "Cold Extrude. Args [P<bool>] [S<temp>]"
     def cmd_M302(self, params):
@@ -87,17 +77,17 @@ class GenericGcode(object):
             h.set_min_extrude_temp(temperature, disable)
             status, temp = h.get_min_extrude_status()
             if "bed" not in h.name:
-                self.respond_info(
+                params['#input'].respond(
                     "Heater '{}' cold extrude: {}, min temp {}C".
                     format(h.name, status, temp))
 
     def cmd_M301(self, params):
         # M301: Set PID parameters
-        self.gcode.respond_info("Obsolete, use SET_PID_PARAMS")
+        params['#input'].respond("Obsolete, use SET_PID_PARAMS")
 
     def cmd_M304(self, params):
         # M304: Set PID parameters - Bed
-        self.gcode.respond_info("Obsolete, use SET_PID_PARAMS")
+        params['#input'].respond("Obsolete, use SET_PID_PARAMS")
 
     cmd_M851_help = "Set axis offset. Args [X<offset] [Y<offset>] [Z<offset>]"
     def cmd_M851(self, params):
@@ -107,14 +97,14 @@ class GenericGcode(object):
                     for a, p in self.axis2pos.items() if a in params }
         for p, offset in offsets.items():
             steppers[p].set_homing_offset(offset)
-        self.respond_info("Current offsets: X=%.2f Y=%.2f Z=%.2f" % \
+        params['#input'].respond("Current offsets: X=%.2f Y=%.2f Z=%.2f" % \
                           (steppers[0].homing_offset,
                            steppers[1].homing_offset,
                            steppers[2].homing_offset))
 
     def cmd_M900(self, params):
         # Pressure Advance configuration
-        self.gcode.respond_info("Obsolete, use SET_PRESSURE_ADVANCE")
+        params['#input'].respond("Obsolete, use SET_PRESSURE_ADVANCE")
 
 
 def load_gcode(printer, config):

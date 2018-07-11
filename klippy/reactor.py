@@ -3,7 +3,7 @@
 # Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import os, select, math, time, Queue
+import os, select, math, time, Queue, threading, logging
 import greenlet
 import chelper, util
 
@@ -23,11 +23,41 @@ class ReactorCallback:
         return self.reactor.NEVER
 
 class ReactorFileHandler:
-    def __init__(self, fd, callback):
+    def __init__(self, fd, callback, args):
         self.fd = fd
+        self.fd_w = fd
         self.callback = callback
+        self.args = args
+    def get_args(self):
+        return dict(self.args)
+    def get_arg(self, name):
+        return self.args.get(name, None)
     def fileno(self):
         return self.fd
+
+class ReactorFileHandlerThread(ReactorFileHandler):
+    def __init__(self, reactor, fd, callback, args):
+        ReactorFileHandler.__init__(self, fd, callback, args)
+        self.reactor = reactor
+        self._stop = False
+        self._poll = select.poll()
+        self.thread = threading.Thread(target=self.__execute)
+        self.thread.daemon = True
+        self.thread.start()
+    def __execute(self):
+        self._poll.register(self, select.POLLIN | select.POLLHUP)
+        while not self._stop:
+            #r, w, e = select.select([self], [], [])
+            #if self in r:
+            fd, event = self._poll.poll()[0]
+            if fd == self.fd:
+                self._stop = self.callback(
+                    self.reactor.monotonic(), self)
+        self._poll.unregister(self)
+    def is_running(self):
+        return not self._stop
+    def stop(self):
+        self._stop = True
 
 class ReactorGreenlet(greenlet.greenlet):
     def __init__(self, run):
@@ -147,22 +177,27 @@ class SelectReactor:
         # This greenlet was reactivated - prepare for main processing loop
         self._g_dispatch = g_old
     # File descriptors
-    def register_fd(self, fd, callback):
-        handler = ReactorFileHandler(fd, callback)
+    def register_fd(self, fd, callback, args={}):
+        handler = ReactorFileHandler(fd, callback, args)
         self._fds.append(handler)
         return handler
     def unregister_fd(self, handler):
         self._fds.pop(self._fds.index(handler))
+    def register_fd_thread(self, fd, func, args={}):
+        return ReactorFileHandlerThread(self, fd, func, args)
+    @staticmethod
+    def unregister_fd_thread(handle):
+        handle.stop()
     # Main loop
     def _dispatch_loop(self):
         self._g_dispatch = g_dispatch = greenlet.getcurrent()
         eventtime = self.monotonic()
         while self._process:
             timeout = self._check_timers(eventtime)
-            res = select.select(self._fds, [], [], timeout)
+            res, w, e = select.select(self._fds, [], [], timeout)
             eventtime = self.monotonic()
-            for fd in res[0]:
-                fd.callback(eventtime)
+            for fd in res:
+                fd.callback(eventtime, fd)
                 if g_dispatch is not self._g_dispatch:
                     self._end_greenlet(g_dispatch)
                     eventtime = self.monotonic()
@@ -183,10 +218,10 @@ class PollReactor(SelectReactor):
         self._poll = select.poll()
         self._fds = {}
     # File descriptors
-    def register_fd(self, fd, callback):
-        handler = ReactorFileHandler(fd, callback)
+    def register_fd(self, fd, callback, args={}):
+        handler = ReactorFileHandler(fd, callback, args)
         fds = self._fds.copy()
-        fds[fd] = callback
+        fds[fd] = handler # callback
         self._fds = fds
         self._poll.register(handler, select.POLLIN | select.POLLHUP)
         return handler
@@ -204,7 +239,9 @@ class PollReactor(SelectReactor):
             res = self._poll.poll(int(math.ceil(timeout * 1000.)))
             eventtime = self.monotonic()
             for fd, event in res:
-                self._fds[fd](eventtime)
+                # self._fds[fd](eventtime, fd)
+                handler = self._fds[fd]
+                handler.callback(eventtime, handler)
                 if g_dispatch is not self._g_dispatch:
                     self._end_greenlet(g_dispatch)
                     eventtime = self.monotonic()
@@ -217,10 +254,10 @@ class EPollReactor(SelectReactor):
         self._epoll = select.epoll()
         self._fds = {}
     # File descriptors
-    def register_fd(self, fd, callback):
-        handler = ReactorFileHandler(fd, callback)
+    def register_fd(self, fd, callback, args={}):
+        handler = ReactorFileHandler(fd, callback, args)
         fds = self._fds.copy()
-        fds[fd] = callback
+        fds[fd] = handler # callback
         self._fds = fds
         self._epoll.register(fd, select.EPOLLIN | select.EPOLLHUP)
         return handler
@@ -238,7 +275,9 @@ class EPollReactor(SelectReactor):
             res = self._epoll.poll(timeout)
             eventtime = self.monotonic()
             for fd, event in res:
-                self._fds[fd](eventtime)
+                # self._fds[fd](eventtime, fd)
+                handler = self._fds[fd]
+                handler.callback(eventtime, handler)
                 if g_dispatch is not self._g_dispatch:
                     self._end_greenlet(g_dispatch)
                     eventtime = self.monotonic()

@@ -241,7 +241,7 @@ class PrinterRail:
                     ['endstop_min_pin',
                      'endstop_max_pin'][self.homing_positive_dir])
             ppins = config.get_printer().lookup_object('pins')
-            mcu_endstop = ppins.setup_pin('endstop', endstop_pin)
+            mcu_endstop = ppins.setup_pin('endstop', endstop_pin, share_type="endstop")
             self.endstops = [(mcu_endstop, self.name)]
             stepper.add_to_endstop(mcu_endstop)
             # Endstop stepper phase position tracking

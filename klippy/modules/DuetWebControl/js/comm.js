@@ -561,7 +561,7 @@ function updateStatus() {
 					var fanValue = fanValues[i] / 100.0;
 					if (overriddenFanValues[i] != undefined && overriddenFanValues[i] != fanValue) {
 						fanValue = overriddenFanValues[i];
-						sendGCode("M106 P" + i + " S" + fanValue);
+						sendGCode("M106 P" + i + " S" + (255 * fanValue));
 					}
 
 					// Update slider values
@@ -964,9 +964,13 @@ function updateStatus() {
 				}
 
 				// First Layer Height (maybe we need to update the layer height info)
-				if (status.firstLayerHeight > 0 && $("#dd_layer_height").html().indexOf("/") == -1)
+				firstLayerHeight = status.firstLayerHeight
+				if (firstLayerHeight == undefined) {
+					firstLayerHeight = fileInfo.firstLayerHeight
+				}
+				if (firstLayerHeight > 0 && $("#dd_layer_height").html().indexOf("/") == -1)
 				{
-					$("#dd_layer_height").html(T("{0} mm", status.firstLayerHeight) + " / " + $("#dd_layer_height").html());
+					$("#dd_layer_height").html(T("{0} mm", firstLayerHeight) + " / " + $("#dd_layer_height").html());
 				}
 
 				// Print Estimations

@@ -126,7 +126,7 @@ class PrinterHeater:
         self.protect_state = None
         self.reactor.update_timer(self.protection_timer,
                                   self.reactor.NOW)
-        self.gcode.respond_info(
+        params['#input'].respond_info(
             "Idle hysteresis %.2fC, Cooling hysteresis %.2fC\n"
             "Heating: period %.2fs, hysteresis %.2fC\n"
             "Runaway: period %.2fs, hysteresis %.2fC" % (
@@ -219,7 +219,7 @@ class PrinterHeater:
         return eventtime + next_time
     def __protect_error(self, errorstr):
         self.set_temp(0, 0)
-        self.gcode.respond_stop(errorstr)
+        self.gcode.respond_stop(None, errorstr)
         self.printer.request_exit('shutdown')
     def get_min_extrude_status(self):
         stat = "prevented"
@@ -414,7 +414,7 @@ class ControlPID:
         self.prev_temp_time = 0.
         self.prev_temp_deriv = 0.
         self.prev_temp_integ = 0.
-        self.gcode.respond_info(
+        params['#input'].respond_info(
             "PID params: P=%.2f I=%.2f D=%.2f TIME=%.2f MAX=%.2f" %
             (self.Kp*PID_PARAM_BASE, self.Ki*PID_PARAM_BASE, self.Kd*PID_PARAM_BASE,
              self.min_deriv_time, self.imax))

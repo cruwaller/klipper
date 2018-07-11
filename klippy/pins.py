@@ -261,8 +261,8 @@ class PrinterPins:
                       'pin': pin, 'invert': invert, 'pullup': pullup}
         self.active_pins[share_name] = pin_params
         return pin_params
-    def setup_pin(self, pin_type, pin_desc):
-        pin_params = self.lookup_pin(pin_type, pin_desc)
+    def setup_pin(self, pin_type, pin_desc, share_type=None):
+        pin_params = self.lookup_pin(pin_type, pin_desc, share_type)
         return pin_params['chip'].setup_pin(pin_params)
     def register_chip(self, chip_name, chip):
         chip_name = chip_name.strip()

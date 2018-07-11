@@ -15,7 +15,7 @@ class HostGpioIn(object):
             when_not_ready=True)
         self.logger.info("%s loaded" % name)
     def cmd_read(self, params):
-        self.gcode.respond_info(
+        params['#input'].respond_info(
             "Current pin value %s" % self.pin.read())
 
 

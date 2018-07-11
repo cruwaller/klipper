@@ -530,7 +530,7 @@ class ToolHead:
                    max_velocity, max_accel, self.max_accel_to_decel,
                    junction_deviation))
         self.printer.set_rollover_info("toolhead", "toolhead: %s" % (msg,))
-        gcode.respond_info(msg)
+        params['#input'].respond_info(msg)
     cmd_M204_help = "Set max accel/decel. [Sval|Pval] [Dval]"
     def cmd_M204(self, params):
         # Set default acceleration
@@ -545,7 +545,7 @@ class ToolHead:
             decel = self.max_accel * self.max_accel_to_decel_ratio
         self.max_accel_to_decel = min(decel, self.max_accel)
         # self.get_kinematics().update_velocities()
-        gcode.respond("Accel %u, decel %u" % (
+        params['#input'].respond_info("Accel %u, decel %u" % (
             self.max_accel, self.max_accel_to_decel,))
 
 

@@ -81,6 +81,17 @@ end_stop_oversample_event(struct timer *t)
     return SF_RESCHEDULE;
 }
 
+uint_fast8_t
+end_stop_checkpin(struct end_stop *e)
+{
+    uint8_t val = gpio_in_read(e->pin);
+    uint8_t res = (val ? e->flags : ~e->flags) & ESF_PIN_HIGH;
+    if (res)
+        // Match -> stop
+        stop_steppers(e);
+    return res;
+}
+
 void
 command_config_end_stop(uint32_t *args)
 {
@@ -111,6 +122,9 @@ command_end_stop_set_stepper(uint32_t *args)
     if (pos >= e->stepper_count)
         shutdown("Set stepper past maximum stepper count");
     e->steppers[pos] = stepper_oid_lookup(args[2]);
+#if (STEPPER_POLL_END_STOP)
+    stepper_set_endstop(e, args[2]);
+#endif
 }
 DECL_COMMAND(command_end_stop_set_stepper,
              "end_stop_set_stepper oid=%c pos=%c stepper_oid=%c");
@@ -127,13 +141,26 @@ command_end_stop_home(uint32_t *args)
     if (!e->sample_count) {
         // Disable end stop checking
         e->flags = 0;
+#if (STEPPER_POLL_END_STOP)
+        uint8_t count = e->stepper_count;
+        while (count--)
+            if (e->steppers[count])
+                stepper_endstop_enable(e->steppers[count], 0);
+#endif
         return;
     }
     e->rest_time = args[4];
     e->time.func = end_stop_event;
     e->trigger_count = e->sample_count;
     e->flags = ESF_HOMING | (args[5] ? ESF_PIN_HIGH : 0);
+#if (STEPPER_POLL_END_STOP)
+    uint8_t count = e->stepper_count;
+    while (count--)
+        if (e->steppers[count])
+            stepper_endstop_enable(e->steppers[count], 1);
+#else
     sched_add_timer(&e->time);
+#endif
 }
 DECL_COMMAND(command_end_stop_home,
              "end_stop_home oid=%c clock=%u sample_ticks=%u sample_count=%c"

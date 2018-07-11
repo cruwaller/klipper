@@ -184,7 +184,7 @@ class TMC51xx(SpiDriver):
         self.set_ignore_move(False)
     cmd_DRV_STATUS_help = "args: DRIVER=driver_name"
     def cmd_DRV_STATUS(self, params):
-        self.gcode.respond(self.status())
+        params['#input'].respond(self.status())
     cmd_DRV_CURRENT_help = "args: DRIVER=driver_name [CURRENT=amps]"
     def cmd_DRV_CURRENT(self, params):
         current = self.gcode.get_float('CURRENT', params,
@@ -200,11 +200,11 @@ class TMC51xx(SpiDriver):
         self.__calc_rms_current(current, hold, delay)
         msg = "Current is %.3fA, hold current %.3fA, hold delay %s" % (
             self.current, (self.hold_multip * self.current), self.hold_delay)
-        self.gcode.respond(msg)
+        params['#input'].respond(msg)
     cmd_DRV_SG_help = "args: DRIVER=driver_name [SG=val]"
     def cmd_DRV_STALLGUARD(self, params):
         sg = self.gcode.get_float('SG', params, default=None)
-        self.gcode.respond(self.set_stallguard(sg))
+        params['#input'].respond(self.set_stallguard(sg))
 
     speed_factor = accel_factor = accel_factor_t = 0.
     def _build_config(self):

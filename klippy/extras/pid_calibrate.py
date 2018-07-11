@@ -34,8 +34,8 @@ class PIDCalibrate:
             raise self.gcode.error("Error: extruder index is missing!")
         except (AttributeError, self.printer.config_error):
             raise self.gcode.error("Error: Heater not found! Check heater name and try again")
-        self.__start(tgt_heater, target, write_file, count)
-    def __start(self, tgt_heater, target, write_file=False, count=12):
+        self.__start(params, tgt_heater, target, write_file=write_file, count=count)
+    def __start(self, params, tgt_heater, target, write_file=False, count=12):
         print_time = self.printer.lookup_object('toolhead').get_last_move_time()
         calibrate = ControlAutoTune(tgt_heater, self.logger, count)
         old_control = tgt_heater.set_control(calibrate)
@@ -53,7 +53,7 @@ class PIDCalibrate:
         except Exception:
             raise self.gcode.error("Error during calibrarion.")
         self.logger.info("Autotune: final: Kp=%f Ki=%f Kd=%f", Kp, Ki, Kd)
-        self.gcode.respond_info(
+        params['#input'].respond_info(
             "PID parameters: pid_Kp=%.3f pid_Ki=%.3f pid_Kd=%.3f\n"
             "To use these parameters, update the printer config file with\n"
             "the above and then issue a RESTART command.\n"
@@ -74,7 +74,7 @@ class PIDCalibrate:
         temp = self.gcode.get_float('S', params)
         count = self.gcode.get_int('C', params, 12)
         write = self.gcode.get_int('W', params, 0)
-        self.__start(tgt_heater, temp, write, count)
+        self.__start(params, tgt_heater, temp, write_file=write, count=count)
 
 
 TUNE_PID_DELTA = 5.0

@@ -488,7 +488,7 @@ function resetGui() {
 
 	// Status fields
 	$("td[data-axis], td[data-extruder]").text(T("n/a"));
-	setProbeValue(-1, undefined);
+	setProbeValue(undefined, undefined);
 	$("#td_fanrpm, #td_cputemp").text(T("n/a"));
 	$(".vin").addClass("hidden");
 
@@ -618,7 +618,7 @@ $("#div_tools_heaters div.panel-heading div.dropdown").on("click", ".heater-temp
 			toolMapping[i].heaters.forEach(function() { temps.push(temperature); });
 			if (temps.length > 0) {
 				var tempString = temps.reduce(function(a, b) { return a + ":" + b; });
-				gcode += "G10 P" + toolMapping[i].number + " " + activeOrStandby + tempString + "\n";
+				gcode += "M104 P" + toolMapping[i].number + " " + activeOrStandby + tempString + "\n";
 			}
 		}
 		sendGCode(gcode);
@@ -660,7 +660,7 @@ $("#table_heaters").on("click", ".heater-temp", function(e) {
 
 	// 1. Is the active tool mapped to this heater?
 	if (currentTool >= 0 && $.inArray(heater, getTool(currentTool).heaters) != -1) {
-		// Yes - generate only one G10 code for it
+		// Yes - generate only one M104 code for it
 		var type = inputElement.data("type");
 		var temps = [];
 		getTool(currentTool).heaters.forEach(function(h) {
@@ -671,15 +671,15 @@ $("#table_heaters").on("click", ".heater-temp", function(e) {
 			}
 		});
 
-		gcode = "G10 P" + currentTool + " " + activeOrStandby + temps.reduce(function(a, b) { return a + ":" + b; });
+		gcode = "M104 P" + currentTool + " " + activeOrStandby + temps.reduce(function(a, b) { return a + ":" + b; });
 	} else {
 		// 2. Is there a tool that is only mapped to this heater?
 		var toolFound = false;
 		getToolsByHeater(heater).forEach(function(tool) {
 			var toolHeaters = getTool(tool).heaters;
 			if (!toolFound && toolHeaters.length == 1) {
-				// Yes - generate only one G10 code for this tool
-				gcode = "G10 P" + tool + " " + activeOrStandby + temperature;
+				// Yes - generate only one M104 code for this tool
+				gcode = "M104 P" + tool + " " + activeOrStandby + temperature;
 				toolFound = true;
 			}
 		});
@@ -699,7 +699,7 @@ $("#table_heaters").on("click", ".heater-temp", function(e) {
 					}
 				});
 
-				gcode = "G10 P" + tools[0] + " " + activeOrStandby + temps.reduce(function(a, b) { return a + ":" + b; });
+				gcode = "M104 P" + tools[0] + " " + activeOrStandby + temps.reduce(function(a, b) { return a + ":" + b; });
 			}
 		}
 	}
@@ -724,7 +724,7 @@ $("#table_tools").on("click", ".heater-temp", function(e) {
 		}
 	});
 
-	var gcode = "G10 P" + tool  + " " + (type == "active" ? "S" : "R");
+	var gcode = "M104 P" + tool  + " " + (type == "active" ? "S" : "R");
 	gcode += temps.reduce(function(a, b) { return a + ":" + b; });
 	sendGCode(gcode);
 
@@ -754,7 +754,7 @@ $("#table_tools").on("keydown", "tr > td > div > input", function(e) {
 			temps.push(cell.find("div > input[data-type='" + type + "']").val());
 		});
 
-		var gcode = "G10 P" + tool  + " " + (type == "active" ? "S" : "R");
+		var gcode = "M104 P" + tool  + " " + (type == "active" ? "S" : "R");
 		gcode += temps.reduce(function(a, b) { return a + ":" + b; });
 		sendGCode(gcode);
 
@@ -963,7 +963,7 @@ $(".heaters-off").click(function(e) {
 				toolMapping[i].heaters.forEach(function() { temps.push("-273.15"); });
 				if (temps.length > 0) {
 					var tempString = temps.reduce(function(a, b) { return a + ":" + b; });
-					gcode += "G10 P" + toolMapping[i].number + " R" + tempString + " S" + tempString + "\n";
+					gcode += "M104 P" + toolMapping[i].number + " R" + tempString + " S" + tempString + "\n";
 				}
 			}
 		}
@@ -1238,7 +1238,7 @@ $("#table_heaters > tbody > tr > td > div > input," +
 			var activeOrStandby = ($(this).data("type") == "active") ? "S" : "R";
 			var currentTool = (lastStatusResponse == undefined) ? -1 : lastStatusResponse.currentTool;
 			if (currentTool >= 0 && $.inArray(heater, getTool(currentTool).heaters) != -1) {
-				// Yes - generate only one G10 code for it
+				// Yes - generate only one M104 code for it
 				var type = $(this).data("type");
 				var temps = [];
 				getTool(currentTool).heaters.forEach(function(h) {
@@ -1249,15 +1249,15 @@ $("#table_heaters > tbody > tr > td > div > input," +
 					}
 				});
 
-				gcode = "G10 P" + currentTool + " " + activeOrStandby + temps.reduce(function(a, b) { return a + ":" + b; });
+				gcode = "M104 P" + currentTool + " " + activeOrStandby + temps.reduce(function(a, b) { return a + ":" + b; });
 			} else {
 				// 3. Is there a tool that is only mapped to this heater?
 				var toolFound = false;
 				getToolsByHeater(heater).forEach(function(tool) {
 					var toolHeaters = getTool(tool).heaters;
 					if (!toolFound && toolHeaters.length == 1) {
-						// Yes - generate only one G10 code for this tool
-						gcode = "G10 P" + tool + " " + activeOrStandby + temperature;
+						// Yes - generate only one M104 code for this tool
+						gcode = "M104 P" + tool + " " + activeOrStandby + temperature;
 						toolFound = true;
 					}
 				});
@@ -1277,7 +1277,7 @@ $("#table_heaters > tbody > tr > td > div > input," +
 							}
 						});
 
-						gcode = "G10 P" + tools[0] + " " + activeOrStandby + temps.reduce(function(a, b) { return a + ":" + b; });
+						gcode = "M104 P" + tools[0] + " " + activeOrStandby + temps.reduce(function(a, b) { return a + ":" + b; });
 					}
 				}
 			}
@@ -1299,7 +1299,7 @@ $(".all-temp-input").keydown(function(e) {
 			for(var i = 0; i < toolMapping.length; i++) {
 				if ($.inArray(0, toolMapping[i].heaters) == -1) {
 					// Make sure we don't set temperatures for the heated bed
-					gcode += "G10 P" + toolMapping[i].number + " " + activeOrStandby + $(this).val() + "\n";
+					gcode += "M104 P" + toolMapping[i].number + " " + activeOrStandby + $(this).val() + "\n";
 				}
 			}
 			sendGCode(gcode);
@@ -1843,12 +1843,13 @@ function setPrintStatus(printing) {
 }
 
 function setProbeValue(value, secondaryValue) {
-	if (value < 0) {
+	if (value == undefined) {
 		$("#td_probe").html(T("n/a"));
 	} else if (secondaryValue == undefined) {
-		$("#td_probe").html(value);
+		$("#td_probe").html("z: " + value);
 	} else {
-		$("#td_probe").html(value + " (" + secondaryValue.reduce(function(a, b) { return a + b; }) + ")");
+		//$("#td_probe").html(value + " (" + secondaryValue.reduce(function(a, b) { return a + b; }) + ")");
+		$("#td_probe").html("z: " + value + " x: " + secondaryValue[0] + " y: " + secondaryValue[1])
 	}
 
 	if (probeTriggerValue != undefined && value > probeTriggerValue && !isPrinting) {

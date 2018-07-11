@@ -100,9 +100,10 @@ class ConfigWrapper:
         return v
     def get(self, option, default=sentinel):
         return self._get_wrapper(self.fileconfig.get, option, default)
-    def getint(self, option, default=sentinel, minval=None, maxval=None):
-        return self._get_wrapper(
-            self.fileconfig.getint, option, default, minval, maxval)
+    def getint(self, option, default=sentinel,
+               minval=None, maxval=None, above=None, below=None):
+        return self._get_wrapper(self.fileconfig.getint, option, default,
+                                 minval, maxval, above, below)
     def getfloat(self, option, default=sentinel,
                  minval=None, maxval=None, above=None, below=None):
         return self._get_wrapper(self.fileconfig.getfloat, option, default,
@@ -183,9 +184,12 @@ class Printer:
         return extruders.get(index, default)
     def _set_state(self, msg):
         self.state_message = msg
-        if (msg != message_ready
-            and self.start_args.get('debuginput') is not None):
-            self.request_exit('error_exit')
+        if msg != message_ready:
+            if self.start_args.get('debuginput') is not None:
+                self.request_exit('error_exit')
+            else:
+                for cb in self.state_cb:
+                    cb('halt')
     def add_object(self, name, obj):
         if obj in self.objects:
             raise self.config_error(
@@ -240,8 +244,7 @@ class Printer:
                 mod_name = module[:-3]
                 mod_path = ".".join([folder, mod_name])
                 mod = importlib.import_module(mod_path)
-            except ImportError as e:
-                self.logger.error("module '%s' load failed : %s " % (module, str(e)))
+            except ImportError:
                 continue
             init_func = getattr(mod, func, None)
             if init_func is not None:
@@ -415,6 +418,7 @@ def main():
         debuginput = open(options.debuginput, 'rb')
         input_fd = debuginput.fileno()
     else:
+        start_args['inputtty'] = options.inputtty
         input_fd = util.create_pty(options.inputtty)
     if options.debugoutput:
         start_args['debugoutput'] = options.debugoutput

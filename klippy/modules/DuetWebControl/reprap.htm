@@ -771,7 +771,7 @@
 								</tr>
 								<tr>
 									<td id="td_vin" class="vin hidden" title="Power supply voltage for this board">n/a</td>
-									<td id="td_probe" title="Current Z-Probe reading on a scale between 0 and 1024">n/a</td>
+									<td id="td_probe" title="Current Z-Probe compensation offset">n/a</td>
 									<td id="td_fanrpm" class="fan-rpm hidden" title="Current Fan RPM (needs a 4-pin PWM fan and proper wiring)">n/a</td>
 								</tr>
 							</table>
@@ -1825,7 +1825,6 @@
 									<li><a href="#page_listitems" data-toggle="tab">List Items</a></li>
 									<li><a href="#page_sysedit" data-toggle="tab">System Editor</a></li>
 									<li><a href="#page_machine" data-toggle="tab">Machine Properties</a></li>
-									<li><a href="#page_tools" data-toggle="tab">Tools</a></li>
 								</ul>
 
 								<!-- Page Selector (Mobile) -->
@@ -1880,6 +1879,7 @@
 												</div>
 											</div>
 
+											<!--
 											<div class="panel panel-default hidden-xs hidden-sm">
 												<div class="panel-heading">
 													<span>File Upload for /sys and /www Directories</span>
@@ -1894,6 +1894,7 @@
 													<p id="p_uploadinfo" class="text-muted">Here you can upload firmware, Duet WiFi and Duet Web Control files as well</p>
 												</div>
 											</div>
+											-->
 										</div>
 
 										<div class="col-xs-12 col-sm-6 col-md-4 col-lg-4">
@@ -2536,99 +2537,6 @@
 														<dt>Motor Idle Timeout:</dt>
 														<dd id="dd_idle_timeout">n/a</dd>
 													</dl>
-
-													<button id="btn_fw_diagnostics" type="button" class="btn btn-info machine-button"><span class="glyphicon glyphicon-dashboard"></span> Firmware Diagnostics</button>
-												</div>
-											</div>
-										</div>
-									</div>
-
-									<!-- Tools -->
-									<div class="tab-pane row" id="page_tools">
-										<div class="col-md-12">
-											<div id="div_add_tool" class="panel panel-default">
-												<div class="panel-heading">
-													<span>Define new Tool</span>
-												</div>
-												<div class="panel-body">
-													<div class="row">
-														<div class="col-lg-1 col-md-6 col-sm-6">
-															<label for="input_tool_number">Number:</label>
-															<input type="number" min="0" max="255" value="127" class="form-control" id="input_tool_number" disabled>
-														</div>
-
-														<div class="col-lg-1 col-md-6 col-sm-6">
-															<label for="input_tool_name">Name:</label>
-															<input type="text" value="" placeholder="optional" class="form-control" id="input_tool_name" disabled>
-														</div>
-
-														<div class="col-lg-4 col-md-6 col-sm-6">
-															<label>Associated Heater(s):</label>
-															<div class="btn-group btn-group-justified" data-toggle="buttons" id="check_heaters">
-																<label class="btn btn-default disabled" title="Heater 0">
-																	<input type="checkbox" name="tool_heaters" value="0" disabled> 0
-																</label>
-																<label class="btn btn-primary active disabled" title="Heater 1">
-																	<input type="checkbox" name="tool_heaters" value="1" checked disabled> 1
-																</label>
-																<label class="btn btn-default disabled" title="Heater 2">
-																	<input type="checkbox" name="tool_heaters" value="2" disabled> 2
-																</label>
-																<label class="btn btn-default disabled" title="Heater 3">
-																	<input type="checkbox" name="tool_heaters" value="3" disabled> 3
-																</label>
-																<label class="btn btn-default disabled" title="Heater 4">
-																	<input type="checkbox" name="tool_heaters" value="4" disabled> 4
-																</label>
-																<label class="btn btn-default disabled" title="Heater 5">
-																	<input type="checkbox" name="tool_heaters" value="5" disabled> 5
-																</label>
-																<label class="btn btn-default disabled" title="Heater 6">
-																	<input type="checkbox" name="tool_heaters" value="6" disabled> 6
-																</label>
-																<label class="btn btn-default disabled duet-ng hidden" title="Heater 7">
-																	<input type="checkbox" name="tool_heaters" value="7" disabled> 7
-																</label>
-															</div>
-														</div>
-
-														<div class="col-lg-4 col-md-6 col-sm-6">
-															<label>Associated Drive(s):</label>
-															<div class="btn-group btn-group-justified" data-toggle="buttons" id="check_drives">
-																<label class="btn btn-primary active disabled" title="Extruder 0">
-																	<input type="checkbox" name="tool_drives" value="0" checked disabled> 0
-																</label>
-																<label class="btn btn-default disabled" title="Extruder 1">
-																	<input type="checkbox" name="tool_drives" value="1" disabled> 1
-																</label>
-																<label class="btn btn-default disabled" title="Extruder 2">
-																	<input type="checkbox" name="tool_drives" value="2" disabled> 2
-																</label>
-																<label class="btn btn-default disabled" title="Extruder 3">
-																	<input type="checkbox" name="tool_drives" value="3" disabled> 3
-																</label>
-																<label class="btn btn-default disabled" title="Extruder 4">
-																	<input type="checkbox" name="tool_drives" value="4" disabled> 4
-																</label>
-																<label class="btn btn-default disabled" title="Extruder 5">
-																	<input type="checkbox" name="tool_drives" value="5" disabled> 5
-																</label>
-																<label class="btn btn-default disabled duet-ng hidden" title="Extruder 6">
-																	<input type="checkbox" name="tool_drives" value="6" disabled> 6
-																</label>
-																<label class="btn btn-default disabled duet-ng hidden" title="Extruder 7">
-																	<input type="checkbox" name="tool_drives" value="7" disabled> 7
-																</label>
-																<label class="btn btn-default disabled duet-ng hidden" title="Extruder 8">
-																	<input type="checkbox" name="tool_drives" value="8" disabled> 8
-																</label>
-															</div>
-														</div>
-
-														<div class="col-lg-2 col-md-12 col-sm-12">
-															<button class="btn btn-success disabled" id="btn_add_tool" title="Define a new tool"><span class="glyphicon glyphicon-plus"></span> Add Tool</button>
-														</div>
-													</div>
 												</div>
 											</div>
 										</div>

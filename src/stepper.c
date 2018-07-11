@@ -34,6 +34,7 @@ enum { MF_DIR=1<<0 };
 struct stepper {
     struct timer time;
     struct gpio_out step_pin, dir_pin;
+    struct end_stop *endstop;
     struct stepper_move *first, **plast;
     uint32_t interval;
     uint32_t position;
@@ -53,7 +54,8 @@ struct stepper {
 enum { POSITION_BIAS=0x40000000 };
 
 enum { SF_LAST_DIR=1<<0, SF_NEXT_DIR=1<<1, SF_INVERT_STEP=1<<2, SF_HAVE_ADD=1<<3,
-       SF_LAST_RESET=1<<4, SF_NO_NEXT_CHECK=1<<5 };
+       SF_LAST_RESET=1<<4, SF_NO_NEXT_CHECK=1<<5, ES_CHECK_ENDSTOP=1<<6 };
+
 
 // Setup a stepper for the next move in its queue
 static uint_fast8_t
@@ -112,8 +114,8 @@ stepper_event(struct timer *t)
 {
     struct stepper *s = container_of(t, struct stepper, time);
 #if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-    printf("stepper_event: interval %u, count %u add %d next_step_time %u wakeup_time: %u\n",
-           s->interval, s->count, s->add, s->next_step_time, s->time.waketime);
+//    printf("stepper_event: interval %u, count %u add %d next_step_time %u wakeup_time: %u\n",
+//           s->interval, s->count, s->add, s->next_step_time, s->time.waketime);
 #endif
 #if (CONFIG_NO_UNSTEP_DELAY)
         // On slower mcus it is possible to simply step and unstep in
@@ -148,6 +150,11 @@ stepper_event(struct timer *t)
             goto reschedule_min;
         s->time.waketime = s->next_step_time;
         return SF_RESCHEDULE;
+    }
+    if (likely(s->flags & ES_CHECK_ENDSTOP)) {
+        extern uint_fast8_t end_stop_checkpin(struct end_stop *e);
+        if (unlikely(end_stop_checkpin(s->endstop)))
+            return SF_DONE; // Stop immediately
     }
     return stepper_load_next(s, min_next_time);
 reschedule_min:
@@ -196,8 +203,8 @@ command_queue_step(uint32_t *args)
     m->flags = 0;
 
 #if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-    printf("queue_step: interval %u, count %u add %d \n",
-           m->interval, m->count, m->add);
+    printf("queue_step: next_step_time %u + interval %u => count %u add %d \n",
+           s->next_step_time, m->interval, m->count, m->add);
 #endif
 
     irq_disable();
@@ -318,3 +325,25 @@ stepper_shutdown(void)
     }
 }
 DECL_SHUTDOWN(stepper_shutdown);
+
+
+/*****************************************
+ * HOMING
+ ****************************************/
+void
+stepper_set_endstop(struct end_stop *e, uint8_t oid)
+{
+    struct stepper *s = stepper_oid_lookup(oid);
+    s->endstop = e;
+}
+
+void
+stepper_endstop_enable(struct stepper *s, uint8_t enable)
+{
+    if (!s->endstop)
+        shutdown("Endstop is not configured");
+    if (enable)
+        s->flags |= ES_CHECK_ENDSTOP;
+    else
+        s->flags &= ~ES_CHECK_ENDSTOP;
+}

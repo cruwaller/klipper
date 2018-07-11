@@ -26,7 +26,8 @@ class PrinterProbe:
             self.z_position = pconfig.getfloat('minimum_z_position', 0.)
         # Create an "endstop" object to handle the probe pin
         ppins = self.printer.lookup_object('pins')
-        pin_params = ppins.lookup_pin('endstop', config.get('pin'))
+        pin_params = ppins.lookup_pin('endstop', config.get('pin'),
+                                      share_type="endstop")
         mcu = pin_params['chip']
         mcu.add_config_object(self)
         self.mcu_probe = mcu.setup_pin(pin_params)
@@ -77,7 +78,7 @@ class PrinterProbe:
                 reason += HINT_TIMEOUT
             raise self.gcode.error(reason)
         pos = toolhead.get_position()
-        self.gcode.respond_info("probe at %.3f,%.3f is z=%.6f" % (
+        params['#input'].respond_info("probe at %.3f,%.3f is z=%.6f" % (
             pos[0], pos[1], pos[2]))
         self.gcode.reset_last_position()
     cmd_QUERY_PROBE_help = "Return the status of the z-probe"
@@ -86,7 +87,7 @@ class PrinterProbe:
         print_time = toolhead.get_last_move_time()
         self.mcu_probe.query_endstop(print_time)
         res = self.mcu_probe.query_endstop_wait()
-        self.gcode.respond_info(
+        params['#input'].respond_info(
             "probe: %s" % (["open", "TRIGGERED"][not not res],))
 
 # Endstop wrapper that enables running g-code scripts on setup

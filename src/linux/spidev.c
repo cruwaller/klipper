@@ -20,7 +20,11 @@ struct spi_s {
 static struct spi_s devices[16];
 static uint32_t devices_count = 0;
 
+#if (!CONFIG_SIMULATOR)
 static int
+#else
+int
+#endif
 spi_open(uint32_t bus, uint32_t dev)
 {
     // Find existing device (if already opened)
@@ -66,6 +70,7 @@ spi_setup(uint32_t bus, uint8_t mode, uint32_t rate)
 void
 spi_prepare(struct spi_config config)
 {
+    (void)config;
 }
 
 void

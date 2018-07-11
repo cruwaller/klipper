@@ -12,12 +12,14 @@ class GCodeFilamentPause(object):
         self.script_unload = config.get("commands_unload", default="")
         self.script_load = config.get("commands_load", default="")
         # Speeds
-        self.travel_speed = config.getfloat(
+        self.travel_speed = config.getint(
             "travel_speed", 6000., above=0.) # 100mm/s
-        self.retract_speed = config.getfloat(
+        self.retract_speed = config.getint(
             "retract_speed", 3000., above=0.) # 50mm/s
-        self.load_speed = config.getfloat(
+        self.load_speed = config.getint(
             "load_speed", 180., above=0.) # 3mm/s
+        printer_cfg = config.getsection('printer')
+        self.z_speed = printer_cfg.getint('max_z_velocity', 600)
         if not self.script_unload:
             # Positions
             self.pos_x = config.getfloat("x_position", .0)
@@ -51,7 +53,7 @@ class GCodeFilamentPause(object):
         [Y<pos>] Y position for filament change
         [Z<pos>] Z relative lift for filament change position
         """
-        gcode = self.printer.lookup_object('gcode')
+        gcode = self.gcode
         get_float = gcode.get_float
         run_script = gcode.run_script_from_command
         # Pause print first
@@ -74,40 +76,42 @@ class GCodeFilamentPause(object):
             z_lift = get_float('Z', params, self.z_lift, minval=0.)
             if retract_len:
                 run_script('G92 E0\nG1 E-%s F%u' % (
-                    retract_len, int(self.retract_speed)))
+                    retract_len, self.retract_speed))
             if z_lift:
                 gcode.absolutecoord = False
-                run_script('G1 Z%s F600' % z_lift)
+                run_script('G1 Z%s F%s' % (z_lift, self.z_speed))
                 gcode.absolutecoord = True
-            move = " ".join(["G1", "F%u" % int(self.travel_speed),
+            move = " ".join(["G1", "F%u" % self.travel_speed,
                             'Y%f' % pos_y, 'X%f' % pos_x])
             run_script(move)
             run_script('G92 E0\nG1 E-%s F%u' % (
-                unload_len, int(self.load_speed)))
+                unload_len, self.load_speed))
         # Store original SD resume for continue
         self.resume_print_original = gcode.get_command_handler('M24')
         gcode.register_command('M24', self.cmd_FILAMENT_CHANGE_READY)
-        gcode.respond_info("Please load new filament and resume")
+        params['#input'].respond_info("Please load new filament and resume")
 
     def cmd_FILAMENT_CHANGE_READY(self, params):
-        gcode = self.printer.lookup_object('gcode')
+        gcode = self.gcode
         if self.script_load:
             gcode.run_script_from_command(self.script_load)
         else:
             # Load filament
             gcode.run_script_from_command('G92 E0\nG1 E%s F%u' % (
-                self.len_unload, int(self.load_speed)))
+                self.len_unload, self.load_speed))
             # Move head back to original position
-            move = " ".join(["G1", "F%u" % int(self.travel_speed),
+            move = " ".join(["G1", "F%u" % self.travel_speed,
                             'Y%f' % self.last_position[1],
                              'X%f' % self.last_position[0]])
             gcode.run_script_from_command(move)
-            gcode.run_script_from_command('G1 Z%f F400' % self.last_position[2])
+            gcode.run_script_from_command('G1 Z%f F%s' % (
+                self.last_position[2], self.z_speed))
         # restore coordinate system
         gcode.absolutecoord = self.absolutecoord
         # Restore original SD resume
         gcode.register_command('M24', self.resume_print_original)
-        gcode.respond_info("Filament change over")
+        gcode.run_script_from_command("M24")
+        params['#input'].respond_info("Filament change over")
 
 def load_config(config):
     GCodeFilamentPause(config)

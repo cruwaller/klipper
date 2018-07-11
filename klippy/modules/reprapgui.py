@@ -5,8 +5,6 @@
 #         - install Tornado using pip ( $pip install tornado==4.5 )
 #         - or download from https://github.com/tornadoweb/tornado/tree/branch4.5
 #           and use environment variable 'export TORNADO_PATH=<path to tornado folder>'
-#     Install opencv for video streaming
-#         - $sudo apt-get install python-opencv
 #     Create SSL cert:
 #         - openssl req -newkey rsa:2048 -new -nodes -x509 -days 3650 -keyout <path>/key.pem -out <path>/cert.pem
 #
@@ -44,6 +42,17 @@ Status info:
 : 'I'    // Idle
 '''
 
+"""
+Usage
+  G10 Pnnn Xnnn Ynnn Znnn
+Parameters
+  Pnnn Tool number - SKIP
+  Xnnn X offset - SKIP
+  Ynnn Y offset - SKIP
+  U,V,Wnnn U, V and W axis offsets - SKIP
+  Znnn Z offset - SKIP
+"""
+
 import time, sys, os, errno, threading, json, re, logging
 import util
 
@@ -59,101 +68,14 @@ _PARENT = None
 KLIPPER_CFG_NAME = 'klipper_config.cfg'
 KLIPPER_LOG_NAME = "klippy.log"
 
-def dict_dump_json(data, logger):
+def dict_dump_json(data, logger=None):
+    if logger is None:
+        logger = logging
     logger.info(json.dumps(data,
                            #sort_keys=True,
                            sort_keys=False,
                            indent=4,
                            separators=(',', ': ')))
-
-
-try:
-    import cv2
-    class VideoCamera(object):
-        def __init__(self, index=0):
-            self.index = index
-            self.video = video = cv2.VideoCapture(index)
-            video.set(cv2.CAP_PROP_FPS, 0.)
-            self.lock = threading.Lock()
-        def __del__(self):
-            self.video.release()
-        def get_frame(self, skip=0):
-            with self.lock:
-                video = self.video
-                for idx in range(0, skip):
-                    success, image = video.read()
-                success, image = video.read()
-                if image is not None:
-                    ret, jpeg = cv2.imencode('.jpg', image)
-                    return jpeg.tostring()
-                return ""
-except ImportError:
-    class VideoCamera(object):
-        def __init__(self, index=0):
-            pass
-        def __del__(self):
-            pass
-        def get_frame(self, skip=0):
-            return ""
-
-
-class JpegHandler(tornado.web.RequestHandler):
-    camera = logger = None
-    def initialize(self, camera):
-        self.camera = camera
-    @tornado.web.asynchronous
-    @tornado.gen.coroutine
-    def get(self):
-        self.set_header(
-            'Cache-Control',
-            'no-store, no-cache, must-revalidate, '
-            'pre-check=0, post-check=0, max-age=0')
-        self.set_header('Connection', 'close')
-        self.set_header('Content-Type',
-                        'multipart/x-mixed-replace;boundary=--boundarydonotcross')
-        self.set_header('Expires', 'Mon, 3 Jan 2000 12:34:56 GMT')
-        self.set_header('Pragma', 'no-cache')
-
-        img = self.camera.get_frame(skip=4)
-        self.write("--boundarydonotcross\n")
-        self.write("Content-type: image/jpeg\r\n")
-        self.write("Content-length: %s\r\n\r\n" % len(img))
-        self.write(str(img))
-
-
-class JpegStreamHandler(tornado.web.RequestHandler):
-    camera = interval = logger = None
-    def initialize(self, camera, interval):
-        self.camera = camera
-        self.interval = interval
-    @tornado.web.asynchronous
-    @tornado.gen.coroutine
-    def get(self):
-        self.set_header(
-            'Cache-Control',
-            'no-store, no-cache, must-revalidate, '
-            'pre-check=0, post-check=0, max-age=0')
-        self.set_header('Connection', 'close')
-        self.set_header('Content-Type',
-                        'multipart/x-mixed-replace;boundary=--boundarydonotcross')
-        self.set_header('Expires', 'Mon, 3 Jan 2000 12:34:56 GMT')
-        self.set_header('Pragma', 'no-cache')
-
-        ioloop = tornado.ioloop.IOLoop.current()
-        served_image_timestamp = time.time()
-        my_boundary = "--boundarydonotcross\n"
-        while True:
-            img = self.camera.get_frame()
-            if served_image_timestamp + self.interval < time.time():
-                self.write(my_boundary)
-                self.write("Content-type: image/jpeg\r\n")
-                self.write("Content-length: %s\r\n\r\n" % len(img))
-                self.write(str(img))
-                served_image_timestamp = time.time()
-                yield tornado.gen.Task(self.flush)
-            else:
-                yield tornado.gen.Task(ioloop.add_timeout,
-                                       ioloop.time() + self.interval)
 
 
 class ParseError(Exception):
@@ -371,6 +293,70 @@ class LogoutHandler(BaseHandler):
         self.clear_cookie("user")
         self.redirect(self.get_argument("next", self.reverse_url("main")))
 
+class JpegHandler(tornado.web.RequestHandler):
+    camera = logger = None
+    def initialize(self, camera):
+        self.camera = camera
+    @tornado.web.asynchronous
+    @tornado.gen.coroutine
+    def get(self):
+        if self.camera is None:
+            self.write("No camera available")
+            return
+        self.set_header(
+            'Cache-Control',
+            'no-store, no-cache, must-revalidate, '
+            'pre-check=0, post-check=0, max-age=0')
+        self.set_header('Connection', 'close')
+        self.set_header('Content-Type',
+                        'multipart/x-mixed-replace;boundary=--boundarydonotcross')
+        self.set_header('Expires', 'Mon, 3 Jan 2000 12:34:56 GMT')
+        self.set_header('Pragma', 'no-cache')
+
+        img = self.camera.get_frame(skip=4)
+        self.write("--boundarydonotcross\n")
+        self.write("Content-type: image/jpeg\r\n")
+        self.write("Content-length: %s\r\n\r\n" % len(img))
+        self.write(str(img))
+
+
+class JpegStreamHandler(tornado.web.RequestHandler):
+    camera = interval = logger = None
+    def initialize(self, camera, interval):
+        self.camera = camera
+        self.interval = interval
+    @tornado.web.asynchronous
+    @tornado.gen.coroutine
+    def get(self):
+        if self.camera is None:
+            self.write("No camera available")
+            return
+        self.set_header(
+            'Cache-Control',
+            'no-store, no-cache, must-revalidate, '
+            'pre-check=0, post-check=0, max-age=0')
+        self.set_header('Connection', 'close')
+        self.set_header('Content-Type',
+                        'multipart/x-mixed-replace;boundary=--boundarydonotcross')
+        self.set_header('Expires', 'Mon, 3 Jan 2000 12:34:56 GMT')
+        self.set_header('Pragma', 'no-cache')
+
+        ioloop = tornado.ioloop.IOLoop.current()
+        served_image_timestamp = time.time()
+        my_boundary = "--boundarydonotcross\n"
+        while True:
+            img = self.camera.get_frame()
+            if served_image_timestamp + self.interval < time.time():
+                self.write(my_boundary)
+                self.write("Content-type: image/jpeg\r\n")
+                self.write("Content-length: %s\r\n\r\n" % len(img))
+                self.write(str(img))
+                served_image_timestamp = time.time()
+                yield tornado.gen.Task(self.flush)
+            else:
+                yield tornado.gen.Task(ioloop.add_timeout,
+                                       ioloop.time() + self.interval)
+
 class rrHandler(tornado.web.RequestHandler):
     parent = printer = sd_path = logger = None
 
@@ -407,7 +393,7 @@ class rrHandler(tornado.web.RequestHandler):
                 _type = 1
             # get status from Klippy
             respdata["err"] = 0
-            respdata.update(self.parent.web_getstatus(_type))
+            respdata.update(self.parent.gui_stats.get_status_stats(_type))
 
         # rr_gcode?gcode=XXX
         elif "rr_gcode" in path:
@@ -419,33 +405,9 @@ class rrHandler(tornado.web.RequestHandler):
             # Clean up gcode command
             gcode = gcode.replace("0:/", "").replace("0%3A%2F", "")
 
-            '''
-            special commands:
-            * Start print: M32 [root]/gcodes/<file>
-            * Deselect filament: T-1
-            M122 ?
-
-            Add new tool: ??
-            M563 P127 S"hhh" D0 H0
-
-            M0 H1 = Cancel print
-            '''
             printer_write = self.parent.printer_write
 
-            if "M32" in gcode:
-                # M32 <GCodeFile> - Select and start gcode file
-                try:
-                    gco_f = gcode[gcode.find("M32") + 3:].split()[0].strip()
-                    gco_f = gco_f.replace('"', '')
-                    if not gco_f.startswith("gcodes"):
-                        gco_f = os.path.join("gcodes", gco_f)
-                    analyse_gcode_file(os.path.join(sd_path, gco_f))
-                    self.parent.gcode.simulate_print = False
-                    printer_write("M23 %s" % gco_f)
-                    printer_write("M24")
-                except self.parent.gcode.error:
-                    respdata["err"] = 1
-            elif "M80" in gcode:
+            if "M80" in gcode:
                 atx_on = self.parent.atx_on
                 if atx_on is not None:
                     resp = os.popen(atx_on).read()
@@ -462,15 +424,9 @@ class rrHandler(tornado.web.RequestHandler):
                 # Skip...
                 pass
             else:
-                if "G10" in gcode:
-                    # G10 - retract if no params (G10 Pnnn Xnnn Ynnn Znnn Rnnn Snnn)
-                    if bool(re.search('[PXYZRS]', gcode)):
-                        gcode = gcode.replace('G10', 'M1010') # M1000 + cmd nbr for RepRap
-                if "M106" in gcode:
-                    gcode = gcode.replace('M106', 'M1106')
-                if "M0" in gcode and self.parent.curr_state == "S":
+                if "M0" in gcode and self.parent.gui_stats.get_current_state() == "S":
                     # Cancel print after pause, change state to idle
-                    self.parent.curr_state = "I"
+                    self.parent.gui_stats.sd_print_done("stop")
                 try:
                     printer_write(gcode)
                 except self.parent.gcode.error as e:
@@ -592,18 +548,19 @@ class rrHandler(tornado.web.RequestHandler):
                                                   time.gmtime(os.path.getmtime(logfile))),
                         })
 
-            # rr_fileinfo?name=XXX
+        # rr_fileinfo?name=XXX
         elif "rr_fileinfo" in path:
             name = self.get_argument('name', default=None)
             #self.logger.debug("rr_fileinfo: {} , name: {}".format(self.request.uri, name))
             is_printing = False
             if name is None:
+                sd = self.printer.lookup_object('virtual_sdcard')
                 try:
-                    is_printing = (self.parent.sd.current_file is not None and
-                                   self.parent.sd.work_timer is not None)
+                    is_printing = (sd.current_file is not None and
+                                   sd.work_timer is not None)
                     # current file printed
-                    if self.parent.sd.current_file is not None:
-                        path = self.parent.sd.current_file.name
+                    if sd.current_file is not None:
+                        path = sd.current_file.name
                     else:
                         raise AttributeError
                 except AttributeError:
@@ -629,7 +586,8 @@ class rrHandler(tornado.web.RequestHandler):
 
                 if is_printing is True:
                     # Current file information
-                    respdata["printDuration"] = self.parent.toolhead.get_print_time()
+                    toolhead = self.printer.lookup_object('toolhead')
+                    respdata["printDuration"] = toolhead.get_print_time()
                     respdata["fileName"] = os.path.relpath(path, sd_path) # os.path.basename ?
 
         # rr_move?old=XXX&new=YYY
@@ -667,7 +625,7 @@ class rrHandler(tornado.web.RequestHandler):
             respdata = { "err" : 0 }
 
         elif "rr_config" in path:
-            respdata = self.parent.web_getconfig()
+            respdata = self.parent.gui_stats.get_config_stats()
 
         elif "rr_reply" in path:
             if len(self.parent.gcode_resps):
@@ -681,9 +639,6 @@ class rrHandler(tornado.web.RequestHandler):
         # Send response back to client
         respstr = json.dumps(respdata)
         self.write(respstr)
-        #self.logger.info(json.dumps(respdata,
-        #                        sort_keys=True,
-        #                        indent=4, separators=(',', ': ')))
 
     def post(self, path, *args, **kwargs):
         respdata = { "err" : 1 }
@@ -752,18 +707,8 @@ class RepRapGuiModule(object):
         self.logger_tornado = self.logger.getChild("tornado")
         self.logger_tornado.setLevel(logging.INFO)
         self.gcode = printer.lookup_object('gcode')
-        self.toolhead = printer.lookup_object('toolhead')
-        self.toolhead.register_cb('layer', self.layer_changed)
-        self.babysteps = printer.lookup_object('babysteps')
-        self.sd = printer.try_load_module(config, "virtual_sdcard")
-        self.starttime = time.time()
-        self.curr_state = 'C'
+        self.gui_stats = printer.lookup_object('gui_stats')
         self.gcode_resps = []
-        self.lock = threading.Lock()
-
-        # Read config
-        self.name = config.getsection('printer').get(
-            'name', default="Klipper printer")
         # Read config
         htmlroot = os.path.normpath(os.path.join(os.path.dirname(__file__)))
         htmlroot = os.path.join(htmlroot, "DuetWebControl")
@@ -774,18 +719,19 @@ class RepRapGuiModule(object):
         self.passwd = config.get('password')
         # Camera information
         self.feed_interval = config.getfloat('feedrate', minval=.0, default=.1)
-        self.camera = VideoCamera(config.getint('camera_index', default=0))
+        self.camera = printer.try_load_module(
+            config, "videocam", folder="modules")
         # - M80 / M81 ATX commands
         self.atx_on = config.get('atx_cmd_on', default=None)
         self.atx_off = config.get('atx_cmd_off', default=None)
         # ------------------------------
         # Create paths to virtual SD
-        sdcard_dirname = self.sd.sdcard_dirname
-        create_dir(os.path.join(sdcard_dirname, "gcodes"))
+        sd = printer.try_load_module(config, "virtual_sdcard")
+        sdcard_dirname = sd.sdcard_dirname
+        create_dir(os.path.join(sdcard_dirname, "gcodes")) # TODO : remove gcodes folder!
         create_dir(os.path.join(sdcard_dirname, "macros"))
         create_dir(os.path.join(sdcard_dirname, "filaments"))
-        create_dir(os.path.join(sdcard_dirname, "sys"))
-        self.sd.register_done_cb(self.sd_print_done)
+        create_dir(os.path.join(sdcard_dirname, "sys")) # TODO: remove sys folder
         # ------------------------------
         # Start tornado webserver
         if _TORNADO_THREAD is None or not _TORNADO_THREAD.isAlive():
@@ -823,19 +769,9 @@ class RepRapGuiModule(object):
             _TORNADO_THREAD.start()
 
         # ------------------------------
-        fd_r, self.pipe_write = os.pipe() # Change to PTY ?
-        self.gcode.register_fd(fd_r)
-        self.gcode.temperature_auto_report(False)
-        self.gcode.register_command('M550',
-                                    self.cmd_M550,
-                                    when_not_ready=True,
-                                    desc="Set printer name for DuetWebControl")
-        for cmd in ['M98', 'M37', 'M1010', 'M1106']:
-            self.gcode.register_command(cmd, getattr(self, 'cmd_' + cmd))
+        # Disable auto temperature reporting
+        self.printer_write_no_update("AUTO_TEMP_REPORT AUTO=0")
 
-        # GCodes to Handle ? M561,
-
-        self.gcode.write_resp = self.gcode_resp_handler
         # ------------------------------
         self.logger.info("RepRep Web GUI loaded")
 
@@ -844,9 +780,8 @@ class RepRapGuiModule(object):
         self.logger_tornado.debug(" ".join(values))
 
     def Tornado_execute(self, config, application):
-        http_port = config.getint('http', default=80)
+        port = http_port = config.getint('http', default=80)
         https_port = config.getint('https', None)
-        port = http_port
         ssl_options = None
 
         if https_port is not None:
@@ -864,401 +799,22 @@ class RepRapGuiModule(object):
         http_server.listen(port)
         tornado.ioloop.IOLoop.current().start()
 
-    def camera_get_pic(self):
-        return self.camera.get_frame(skip=4)
-
     def printer_write_no_update(self, cmd):
-        with self.lock:
-            os.write(self.pipe_write, "%s\n" % cmd)
+        self.logger.debug("GCode send: %s" % (cmd,))
+        self.gcode.push_command_to_queue(cmd, None)
 
-    send_resp = False
     def printer_write(self, cmd):
-        self.logger.debug("GCode command: %s" % (cmd,))
-        with self.lock:
-            os.write(self.pipe_write, "%s\n" % cmd)
-        self.send_resp = True
+        self.logger.debug("GCode send: %s" % (cmd,))
+        self.gcode.push_command_to_queue(cmd, self.gcode_resp_handler)
 
     def gcode_resp_handler(self, msg):
-        self.logger.debug("GCode resps: %s" % (msg.strip(),))
-        if self.send_resp:
+        msg = msg.strip()
+        if msg != "ok":
+            self.logger.debug("GCode resps: %s" % (msg.strip(),))
             self.gcode_resps.append(msg)
-            self.send_resp = False
 
     def append_gcode_resp(self, msg):
         self.gcode_resps.append(msg)
-
-    def printer_state(self, state):
-        if state == "connect":
-            self.curr_state = "B"
-        elif state == "ready":
-            self.curr_state = "I"
-        elif state == "disconnect":
-            self.curr_state = "C"
-        elif state == "shutdown":
-            self.curr_state = "H"
-
-    def sd_print_done(self, status, *args, **kwargs):
-        if status == 'pause':
-            self.curr_state = "S"
-        elif status == 'start':
-            self.curr_state = "P"
-        elif status == 'error':
-            self.curr_state = "I"
-        elif status == 'done':
-            toolhead = self.toolhead
-            toolhead.wait_moves()
-            self.layer_changed(toolhead.get_print_time())
-            self.curr_state = "I"
-        elif status == 'loaded':
-            self.layer_stats = []
-            self.warmup_time = .1
-
-    # ================================================================================
-    def cmd_M1106(self, params):
-        self.gcode.set_fan_speed(self.gcode.get_float('S', params, 1.),
-                                 self.gcode.get_int('P', params, 0))
-    def cmd_M1010(self, params):
-        """
-        Usage
-          G10 Pnnn Xnnn Ynnn Znnn Rnnn Snnn
-        Parameters
-          Pnnn Tool number - SKIP
-          Xnnn X offset - SKIP
-          Ynnn Y offset - SKIP
-          U,V,Wnnn U, V and W axis offsets - SKIP
-          Znnn Z offset - SKIP
-          Rnnn Standby temperature(s)
-          Snnn Active temperature(s)
-        """
-        if 'P' in params:
-            # Set correct tool index keyword
-            params['T'] = params['P']
-        if 'S' in params:
-            self.gcode.set_temp(params)
-        elif 'R' in params:
-            params['S'] = params['R']
-            self.gcode.set_temp(params)
-    def cmd_M37(self, params):
-        if 'P' in params:
-            gcode = params['#original']
-            gco_f = gcode[gcode.find("P") + 1:].split()[0].strip()
-            gco_f = gco_f.replace('"', '')
-            if not gco_f.startswith("gcodes"):
-                gco_f = os.path.join("gcodes", gco_f)
-            analyse_gcode_file(os.path.join(self.sd.sdcard_dirname, gco_f))
-            self.logger.info("Simulating file %s" % (gco_f,))
-            self.gcode.simulate_print = True
-            self.printer_write("M23 %s" % (gco_f,))
-            self.printer_write("M24")
-    def cmd_M98(self, params):
-        gcode = params['#original']
-        macro = gcode[gcode.find("M98") + 3:].split()[0].strip()
-        macro = macro.replace('"', '')
-        if macro[0] == 'P':
-            macro = macro[1:]
-        self.logger.info("Executing macro %s" % (macro,))
-        self.gcode.simulate_print = False
-        self.printer_write("M23 %s" % (macro,))
-        self.printer_write("M24")
-    def cmd_M550(self, params):
-        if 'P' in params:
-            self.name = params['P']
-        self.logger.info("My name is now {}".format(self.name))
-
-    # ================================================================================
-    def web_getconfig(self):
-        printer = self.printer
-        _extrs = printer.extruder_get()
-        toolhead = self.toolhead
-        kinematic = toolhead.get_kinematics()
-        rails = kinematic.get_rails()
-        currents = []
-        max_feedrates = []
-        accelerations = []
-        axisMins = []
-        axisMaxes = []
-        for rail in rails:
-            _min, _max = rail.get_range()
-            steppers = rail.get_steppers()
-            for idx, stp in enumerate(steppers):
-                axisMins.append(_min)
-                axisMaxes.append(_max)
-                get_current = getattr(stp.driver, "get_current", None)
-                if get_current is not None:
-                    currents.append(int(get_current()))
-                else:
-                    currents.append(-1)
-                _vel, _accel = stp.get_max_velocity()
-                max_feedrates.append(int(_vel))
-                accelerations.append(int(_accel))
-        for idx, e in _extrs.items():
-            _vel, _accel = e.get_max_velocity()
-            max_feedrates.append(int(_vel))
-            accelerations.append(int(_accel))
-            get_current = getattr(e.stepper.driver, "get_current", None)
-            if get_current is not None:
-                currents.append(int(get_current()))
-            else:
-                currents.append(-1)
-        return {
-            "axisMins"            : axisMins,
-            "axisMaxes"           : axisMaxes,
-            "accelerations"       : accelerations,
-            "currents"            : currents,
-            "firmwareElectronics" : util.get_cpu_info(),
-            "firmwareName"        : "Klipper",
-            "firmwareVersion"     : printer.get_start_arg('software_version', 'Unknown'),
-            "firmwareDate"        : "2017-12-01",
-            "idleCurrentFactor"   : 0.0,
-            "idleTimeout"         : toolhead.motor_off_time,
-            "minFeedrates"        : [0.00] * (len(max_feedrates) + len(_extrs)),
-            "maxFeedrates"        : max_feedrates
-            }
-
-    def web_getstatus(self, _type=1):
-        toolhead = self.toolhead
-        states = {
-            False : 0,
-            True  : 2
-        }
-        curr_extruder = toolhead.get_extruder()
-        curr_pos = toolhead.get_position()
-        fans     = [ fan.last_fan_value * 100.0 for fan in
-                     self.printer.lookup_module_objects("fan") ]
-        heatbed  = self.printer.lookup_object('heater bed', None)
-        _heaters = self.printer.lookup_module_objects("heater")
-        total_htrs = len(_heaters)
-        _extrs   = self.printer.extruder_get()
-
-        # _type == 1 is always included
-        status_block = {
-            "status": self.curr_state,
-            "seq": len(self.gcode_resps),
-            "coords": {
-                "axesHomed": toolhead.kin.is_homed(),
-                "extr": [e.extrude_pos
-                         for i, e in _extrs.items()],
-                "xyz": curr_pos[:3],
-            },
-            "currentTool": curr_extruder.index,
-            "params": {
-                "atxPower": 0,
-                "fanPercent": fans,
-                "speedFactor": self.gcode.speed_factor * 60. * 100.0,
-                "extrFactors": [e.get_extrude_factor(procent=True) for i, e in _extrs.items()],
-                "babystep": float("%.3f" % self.babysteps.babysteps),
-            },
-            "sensors": {
-                "probeValue": -1,  # 0
-                "probeSecondary": [0, 0],
-                # Hidden for unmodulated probes, otherwise its array size depends on
-                # the probe type (usually 1 or 2)
-                "fanRPM": 0,
-            },
-            "time": (time.time() - self.starttime),
-            "temps": {}
-        }
-
-        if heatbed is not None:
-            status_block["temps"].update( {
-                "bed": {
-                    "active"  : float("%.2f" % heatbed.target_temp),
-                    "heater"  : 0,
-                },
-            } )
-
-        '''
-        if chamber is not None:
-            status_block["temps"].update( {
-                "chamber": {
-                    "active"  : float("%.2f" % chamber.target_temp),
-                    "heater"  : chamber.heater.index,
-                },
-            } )
-        if cabinet is not None:
-            status_block["temps"].update( {
-                "cabinet": {
-                    "active"  : float("%.2f" % heatbed.target_temp),
-                    "heater"  : cabinet.heater.index,
-                },
-            } )
-        '''
-
-        htr_current = [0.0] * total_htrs
-        # HS_off = 0, HS_standby = 1, HS_active = 2, HS_fault = 3, HS_tuning = 4
-        htr_state   = [  3] * total_htrs
-        for htr in _heaters:
-            index = htr.index + 1
-            if htr == heatbed:
-                index = 0
-            htr_current[index] = float("%.2f" % htr.last_temp)
-            # htr_state[index]   = states[True if htr.last_pwm_value > 0.0 else False]
-            htr_state[index] = states[(htr.target_temp > 0.0)]
-
-        status_block["temps"].update( {
-            "current" : htr_current,
-            "state"   : htr_state, # 0: off, 1: standby, 2: active, 3: fault (same for bed)
-            "heads": {
-                "state": htr_state[1:],
-            },
-        } )
-
-        # Tools target temps
-        status_block["temps"].update( {
-            'tools': {
-                "active"  : [ [float("%.2f" % e.get_heater().target_temp)]
-                              for i, e in _extrs.items() ],
-                "standby" : [ [ .0 ] for i, e in _extrs.items() ],
-            },
-        } )
-
-        if _type == 2:
-            max_temp  = 0.0
-            cold_temp = 0.0
-            if hasattr(curr_extruder, "get_heater"):
-                heater = curr_extruder.get_heater()
-                max_temp  = heater.max_temp
-                cold_temp = heater.min_extrude_temp
-                if heater.min_extrude_temp_disabled:
-                    cold_temp = 0.0
-            endstops_hit = 0
-            for idx, state in enumerate(toolhead.get_kinematics().is_homed()):
-                endstops_hit |= (state << idx)
-            status_block.update( {
-                "coldExtrudeTemp" : cold_temp,
-                "coldRetractTemp" : cold_temp,
-                "tempLimit"       : max_temp,
-                "endstops"        : endstops_hit,
-                "firmwareName"    : "Klipper",
-                "geometry"        : toolhead.kin.name, # cartesian, coreXY, delta
-                "axes"            : 3,                # Subject to deprecation - may be dropped in RRF 1.20
-                "volumes"         : 1,                # Num of SD cards
-                "mountedVolumes"  : 1,                # Bitmap of all mounted volumes
-                "name"            : self.name,
-                #"probe": {
-                #    "threshold" : 500,
-                #    "height"    : 2.6,
-                #    "type"      : 1
-                #},
-                #"mcutemp": { # Not available on RADDS
-                #    "min": 26.4,
-                #    "cur": 30.5,
-                #    "max": 43.4
-                #},
-                #"vin": { # Only DuetNG (Duet Ethernet + WiFi)
-                #    "min": 10.4,
-                #    "cur": 12.3,
-                #    "max": 12.5
-                #},
-            } )
-
-            tools = []
-            for key, extr in _extrs.items():
-                values = {
-                    "number"   : extr.index,
-                    "name"     : extr.name,
-                    "heaters"  : [ extr.heater.index + 1 ],
-                    "drives"   : [ 3+extr.index ],
-                    #"filament" : "N/A",
-                }
-                tools.append(values)
-            status_block["tools"] = tools
-
-        elif _type == 3:
-            fname = self.sd.get_current_file_name()
-            if fname is None:
-                fname = self.last_used_file
-            info = analyse_gcode_file(fname)
-            self.last_used_file = fname
-
-            printing_time = toolhead.get_print_time()
-            curr_layer = len(self.layer_stats)
-
-            first_layer_time = 0.
-            layer_time_curr = .0
-            if curr_layer > 0 or self.first_layer_start is not None:
-                lstat = self.layer_stats
-                try:
-                    first_layer_time = lstat[0]['layer time']
-                except IndexError:
-                    first_layer_time = printing_time
-                try:
-                    layer_time_curr = lstat[-1]['layer time']
-                except IndexError:
-                    layer_time_curr = printing_time
-            else:
-                self.warmup_time += printing_time - self.warmup_time
-
-            # Print time estimations
-            progress = self.sd.get_progress()
-            remaining_time_file = 0.
-            if progress > 0:
-                remaining_time_file = (printing_time / progress) - printing_time
-
-            # Used filament amount
-            remaining_time_fila = 0.
-            '''
-            fila_total = sum(e for e in info['filament'])
-            if fila_total > 0:
-                fila_used = sum(e.raw_filament for i, e in _extrs.items())
-                fila_perc = (fila_used / fila_total)
-                remaining_time_fila = (printing_time / fila_perc) - printing_time
-            '''
-
-            # Layer statistics
-            remaining_time_layer = 0.
-            '''
-            num_layers = 0
-            layerHeight = info['layerHeight']
-            firstLayerHeight = info['firstLayerHeight']
-            if layerHeight > 0:
-                num_layers = int( (info["height"] - firstLayerHeight +
-                                  layerHeight) / layerHeight )
-            if num_layers:
-                proc = curr_layer / num_layers
-                if proc > 0:
-                    remaining_time_layer = (printing_time / proc) - printing_time
-            '''
-
-            # Fill status block
-            status_block.update( {
-                "currentLayer"       : curr_layer,
-                "currentLayerTime"   : layer_time_curr,
-                # How much filament would have been printed without extrusion factors applied
-                "extrRaw"            : [ float("%0.1f" % e.raw_filament)
-                                         for i, e in _extrs.items() ],
-                "fractionPrinted"    : float("%.1f" % (progress * 100.)),
-
-                "firstLayerDuration" : first_layer_time,
-                "firstLayerHeight"   : info['firstLayerHeight'],
-                "printDuration"      : printing_time,
-                "warmUpDuration"     : float("%.1f" % self.warmup_time),
-
-                "timesLeft": {
-                    "file"     : float("%.1f" % remaining_time_file),
-                    "filament" : [ float("%.1f" % remaining_time_fila) ],
-                    "layer"    : float("%.1f" % remaining_time_layer),
-                }
-            } )
-        return status_block
-
-    def layer_changed(self, change_time):
-        if len(self.layer_stats) == 0 and self.first_layer_start is None:
-            # First layer started
-            self.logger.info(" ====== 1st LAYER ===== %s " % (change_time))
-            self.first_layer_start = change_time
-        else:
-            # last end is start time
-            if self.first_layer_start is not None:
-                start_time = self.first_layer_start
-                self.first_layer_start = None
-            else:
-                start_time = self.layer_stats[-1]['end time']
-            self.logger.info(" ====== LAYER CHANGED ===== %s - %s" % (start_time, change_time))
-            self.layer_stats.append(
-                {'start time': start_time,
-                 'layer time': (change_time - start_time),
-                 'end time': change_time} )
 
 
 def load_config(config):

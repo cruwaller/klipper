@@ -32,13 +32,13 @@ $('#slider_fan_control').slider({
 		var fanValue = slideEvt.value / 100.0;
 		if (fan == undefined) {
 			// Generic print fan is selected
-			sendGCode("M106 S" + fanValue);
+			sendGCode("M106 S" + (255 * fanValue));
 		} else {
 			// Specific fan is selected
 			if (overriddenFanValues[fan] != undefined) {
 				overriddenFanValues[fan] = fanValue;
 			}
-			sendGCode("M106 P" + fan + " S" + fanValue);
+			sendGCode("M106 P" + fan + " S" + (255 * fanValue));
 		}
 		$("#slider_fan_print").slider("setValue", slideEvt.value);
 	}
@@ -64,13 +64,13 @@ $('#slider_fan_print').slider({
 		var fanValue = slideEvt.value / 100.0;
 		if (fan == undefined) {
 			// Generic print fan is selected
-			sendGCode("M106 S" + fanValue);
+			sendGCode("M106 S" + (255 * fanValue));
 		} else {
 			// Specific fan is selected
 			if (overriddenFanValues[fan] != undefined) {
 				overriddenFanValues[fan] = fanValue;
 			}
-			sendGCode("M106 P" + fan + " S" + fanValue);
+			sendGCode("M106 P" + fan + " S" + (255 * fanValue));
 		}
 		$("#slider_fan_control").slider("setValue", slideEvt.value);
 	}

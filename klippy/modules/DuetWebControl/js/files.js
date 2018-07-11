@@ -648,11 +648,11 @@ $("body").on("click", ".a-gcode-file", function(e) {
 	showConfirmationDialog(T("Start Print"), T("Do you want to print <strong>{0}</strong>?", file), function() {
 		waitingForPrintStart = true;
 		if (currentGCodeVolume != 0) {
-			sendGCode("M32 " + currentGCodeDirectory + "/" + file);
+			sendGCode("M32 gcodes/" + currentGCodeDirectory + "/" + file);
 		} else if (currentGCodeDirectory == "0:/gcodes") {
-			sendGCode("M32 " + file);
+			sendGCode("M32 gcodes/" + file);
 		} else {
-			sendGCode("M32 " + currentGCodeDirectory.substring(10) + "/" + file);
+			sendGCode("M32 gcodes/" + currentGCodeDirectory.substring(10) + "/" + file);
 		}
 	});
 	e.preventDefault();
@@ -1616,11 +1616,11 @@ $("#a_context_print").click(function(e) {
 	var file = contextMenuTargets.data("file");
 	waitingForPrintStart = true;
 	if (currentGCodeVolume != 0) {
-		sendGCode("M32 " + currentGCodeDirectory + "/" + file);
+		sendGCode("M32 gcodes/" + currentGCodeDirectory + "/" + file);
 	} else if (currentGCodeDirectory == "0:/gcodes") {
-		sendGCode("M32 " + file);
+		sendGCode("M32 gcodes/" + file);
 	} else {
-		sendGCode("M32 " + currentGCodeDirectory.substring(10) + "/" + file);
+		sendGCode("M32 gcodes/" + currentGCodeDirectory.substring(10) + "/" + file);
 	}
 	e.preventDefault();
 });
@@ -1629,11 +1629,11 @@ $("#a_context_simulate").click(function(e) {
 	var file = contextMenuTargets.data("file");
 	waitingForPrintStart = true;
 	if (currentGCodeVolume != 0) {
-		sendGCode('M37 P"' + currentGCodeDirectory + "/" + file + '"');
+		sendGCode('M37 P"gcodes/' + currentGCodeDirectory + "/" + file + '"');
 	} else if (currentGCodeDirectory == "0:/gcodes") {
-		sendGCode('M37 P"' + file + '"');
+		sendGCode('M37 P"gcodes/' + file + '"');
 	} else {
-		sendGCode('M37 P"' + currentGCodeDirectory.substring(10) + "/" + file + '"');
+		sendGCode('M37 P"gcodes/' + currentGCodeDirectory.substring(10) + "/" + file + '"');
 	}
 	e.preventDefault();
 });

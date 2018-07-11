@@ -30,8 +30,10 @@ class TelegramModule(object):
         printer.try_load_module(config, "virtual_sdcard")
         self.sd = printer.lookup_object('virtual_sdcard')
         self.sd.register_done_cb(self.sd_print_cb)
-        self.webgui = printer.try_load_module(
-            config, 'reprapgui', folder='modules')
+        self.camera = printer.try_load_module(
+            config, "videocam", folder="modules")
+        self.name = config.getsection('printer').get(
+            'name', default="Klipper printer")
         # Get telegram token key
         self.token = config.get('token')
         self.chat_ids = []
@@ -82,7 +84,7 @@ class TelegramModule(object):
         # send welcome message
         for chat_id in self.chat_ids:
             bot.sendMessage(chat_id=chat_id,
-                text="Hi,\nBot '%s' at your service" % self.webgui.name)
+                text="Hi,\nBot '%s' at your service" % self.name)
         # Add into printer objects
         self.logger.info("TelegramBot started")
     def __del__(self):
@@ -131,7 +133,7 @@ class TelegramModule(object):
         else:
             chat_ids = self.chat_ids
         for _id in chat_ids:
-            pic = self.webgui.camera_get_pic()
+            pic = self.camera.get_pic()
             if len(pic):
                 photo = io.BytesIO(pic)
                 # Generate random name (UUID)
@@ -205,18 +207,18 @@ class TelegramModule(object):
         self.__send_status(_id)
     def stop_print(self, bot, update):
         if update.message.from_user['id'] in self.chat_ids:
-            self.webgui.printer_write_no_update('M25 P1')
-            self.webgui.printer_write_no_update('M1')
+            self.gcode.push_command_to_queue('M25 P1')
+            self.gcode.push_command_to_queue('M1')
             if self.gcostat == "printing":
                 update.message.reply_text('print stopped')
             else:
                 update.message.reply_text('not printing')
     def kill(self, bot, update):
         if update.message.from_user['id'] in self.chat_ids:
-            self.webgui.printer_write_no_update('M112')
+            self.gcode.push_command_to_queue('M112')
     def restart_printer(self, bot, update):
         if update.message.from_user['id'] in self.chat_ids:
-            self.webgui.printer_write_no_update('M999')
+            self.gcode.push_command_to_queue('M999')
     def error(self, bot, update, error):
         """Log Errors caused by Updates."""
         self.logger.warning('Update "%s" caused error "%s"', update, error)

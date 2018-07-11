@@ -35,7 +35,7 @@ class HostGpioPwm(object):
             self.pin.set_freq(freq)
         if duty is not None:
             self.pin.write(max(self.min_power, min(duty, self.max_power)))
-        self.gcode.respond_info("Duty: %s, freq: %s" % (
+        params['#input'].respond_info("Duty: %s, freq: %s" % (
             self.pin.get_duty(), self.pin.get_freq()))
 
 
