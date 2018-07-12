@@ -115,6 +115,7 @@ class GuiStats:
         toolhead = self.toolhead
         kinematic = toolhead.get_kinematics()
         rails = kinematic.get_rails()
+        motor_off_time = printer.lookup_object('idle_timeout').idle_timeout
         currents = []
         max_feedrates = []
         accelerations = []
@@ -153,7 +154,7 @@ class GuiStats:
             "firmwareName"        : "Klipper",
             "firmwareVersion"     : self.sw_version,
             "idleCurrentFactor"   : 0.0,
-            "idleTimeout"         : toolhead.motor_off_time,
+            "idleTimeout"         : motor_off_time,
             "minFeedrates"        : [0.00] * (len(max_feedrates) + len(_extrs)),
             "maxFeedrates"        : max_feedrates
             }
