@@ -229,7 +229,7 @@ class GuiStats:
                 },
             } )
             htr_current.append(float("%.2f" % current))
-            htr_state.append(states[target > 0.0])
+            htr_state.append(states[chamber.is_fan_active()])
         '''
         cabinet = self.printer.lookup_object('cabinet', default=None)
         if cabinet is not None:

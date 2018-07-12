@@ -22,6 +22,8 @@ class Chamber:
                           target_temp)
     def get_temp(self, *args):
         return self.fan.last_temp, self.fan.target_temp
+    def is_fan_active(self):
+        return 0. < self.fan.last_speed_value
     def stats(self, eventtime):
         fan = self.fan
         return False, '%s: temp=%.1f fan_speed=%.3f' % (
