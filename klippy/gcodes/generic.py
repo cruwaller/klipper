@@ -11,7 +11,7 @@ class GenericGcode(object):
                 cmd, getattr(self, 'cmd_' + cmd),
                 desc=getattr(self, 'cmd_%s_help' % cmd, None))
         # just discard
-        for cmd in ['M120', 'M121', 'M122', "M141",
+        for cmd in ['M120', 'M121', 'M122',
                     'M291', 'M292',
                     'M752', 'M753', 'M754', 'M755', 'M756', 'M997']:
             self.gcode.register_command(cmd, self.gcode.cmd_IGNORE)

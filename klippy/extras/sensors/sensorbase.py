@@ -102,11 +102,13 @@ class SensorBase(object):
         last_read_time  = self.mcu.clock_to_print_time(last_read_clock)
         self.check_faults(params['fault'])
         if self._callback is not None:
-            self._callback(last_read_time, last_value)
+            self._callback(last_read_time, last_value) # TODO: call calc_temp(last_value)
     # ============ VIRTUAL ===============
     def check_faults(self, fault):
         pass
+    def calc_temp(self, read_value):
+        raise NotImplementedError("calc_temp must to be implemented in parent class")
     def calc_adc(self, min_temp):
         raise NotImplementedError("calc_adc must to be implemented in parent class")
     def get_configs(self):
-        raise NotImplementedError("calc_adc must to be implemented in parent class")
+        raise NotImplementedError("get_configs must to be implemented in parent class")

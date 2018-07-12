@@ -192,37 +192,20 @@ class GuiStats:
             "temps": {}
         }
 
-        bed_tilt = self.printer.lookup_object('bed_tilt')
+        bed_tilt = self.printer.lookup_object('bed_tilt', default=None)
         if bed_tilt:
             probe_x, probe_y, probeValue = bed_tilt.get_adjust()
             status_block['sensors']['probeValue'] = probeValue
             status_block['sensors']['probeSecondary'] = [probe_x, probe_y]
 
         if heatbed is not None:
-            status = heatbed.get_status(0)
+            heatbed_status = heatbed.get_status(0)
             status_block["temps"].update( {
                 "bed": {
-                    "active"  : float("%.2f" % status['target']),
+                    "active"  : float("%.2f" % heatbed_status['target']),
                     "heater"  : 0,
                 },
             } )
-
-        '''
-        if chamber is not None:
-            status_block["temps"].update( {
-                "chamber": {
-                    "active"  : float("%.2f" % chamber.target_temp),
-                    "heater"  : chamber.heater.index,
-                },
-            } )
-        if cabinet is not None:
-            status_block["temps"].update( {
-                "cabinet": {
-                    "active"  : float("%.2f" % heatbed.target_temp),
-                    "heater"  : cabinet.heater.index,
-                },
-            } )
-        '''
 
         htr_current = [0.0] * total_htrs
         # HS_off = 0, HS_standby = 1, HS_active = 2, HS_fault = 3, HS_tuning = 4
@@ -235,6 +218,31 @@ class GuiStats:
             htr_current[index] = float("%.2f" % status['temperature'])
             # htr_state[index]   = states[True if htr.last_pwm_value > 0.0 else False]
             htr_state[index] = states[(status['target'] > 0.0)]
+
+        chamber = self.printer.lookup_object('chamber', default=None)
+        if chamber is not None:
+            current, target = chamber.get_temp()
+            status_block["temps"].update( {
+                "chamber": {
+                    "active"  : float("%.2f" % target),
+                    "heater"  : len(htr_current),
+                },
+            } )
+            htr_current.append(float("%.2f" % current))
+            htr_state.append(states[target > 0.0])
+        '''
+        cabinet = self.printer.lookup_object('cabinet', default=None)
+        if cabinet is not None:
+            current, target = cabinet.get_temp()
+            status_block["temps"].update( {
+                "cabinet": {
+                    "active"  : float("%.2f" % target),
+                    "heater"  : len(htr_current),
+                },
+            } )
+            htr_current.append(current)
+            htr_state.append(states[target > 0.0])
+        '''
 
         status_block["temps"].update( {
             "current" : htr_current,
