@@ -401,14 +401,14 @@ class MCU_adc:
 
 class MCU:
     error = error
-    def __init__(self, printer, config, clocksync):
-        self._printer = printer
+    def __init__(self, config, clocksync):
+        self._printer = config.get_printer()
         self._clocksync = clocksync
-        self._reactor = printer.get_reactor()
+        self._reactor = self._printer.get_reactor()
         self._name = config.get_name()
         if self._name.startswith('mcu '):
             self._name = self._name[4:]
-        self.logger = printer.logger.getChild("mcu.%s"%(self._name,))
+        self.logger = self._printer.logger.getChild("mcu.%s" % (self._name,))
         self._clocksync.setLogger(self.logger)
         # Serial port
         self._serialport = config.get('serial', '/dev/ttyS0')
@@ -431,7 +431,7 @@ class MCU:
         self._is_shutdown = self._is_timeout = False
         self._shutdown_msg = ""
         # Config building
-        printer.lookup_object('pins').register_chip(self._name, self)
+        self._printer.lookup_object('pins').register_chip(self._name, self)
         self._oid_count = 0
         self._config_objects = []
         self._init_cmds = []
@@ -784,7 +784,8 @@ def error_help(msg):
                 return help_msg
     return ""
 
-def add_printer_objects(printer, config):
+def add_printer_objects(config):
+    printer = config.get_printer()
     reactor = printer.get_reactor()
     # first configured MCU has mainsync, others get secondary sync
     # for best results the MCU with xy should be the first
@@ -794,8 +795,7 @@ def add_printer_objects(printer, config):
     for s in sorted(config.get_prefix_sections('mcu'), key=lambda s: s.section):
         if s.section == 'mcu' or s.section.startswith('mcu '):
             printer.add_object(s.section, MCU(
-                printer, s,
-                mainsync if first else clocksync.SecondarySync(reactor, mainsync)))
+                s, mainsync if first else clocksync.SecondarySync(reactor, mainsync)))
             first = False
 
 def get_printer_mcu(printer, name):

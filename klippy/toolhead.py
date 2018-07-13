@@ -547,5 +547,5 @@ class ToolHead:
         params['#input'].respond_info(msg)
 
 
-def add_printer_objects(printer, config):
-    printer.add_object('toolhead', ToolHead(config))
+def add_printer_objects(config):
+    config.get_printer().add_object('toolhead', ToolHead(config))

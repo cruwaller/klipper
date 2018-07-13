@@ -264,12 +264,12 @@ class Printer:
         config = ConfigWrapper(self, fileconfig, 'printer')
         # Read config
         for m in [pins, mcu, hostcpu]:
-            m.add_printer_objects(self, config)
+            m.add_printer_objects(config)
         for section in fileconfig.sections():
             self.try_load_module(config, section)
         self._extruders = {}
         for m in [toolhead, extruder]:
-            m.add_printer_objects(self, config)
+            m.add_printer_objects(config)
 
         # Load generic gcode extensions
         gcodes.load_gcodes(config)

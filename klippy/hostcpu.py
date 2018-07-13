@@ -295,5 +295,7 @@ class HostCpu(object):
         return pin_params
 
 
-def add_printer_objects(printer, config):
-    printer.add_object('hostcpu', HostCpu(printer, config.getsection('hostcpu')))
+def add_printer_objects(config):
+    printer = config.get_printer()
+    printer.add_object('hostcpu',
+        HostCpu(printer, config.getsection('hostcpu')))

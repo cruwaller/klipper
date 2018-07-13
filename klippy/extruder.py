@@ -249,7 +249,8 @@ class DummyExtruder:
     def lookahead(self, moves, flush_count, lazy):
         return flush_count
 
-def add_printer_objects(printer, config):
+def add_printer_objects(config):
+    printer = config.get_printer()
     if config.has_section('extruder'):
         raise printer.config_error("Extruder section must contain index!")
     else:
