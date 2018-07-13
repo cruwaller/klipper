@@ -26,8 +26,6 @@ class CartKinematics:
             self.limits = [ rail.get_range() for rail in self.rails ]
         # Setup iterative solver
         ffi_main, ffi_lib = chelper.get_ffi()
-        self.cmove = ffi_main.gc(ffi_lib.move_alloc(), ffi_lib.free)
-        self.move_fill = ffi_lib.move_fill
         for axis, rail in zip('xyz', self.rails):
             rail.setup_cartesian_itersolve(axis)
         # Setup stepper max halt velocity
@@ -164,27 +162,9 @@ class CartKinematics:
     def move(self, print_time, move):
         if self.need_motor_enable:
             self._check_motor_enable(print_time, move)
-        self.move_fill(
-            self.cmove, print_time,
-            move.accel_t, move.cruise_t, move.decel_t,
-            move.start_pos[0], move.start_pos[1], move.start_pos[2],
-            move.axes_d[0], move.axes_d[1], move.axes_d[2],
-            move.start_v, move.cruise_v, move.accel)
         for i, rail in enumerate(self.rails):
             if move.axes_d[i]:
-                rail.step_itersolve(self.cmove)
-    def is_homed(self):
-        ret = [1, 1, 1]
-        if self.toolhead.sw_limit_check_enabled is True:
-            for i in (0, 1, 2):
-                if self.limits[i][0] > self.limits[i][1]:
-                    ret[i] = 0
-        return ret
-    def update_velocities(self):
-        max_halt_velocity = self.toolhead.get_max_axis_halt()
-        max_velocity, max_accel = self.toolhead.get_max_velocity()
-        self.rails[0].set_max_jerk(max_halt_velocity, max_accel, max_velocity)
-        self.rails[1].set_max_jerk(max_halt_velocity, max_accel, max_velocity)
+                rail.step_itersolve(move.cmove)
     # Dual carriage support
     def _activate_carriage(self, carriage):
         toolhead = self.printer.lookup_object('toolhead')
@@ -203,6 +183,18 @@ class CartKinematics:
         carriage = gcode.get_int('CARRIAGE', params, minval=0, maxval=1)
         self._activate_carriage(carriage)
         gcode.reset_last_position()
+    def is_homed(self):
+        ret = [1, 1, 1]
+        if self.toolhead.sw_limit_check_enabled is True:
+            for i in (0, 1, 2):
+                if self.limits[i][0] > self.limits[i][1]:
+                    ret[i] = 0
+        return ret
+    def update_velocities(self):
+        max_halt_velocity = self.toolhead.get_max_axis_halt()
+        max_velocity, max_accel = self.toolhead.get_max_velocity()
+        self.rails[0].set_max_jerk(max_halt_velocity, max_accel, max_velocity)
+        self.rails[1].set_max_jerk(max_halt_velocity, max_accel, max_velocity)
 
 def load_kinematics(toolhead, config):
     return CartKinematics(toolhead, config)

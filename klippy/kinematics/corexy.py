@@ -37,8 +37,6 @@ class CoreXYKinematics:
             self.limits = [ rail.get_range() for rail in self.rails ]
         # Setup iterative solver
         ffi_main, ffi_lib = chelper.get_ffi()
-        self.cmove = ffi_main.gc(ffi_lib.move_alloc(), ffi_lib.free)
-        self.move_fill = ffi_lib.move_fill
         self.rails[0].setup_itersolve(ffi_main.gc(
             ffi_lib.corexy_stepper_alloc('+'), ffi_lib.free))
         self.rails[1].setup_itersolve(ffi_main.gc(
@@ -169,13 +167,7 @@ class CoreXYKinematics:
             self._check_motor_enable(print_time, move)
 
         axes_d = move.axes_d
-        cmove = self.cmove
-        self.move_fill(
-            cmove, print_time,
-            move.accel_t, move.cruise_t, move.decel_t,
-            move.start_pos[0], move.start_pos[1], move.start_pos[2],
-            axes_d[0], axes_d[1], axes_d[2],
-            move.start_v, move.cruise_v, move.accel)
+        cmove = move.cmove
         rail_x, rail_y, rail_z = self.rails
         if axes_d[0] or axes_d[1]:
             rail_x.step_itersolve(cmove)
