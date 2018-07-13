@@ -3,14 +3,15 @@
 # Copyright (C) 2017-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import math
-import stepper, homing, chelper
+import logging, math
+import stepper, homing
 
 class CoreXYKinematics:
     name = "coreXY"
     def __init__(self, toolhead, config, coresign=1.):
         self.toolhead = toolhead
         self.logger = config.get_printer().logger.getChild(self.name)
+        # Setup axis rails
         self.rails = [ stepper.PrinterRail(config.getsection('stepper_x')),
                        stepper.PrinterRail(config.getsection('stepper_y')),
                        stepper.LookupMultiRail(config.getsection('stepper_z')) ]
@@ -24,6 +25,10 @@ class CoreXYKinematics:
             #   => cross connect endstop and stepper x->y and y->x
             self.rails[0].add_to_endstop(self.rails[1].get_endstops()[0][0])
             self.rails[1].add_to_endstop(self.rails[0].get_endstops()[0][0])
+        self.rails[0].setup_itersolve('corexy_stepper_alloc', '+')
+        self.rails[1].setup_itersolve('corexy_stepper_alloc', '-')
+        self.rails[2].setup_itersolve('cartesian_stepper_alloc', 'z')
+        # Setup boundary checks
         max_velocity, max_accel = toolhead.get_max_velocity()
         self.max_z_velocity = config.getfloat(
             'max_z_velocity', max_velocity, above=0., maxval=max_velocity)
@@ -35,13 +40,6 @@ class CoreXYKinematics:
         else:
             # Just set min and max values for SW limit
             self.limits = [ rail.get_range() for rail in self.rails ]
-        # Setup iterative solver
-        ffi_main, ffi_lib = chelper.get_ffi()
-        self.rails[0].setup_itersolve(ffi_main.gc(
-            ffi_lib.corexy_stepper_alloc('+'), ffi_lib.free))
-        self.rails[1].setup_itersolve(ffi_main.gc(
-            ffi_lib.corexy_stepper_alloc('-'), ffi_lib.free))
-        self.rails[2].setup_cartesian_itersolve('z')
         # Setup stepper max halt velocity
         max_halt_velocity = toolhead.get_max_axis_halt()
         max_xy_halt_velocity = max_halt_velocity * math.sqrt(2.)
