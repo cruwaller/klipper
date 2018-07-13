@@ -218,3 +218,6 @@ class CoreYXKinematics(CoreXYKinematics):
     name = "coreYX"
     def __init__(self, toolhead, config):
         CoreXYKinematics.__init__(self, toolhead, config, coresign=-1.)
+
+def load_kinematics(toolhead, config):
+    return CoreXYKinematics(toolhead, config)

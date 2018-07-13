@@ -3,8 +3,8 @@
 # Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import math
-import mcu, homing, cartesian, corexy, delta, extruder
+import math, importlib
+import mcu, homing, kinematics.extruder
 
 # Common suffixes: _d is distance (in mm), _v is velocity (in
 #   mm/second), _v2 is velocity squared (mm^2/s^2), _t is time (in
@@ -212,6 +212,13 @@ class ToolHead:
         self.config_junction_deviation = self.junction_deviation
         self.move_queue = MoveQueue()
         self.commanded_pos = [0., 0., 0., 0.]
+        self.homing_order = config.get('homing_order', 'XYZ').upper()
+        self.require_home_after_motor_off = config.getboolean(
+            'require_home_after_motor_off', True)
+        self.sw_limit_check_enabled = config.getboolean(
+            'sw_limit_check_enabled', True)
+        self.allow_move_wo_homing = config.getboolean(
+            'allow_move_without_home', False)
         # Print time tracking
         self.buffer_time_low = config.getfloat(
             'buffer_time_low', 1.000, above=0.)
@@ -235,20 +242,16 @@ class ToolHead:
         self.motor_off_timer = self.reactor.register_timer(
             self._motor_off_handler, self.reactor.NOW)
         # Create kinematics class
-        self.extruder = extruder.DummyExtruder()
+        self.extruder = kinematics.extruder.DummyExtruder()
         self.move_queue.set_extruder(self.extruder)
-        self.homing_order = config.get('homing_order', 'XYZ').upper()
-        self.require_home_after_motor_off = config.getboolean(
-            'require_home_after_motor_off', True)
-        self.sw_limit_check_enabled = config.getboolean(
-            'sw_limit_check_enabled', True)
-        self.allow_move_wo_homing = config.getboolean(
-            'allow_move_without_home', False)
-        kintypes = {'cartesian': cartesian.CartKinematics,
-                    'corexy': corexy.CoreXYKinematics,
-                    'coreyx': corexy.CoreYXKinematics,
-                    'delta': delta.DeltaKinematics}
-        self.kin = config.getchoice('kinematics', kintypes)(self, config)
+        kin_name = config.get('kinematics')
+        try:
+            mod = importlib.import_module('kinematics.' + kin_name)
+            self.kin = mod.load_kinematics(self, config)
+        except:
+            msg = "Error loading kinematics '%s'" % (kin_name,)
+            self.logger.exception(msg)
+            raise config.error(msg)
         # Pause/Idle position
         self.idle_position = idle_position = \
             config.get('idle_position', default=None)
@@ -431,8 +434,8 @@ class ToolHead:
         self.dwell(STALL_TIME)
         last_move_time = self.get_last_move_time()
         self.kin.motor_off(last_move_time)
-        for key, e in self.printer.extruder_get().items():
-            e.motor_off(last_move_time)
+        for key, ext in self.printer.extruder_get().items():
+            ext.motor_off(last_move_time)
         self.dwell(STALL_TIME)
         self.need_motor_off = False
         self.logger.debug('; Max time of %f', last_move_time)
@@ -533,3 +536,4 @@ class ToolHead:
 
 def add_printer_objects(config):
     config.get_printer().add_object('toolhead', ToolHead(config))
+    kinematics.extruder.add_printer_objects(config)

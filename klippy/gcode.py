@@ -3,9 +3,8 @@
 # Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import os, re, collections, Queue, logging
-#from multiprocessing import Queue as QueueMulti
-import homing, util
+import os, re, logging, collections, Queue
+import homing #, kinematics.extruder
 
 class error(Exception):
     pass
