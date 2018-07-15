@@ -123,7 +123,7 @@ class GCodeParser:
             fd_handle = self.__start_reader(fd, self.process_data_fd, prio)
             self.fds[path] = fd_handle
             self.logger.info("PTYs: %s created. fd = %s" % (path, fd,))
-        params['#input'].respond("Input %s ok" % (path,))
+        params['#input'].respond("ok - input is %s" % (path,))
     def cmd_AUTO_TEMP_REPORT(self, params):
         self.auto_temp_report = self.get_int("AUTO", params,
             default=self.auto_temp_report, minval=0, maxval=1)
@@ -283,10 +283,9 @@ class GCodeParser:
         gco_in.ack()
 
     def process_commands(self, commands, need_ack=True):
-        gcode_in = InputGcode("", None, need_ack=need_ack)
         for line in commands:
-            gcode_in.gcode = line
-            self.process_command(gcode_in)
+            self.process_command(
+                InputGcode(line, None, need_ack=need_ack))
 
     m112_r = re.compile('^(?:[nN][0-9]+)?\s*[mM]112(?:\s|$)')
     def process_data_fd(self, eventtime, handler):
@@ -334,9 +333,11 @@ class GCodeParser:
             except Queue.Empty:
                 self.reactor.pause(self.reactor.monotonic() + 0.100)
     def push_command_to_queue(self, cmd, resp_func=None, prio=5):
-        self.process_queue.put(
-            InputGcode(cmd, None, fd_func=resp_func, prio=prio),
-            block=True)
+        lines = cmd.split('\n')
+        for line in lines:
+            self.process_queue.put(
+                InputGcode(line, None, fd_func=resp_func, prio=prio),
+                block=True)
 
     def process_batch(self, command):
         if self.is_processing_data:
