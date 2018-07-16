@@ -69,7 +69,7 @@ class GenericGcode(object):
     cmd_M851_help = "Set axis offset. Args [X<offset] [Y<offset>] [Z<offset>]"
     def cmd_M851(self, params):
         # Set X, Y, Z offsets
-        steppers = self.toolhead.get_kinematics().get_rails()
+        steppers = self.toolhead.get_kinematics().get_steppers()
         offsets = { self.axis2pos[a]: self.gcode.get_float(a, params)
                     for a, p in self.axis2pos.items() if a in params }
         for p, offset in offsets.items():

@@ -8,7 +8,7 @@ import stepper, homing
 
 class CoreXYKinematics:
     name = "coreXY"
-    def __init__(self, toolhead, config, coresign=1.):
+    def __init__(self, toolhead, config):
         self.toolhead = toolhead
         self.logger = config.get_printer().logger.getChild(self.name)
         # Setup axis rails
@@ -47,13 +47,12 @@ class CoreXYKinematics:
         self.rails[1].set_max_jerk(max_xy_halt_velocity, max_accel, max_velocity)
         self.rails[2].set_max_jerk(
             min(max_halt_velocity, self.max_z_velocity), self.max_z_accel, self.max_z_velocity)
-        self.coresign = coresign
-        self.experimental = config.getboolean(
-            'experimental', False)
-    def get_rails(self, flags=""):
-        if flags == "Z":
-            return [self.rails[2]]
+    def get_rails(self):
         return list(self.rails)
+    def get_steppers(self, flags=""):
+        if flags == "Z":
+            return self.rails[2].get_steppers()
+        return [s for rail in self.rails for s in rail.get_steppers()]
     def calc_position(self):
         pos = [rail.get_commanded_position() for rail in self.rails]
         return [0.5 * (pos[0] + pos[1]), 0.5 * (pos[0] - pos[1]), pos[2]]
@@ -172,25 +171,6 @@ class CoreXYKinematics:
             rail_y.step_itersolve(cmove)
         if axes_d[2]:
             rail_z.step_itersolve(cmove)
-        '''
-        sxp = move.start_pos[0]
-        syp = move.start_pos[1]
-        if self.experimental:
-            move_start_pos = ((sxp + syp), (sxp - syp), move.start_pos[2])
-            exp = (sxp - move.end_pos[0])
-            eyp = (syp - move.end_pos[1]) * self.coresign
-            axes_d = ((exp + eyp),
-                      (exp - eyp),
-                      move.start_pos[2])
-            core_flag = (self.coresign == -1) # TODO FIXME
-        else:
-            move_start_pos = (sxp + syp, sxp - syp, move.start_pos[2])
-            exp = move.end_pos[0]
-            eyp = move.end_pos[1]
-            axes_d = ((exp + eyp) - move_start_pos[0],
-                      (exp - eyp) - move_start_pos[1], move.axes_d[2])
-            core_flag = False
-        '''
     def is_homed(self):
         ret = [1, 1, 1]
         if self.toolhead.sw_limit_check_enabled is True:
@@ -203,11 +183,6 @@ class CoreXYKinematics:
         max_velocity, max_accel = self.toolhead.get_max_velocity()
         self.rails[0].set_max_jerk(max_halt_velocity, max_accel, max_velocity)
         self.rails[1].set_max_jerk(max_halt_velocity, max_accel, max_velocity)
-
-class CoreYXKinematics(CoreXYKinematics):
-    name = "coreYX"
-    def __init__(self, toolhead, config):
-        CoreXYKinematics.__init__(self, toolhead, config, coresign=-1.)
 
 def load_kinematics(toolhead, config):
     return CoreXYKinematics(toolhead, config)

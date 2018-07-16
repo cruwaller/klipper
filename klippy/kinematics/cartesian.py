@@ -50,10 +50,12 @@ class CartKinematics:
             self.printer.lookup_object('gcode').register_command(
                 'SET_DUAL_CARRIAGE', self.cmd_SET_DUAL_CARRIAGE,
                 desc=self.cmd_SET_DUAL_CARRIAGE_help)
-    def get_rails(self, flags=""):
-        if flags == "Z":
-            return [self.rails[2]]
+    def get_rails(self):
         return list(self.rails)
+    def get_steppers(self, flags=""):
+        if flags == "Z":
+            return self.rails[2].get_steppers()
+        return [s for rail in self.rails for s in rail.get_steppers()]
     def calc_position(self):
         return [rail.get_commanded_position() for rail in self.rails]
     def set_position(self, newpos, homing_axes):

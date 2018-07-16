@@ -1166,8 +1166,11 @@ function getConfigResponse() {
 			if (response.hasOwnProperty("dwsVersion")) {
 				$("#dws_version").text(response.dwsVersion);
 			}
-
-			$("#firmware_version").text(response.firmwareVersion + " (" + response.firmwareDate + ")");
+			var _version = response.firmwareVersion;
+			if (response.hasOwnProperty("firmwareDate")) {
+				_version = _version + " (" + response.firmwareDate + ")";
+			}
+			$("#firmware_version").text(_version);
 
 			for(var drive = 0; drive < response.accelerations.length; drive++) {
 				if (drive < response.axisMins.length) {

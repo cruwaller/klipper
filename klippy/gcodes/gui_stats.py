@@ -143,7 +143,8 @@ class GuiStats:
                 currents.append(int(get_current()))
             else:
                 currents.append(-1)
-        return {
+        config = {
+            "err"                 : 0,
             "axisMins"            : axisMins,
             "axisMaxes"           : axisMaxes,
             "accelerations"       : accelerations,
@@ -151,12 +152,13 @@ class GuiStats:
             "firmwareElectronics" : self.cpu_info,
             "firmwareName"        : "Klipper",
             "firmwareVersion"     : self.sw_version,
-            "firmwareDate"        : "2017-12-01",
             "idleCurrentFactor"   : 0.0,
             "idleTimeout"         : toolhead.motor_off_time,
             "minFeedrates"        : [0.00] * (len(max_feedrates) + len(_extrs)),
             "maxFeedrates"        : max_feedrates
             }
+        self.logger.debug("CONFIG: %s" % config)
+        return config
 
     def get_status_stats(self, _type=1):
         toolhead = self.toolhead
