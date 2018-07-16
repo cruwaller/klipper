@@ -353,7 +353,12 @@ class TMC51xx(SpiDriver):
             return int(mcu_pos + 0.5)
         return int(mcu_pos - 0.5)
 
-    def setup_itersolve(self, sk):
+    def setup_itersolve(self, alloc_func, *params):
+        ffi_main, ffi_lib = chelper.get_ffi()
+        sk = ffi_main.gc(getattr(ffi_lib, alloc_func)(*params), ffi_lib.free)
+        self.set_stepper_kinematics(sk)
+
+    def set_stepper_kinematics(self, sk):
         old_sk = self._stepper_kinematics
         self._stepper_kinematics = sk
         self._ffi_lib.itersolve_set_stepcompress(

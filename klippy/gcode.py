@@ -508,7 +508,7 @@ class GCodeParser:
         'G20', 'M82', 'M83', 'G90', 'G91', 'G92', 'M114', 'M220', 'M221',
         'SET_GCODE_OFFSET', 'M206',
         'M105', 'M104', 'M109', 'M140', 'M190', 'M106', 'M107',
-        'M112', 'M115', 'IGNORE', 'QUERY_ENDSTOPS', 'GET_POSITION',
+        'M112', 'M115', 'IGNORE', 'GET_POSITION',
         'RESTART', 'FIRMWARE_RESTART', 'ECHO', 'STATUS', 'HELP']
     # G-Code movement commands
     cmd_G1_aliases = ['G0']
@@ -710,14 +710,6 @@ class GCodeParser:
     def cmd_IGNORE(self, params):
         # Commands that are just silently accepted
         pass
-    cmd_QUERY_ENDSTOPS_help = "Report on the status of each endstop"
-    cmd_QUERY_ENDSTOPS_aliases = ["M119"]
-    def cmd_QUERY_ENDSTOPS(self, params):
-        # Get Endstop Status
-        res = homing.query_endstops(self.toolhead)
-        params['#input'].respond(" ".join(["%s:%s" % (name, ["open", "TRIGGERED"][not not t])
-                                 for name, t in res]))
-    cmd_GET_POSITION_help = "Get current axes positions"
     cmd_GET_POSITION_when_not_ready = True
     def cmd_GET_POSITION(self, params):
         if self.toolhead is None:

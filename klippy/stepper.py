@@ -226,6 +226,7 @@ class PrinterRail:
                         "Unable to infer homing_positive_dir in section '%s'" % (
                             self.name,))
         # Endstop
+        printer = config.get_printer()
         if stepper.has_driver_endstop():
             homedir = ['min', 'max'][self.homing_positive_dir]
             stepper.mcu_stepper.set_homing_speed(self.homing_speed)
@@ -239,7 +240,7 @@ class PrinterRail:
                 endstop_pin = config.get(
                     ['endstop_min_pin',
                      'endstop_max_pin'][self.homing_positive_dir])
-            ppins = config.get_printer().lookup_object('pins')
+            ppins = printer.lookup_object('pins')
             mcu_endstop = ppins.setup_pin('endstop', endstop_pin, share_type="endstop")
             self.endstops = [(mcu_endstop, self.name)]
             stepper.add_to_endstop(mcu_endstop)
@@ -283,6 +284,8 @@ class PrinterRail:
                     self.homing_stepper_phases = None
                 if mcu_endstop.get_mcu().is_fileoutput():
                     self.homing_endstop_accuracy = self.homing_stepper_phases
+        query_endstops = printer.try_load_module(config, 'query_endstops')
+        query_endstops.register_endstop(self.endstops[0][0], self.name)
         # Valid for CoreXY and Cartesian Z axis
         if 'Z' in self.name.upper():
             self.homing_pos_x = config.getfloat('homing_pos_x', default=None,
@@ -347,9 +350,13 @@ class PrinterRail:
         mcu_endstop = self.endstops[0][0]
         endstop_pin = config.get('endstop_pin', None)
         if endstop_pin is not None:
-            ppins = config.get_printer().lookup_object('pins')
+            printer = config.get_printer()
+            ppins = printer.lookup_object('pins')
             mcu_endstop = ppins.setup_pin('endstop', endstop_pin)
-            self.endstops.append((mcu_endstop, stepper.get_name(short=True)))
+            name = stepper.get_name(short=True)
+            self.endstops.append((mcu_endstop, name))
+            query_endstops = printer.try_load_module(config, 'query_endstops')
+            query_endstops.register_endstop(mcu_endstop, name)
         stepper.add_to_endstop(mcu_endstop)
     def add_to_endstop(self, mcu_endstop):
         for stepper in self.steppers:
