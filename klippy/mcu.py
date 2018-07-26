@@ -617,10 +617,9 @@ class MCU:
         self._check_config()
         time.sleep(1) # give a little delay to receive shutdown
     # Config creation helpers
-    def setup_pin(self, pin_params):
+    def setup_pin(self, pin_type, pin_params):
         pcs = {'stepper': MCU_stepper, 'endstop': MCU_endstop,
                'digital_out': MCU_digital_out, 'pwm': MCU_pwm, 'adc': MCU_adc}
-        pin_type = pin_params['type']
         if pin_type not in pcs:
             raise pins.error("pin type %s not supported on mcu" % (pin_type,))
         co = pcs[pin_type](self, pin_params)

@@ -55,9 +55,7 @@ class SpiDriver(DriverBase):
         spi_bus = config.getint('spi_bus', 0)
         # setup SPI pins and configure mcu
         ppins = printer.lookup_object('pins')
-        cs_pin_params = ppins.lookup_pin('digital_out', cs_pin)
-        if cs_pin_params['invert']:
-            raise config.error("Cannot invert pin")
+        cs_pin_params = ppins.lookup_pin(cs_pin)
         self.mcu = mcu = cs_pin_params['chip']
         self._oid = oid = mcu.create_oid()
         mcu.add_config_cmd(

@@ -37,7 +37,7 @@ class SensorBase(object):
         self._report_clock = 0
         ppins = self.printer.lookup_object('pins')
         if chip_type in VALID_SPI_SENSORS:
-            pin_params = ppins.lookup_pin('digital_out', sensor_pin)
+            pin_params = ppins.lookup_pin(sensor_pin)
             self.mcu = mcu = pin_params['chip']
             pin = pin_params['pin']
             # SPI bus configuration

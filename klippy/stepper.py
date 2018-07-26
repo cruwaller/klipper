@@ -31,10 +31,11 @@ class StepperEnablePin:
 def lookup_enable_pin(ppins, pin):
     if pin is None:
         return StepperEnablePin(None, 9999)
-    pin_params = ppins.lookup_pin('digital_out', pin, 'stepper_enable')
+    pin_params = ppins.lookup_pin(pin, can_invert=True,
+                                  share_type='stepper_enable')
     enable = pin_params.get('class')
     if enable is None:
-        mcu_enable = pin_params['chip'].setup_pin(pin_params)
+        mcu_enable = pin_params['chip'].setup_pin('digital_out', pin_params)
         mcu_enable.setup_max_duration(0.)
         pin_params['class'] = enable = StepperEnablePin(mcu_enable)
     return enable
@@ -99,9 +100,14 @@ class PrinterStepper:
         ppins = printer.lookup_object('pins')
         if self.mcu_stepper is None:
             self.mcu_stepper = ppins.setup_pin('stepper', config.get('step_pin'))
-            dir_pin_params = ppins.lookup_pin('digital_out', config.get('dir_pin'))
+            dir_pin = config.get('dir_pin')
+            dir_pin_params = ppins.lookup_pin(dir_pin, can_invert=True)
             self.mcu_stepper.setup_dir_pin(dir_pin_params)
             self.mcu_stepper.setup_step_distance(step_dist)
+        self.enable = lookup_enable_pin(ppins, config.get('enable_pin', None))
+        # Register STEPPER_BUZZ command
+        stepper_buzz = printer.try_load_module(config, 'stepper_buzz')
+        stepper_buzz.register_stepper(self, self.name)
         # Wrappers
         self.step_itersolve = self.mcu_stepper.step_itersolve
         self.setup_itersolve = self.mcu_stepper.setup_itersolve
@@ -112,10 +118,6 @@ class PrinterStepper:
         self.get_mcu_position = self.mcu_stepper.get_mcu_position
         self.get_commanded_position = self.mcu_stepper.get_commanded_position
         self.get_step_dist = self.mcu_stepper.get_step_dist
-        self.enable = lookup_enable_pin(ppins, config.get('enable_pin', None))
-        # Register STEPPER_BUZZ command
-        stepper_buzz = printer.try_load_module(config, 'stepper_buzz')
-        stepper_buzz.register_stepper(self, self.name)
         self.logger.info("steps per mm {} , step in mm {}".
                          format(inv_step_dist, step_dist))
         printer.add_object(self.name, self) # to get printer_state called
@@ -125,8 +127,7 @@ class PrinterStepper:
         return self.name
     def add_to_endstop(self, mcu_endstop):
         mcu_endstop.add_stepper(self.mcu_stepper)
-    @staticmethod
-    def _dist_to_time(dist, start_velocity, accel):
+    def _dist_to_time(self, dist, start_velocity, accel):
         # Calculate the time it takes to travel a distance with constant accel
         time_offset = start_velocity / accel
         return math.sqrt(2. * dist / accel + time_offset**2) - time_offset
@@ -242,7 +243,7 @@ class PrinterRail:
                     ['endstop_min_pin',
                      'endstop_max_pin'][self.homing_positive_dir])
             ppins = printer.lookup_object('pins')
-            mcu_endstop = ppins.setup_pin('endstop', endstop_pin, share_type="endstop")
+            mcu_endstop = ppins.setup_pin('endstop', endstop_pin)
             self.endstops = [(mcu_endstop, self.name)]
             stepper.add_to_endstop(mcu_endstop)
             # Endstop stepper phase position tracking
