@@ -59,6 +59,7 @@ void
 spi_transfer(struct spi_config config, uint8_t receive_data
              , uint8_t len, uint8_t *data)
 {
+    (void)config;
     if (receive_data) {
         while (len--) {
             LPC_SSP0->DR = *data;

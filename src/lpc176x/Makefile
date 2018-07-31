@@ -6,7 +6,8 @@ CROSS_PREFIX=arm-none-eabi-
 CFLAGS += -mthumb -mcpu=cortex-m3 -O2
 CFLAGS += -flto -fwhole-program -fno-use-linker-plugin
 CFLAGS += -fno-exceptions -fno-delete-null-pointer-checks
-CFLAGS += -Ilib/lpc176x/device -Ilib/lpc176x/device -Ilib/lpc176x/cmsis
+#CFLAGS += -Ilib/lpc176x/device -Ilib/lpc176x/cmsis
+CFLAGS += -Ilib/lpc176x/device -Ilib/cmsis-core
 
 CFLAGS_klipper.elf += -T $(OUT)LPC1768.ld
 CFLAGS_klipper.elf += --specs=nano.specs --specs=nosys.specs
