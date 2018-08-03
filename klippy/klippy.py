@@ -57,9 +57,10 @@ class ConfigWrapper:
     error = ConfigParser.Error
     class sentinel:
         pass
-    def __init__(self, printer, fileconfig, section):
+    def __init__(self, printer, fileconfig, access_tracking, section):
         self.printer = printer
         self.fileconfig = fileconfig
+        self.access_tracking = access_tracking
         self.section = section
     def get_printer(self):
         return self.printer
@@ -70,8 +71,7 @@ class ConfigWrapper:
         if (default is not self.sentinel
             and not self.fileconfig.has_option(self.section, option)):
             return default
-        self.printer.all_config_options[
-            (self.section.lower(), option.lower())] = 1
+        self.access_tracking[(self.section.lower(), option.lower())] = 1
         try:
             v = parser(self.section, option)
             if type(v) == str:
@@ -120,7 +120,8 @@ class ConfigWrapper:
             return c
         return choices[c] # dict
     def getsection(self, section):
-        return ConfigWrapper(self.printer, self.fileconfig, section)
+        return ConfigWrapper(self.printer, self.fileconfig,
+                             self.access_tracking, section)
     def has_section(self, section):
         return self.fileconfig.has_section(section)
     def get_prefix_sections(self, prefix):
@@ -151,7 +152,6 @@ class Printer:
         self.stats_timer = self.reactor.register_timer(self._stats)
         self.connect_timer = self.reactor.register_timer(
             self._connect, self.reactor.NOW)
-        self.all_config_options = {}
         self.state_message = message_startup
         self.is_shutdown = False
         self.async_shutdown_msg = ""
@@ -261,7 +261,8 @@ class Printer:
         if self.bglogger is not None:
             ConfigLogger(fileconfig, self.bglogger)
         # Create printer components
-        config = ConfigWrapper(self, fileconfig, 'printer')
+        access_tracking = {}
+        config = ConfigWrapper(self, fileconfig, access_tracking, 'printer')
         # Read config
         for m in [pins, mcu, hostcpu]:
             m.add_printer_objects(config)
@@ -281,7 +282,7 @@ class Printer:
             self.try_load_module(config, section, folder="modules_host")
         '''
         # Validate that there are no undefined parameters in the config file
-        valid_sections = { s: 1 for s, o in self.all_config_options }
+        valid_sections = { s: 1 for s, o in access_tracking }
         for section_name in fileconfig.sections():
             section = section_name.lower()
             if section not in valid_sections and section not in self.objects:
@@ -289,7 +290,7 @@ class Printer:
                     "Section '%s' is not a valid config section" % (section,))
             for option in fileconfig.options(section_name):
                 option = option.lower()
-                if (section, option) not in self.all_config_options:
+                if (section, option) not in access_tracking:
                     raise self.config_error(
                         "Option '%s' is not valid in section '%s'" % (
                             option, section))
