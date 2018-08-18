@@ -45,7 +45,8 @@ class ZTilt:
     def get_probed_position(self):
         kin = self.printer.lookup_object('toolhead').get_kinematics()
         return kin.calc_position()
-    def finalize(self, z_offset, positions):
+    def finalize(self, offsets, positions):
+        z_offset = offsets[2]
         logging.info("Calculating bed tilt with: %s", positions)
         params = { 'x_adjust': 0., 'y_adjust': 0., 'z_adjust': z_offset }
         def adjusted_height(pos, params):
@@ -66,7 +67,7 @@ class ZTilt:
         except:
             logging.exception("z_tilt adjust_steppers")
             for s in self.z_steppers:
-                s.mcu_stepper.set_ignore_move(False)
+                z.set_ignore_move(False)
             raise
     def adjust_steppers(self, x_adjust, y_adjust, z_adjust, z_offset):
         toolhead = self.printer.lookup_object('toolhead')
@@ -75,7 +76,7 @@ class ZTilt:
         # Find each stepper adjustment and disable all stepper movements
         positions = []
         for s, (x, y) in zip(self.z_steppers, self.z_positions):
-            s.mcu_stepper.set_ignore_move(True)
+            s.set_ignore_move(True)
             stepper_offset = -(x*x_adjust + y*y_adjust)
             positions.append((stepper_offset, s))
         # Report on movements
@@ -91,13 +92,13 @@ class ZTilt:
         for i in range(len(positions)-1):
             stepper_offset, stepper = positions[i]
             next_stepper_offset, next_stepper = positions[i+1]
-            stepper.mcu_stepper.set_ignore_move(False)
+            stepper.set_ignore_move(False)
             curpos[2] = z_low + next_stepper_offset
             toolhead.move(curpos, speed)
             toolhead.set_position(curpos)
         # Z should now be level - do final cleanup
         last_stepper_offset, last_stepper = positions[-1]
-        last_stepper.mcu_stepper.set_ignore_move(False)
+        last_stepper.set_ignore_move(False)
         curpos[2] -= z_adjust - z_offset
         toolhead.set_position(curpos)
         self.gcode.reset_last_position()

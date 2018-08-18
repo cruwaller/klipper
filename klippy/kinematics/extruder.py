@@ -11,11 +11,10 @@ EXTRUDE_DIFF_IGNORE = 1.02
 
 class PrinterExtruder:
     def __init__(self, config):
-        self.printer = printer = config.get_printer()
         self.name = config.get_name()
-        self.logger = printer.logger.getChild(self.name)
-        self.config = config
         self.index = int(self.name[8:])
+        self.printer = printer = config.get_printer()
+        self.logger = printer.logger.getChild(self.name)
         self.heater = printer.lookup_object(config.get('heater'))
         self.heater.set_min_extrude_temp(config.getfloat('min_extrude_temp',
                                                          170.0))

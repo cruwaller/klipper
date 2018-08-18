@@ -72,7 +72,6 @@ class DeltaKinematics:
         half_min_step_dist = min([r.get_steppers()[0].get_step_dist()
                                   for r in self.rails]) * .5
         min_arm_length = min(arm_lengths)
-
         def ratio_to_dist(ratio):
             return (ratio * math.sqrt(min_arm_length**2 / (ratio**2 + 1.)
                                       - half_min_step_dist**2)

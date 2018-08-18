@@ -12,58 +12,21 @@ class BedTilt:
         self.x_adjust = config.getfloat('x_adjust', 0.)
         self.y_adjust = config.getfloat('y_adjust', 0.)
         self.z_adjust = 0.
-        self.disabled = False
         if config.get('points', None) is not None:
             BedTiltCalibrate(config, self)
         self.toolhead = None
-        self.gcode = gcode = self.printer.lookup_object('gcode')
+        gcode = self.printer.lookup_object('gcode')
         gcode.set_move_transform(self)
-        for cmd in ['BED_TILT_DISABLE', 'M561']:
-            gcode.register_command(
-                cmd, self.cmd_BED_TILT_DISABLE,
-                desc=self.cmd_BED_TILT_DISABLE_help)
-        for cmd in ['BED_TILT_ENABLE']:
-            gcode.register_command(
-                cmd, self.cmd_BED_TILT_ENABLE,
-                desc=self.cmd_BED_TILT_ENABLE_help)
-        gcode.register_command("G29", self.cmd_G29)
-    cmd_BED_TILT_DISABLE_help = "Disable bed tilt compensation"
-    def cmd_BED_TILT_DISABLE(self, params):
-        # This cancels any bed-plane fitting as the result of probing (or anything else)
-        # and returns the machine to moving in the user's coordinate system.
-        self.disabled = True
-    cmd_BED_TILT_ENABLE_help = "Enable bed tilt compensation"
-    def cmd_BED_TILT_ENABLE(self, params):
-        self.disabled = False
-    def cmd_G29(self, params):
-        s = self.gcode.get_int("S", params, default=0)
-        if s == 0:
-            self.disabled = False
-            self.gcode.run_script_from_command("BED_TILT_CALIBRATE")
-        elif s == 1:
-            # Load map...
-            pass
-        elif s == 2:
-            self.disabled = True
     def printer_state(self, state):
         if state == 'connect':
             self.toolhead = self.printer.lookup_object('toolhead')
     def get_position(self):
-        if self.toolhead is None:
-            return [0., 0., 0., 0.]
         x, y, z, e = self.toolhead.get_position()
         return [x, y, z - x*self.x_adjust - y*self.y_adjust - self.z_adjust, e]
     def move(self, newpos, speed):
-        if self.disabled:
-            self.toolhead.move(newpos, speed)
-            return
         x, y, z, e = newpos
         self.toolhead.move([x, y, z + x*self.x_adjust + y*self.y_adjust
                             + self.z_adjust, e], speed)
-    def get_adjust(self):
-        if self.disabled:
-            return .0, .0, .0
-        return self.x_adjust, self.y_adjust, self.z_adjust
 
 # Helper script to calibrate the bed tilt
 class BedTiltCalibrate:
@@ -79,24 +42,22 @@ class BedTiltCalibrate:
             self.z_position_endstop = zconfig.getfloat('position_endstop', None)
         # Register BED_TILT_CALIBRATE command
         self.gcode = self.printer.lookup_object('gcode')
-        for cmd in ['BED_TILT_CALIBRATE', 'G32']:
-            self.gcode.register_command(
-                cmd, self.cmd_BED_TILT_CALIBRATE,
-                desc=self.cmd_BED_TILT_CALIBRATE_help)
+        self.gcode.register_command(
+            'BED_TILT_CALIBRATE', self.cmd_BED_TILT_CALIBRATE,
+            desc=self.cmd_BED_TILT_CALIBRATE_help)
     cmd_BED_TILT_CALIBRATE_help = "Bed tilt calibration script"
     def cmd_BED_TILT_CALIBRATE(self, params):
-        self.bedtilt.disabled = False
         self.sender = params["#input"]
         self.gcode.run_script_from_command("G28")
         self.probe_helper.start_probe()
     def get_probed_position(self):
         kin = self.printer.lookup_object('toolhead').get_kinematics()
         return kin.calc_position()
-    def finalize(self, z_offset, positions):
-        bed_tilt = self.bedtilt
+    def finalize(self, offsets, positions):
+        z_offset = offsets[2]
         logging.info("Calculating bed_tilt with: %s", positions)
-        params = { 'x_adjust': bed_tilt.x_adjust,
-                   'y_adjust': bed_tilt.y_adjust,
+        params = { 'x_adjust': self.bedtilt.x_adjust,
+                   'y_adjust': self.bedtilt.y_adjust,
                    'z_adjust': z_offset }
         logging.info("Initial bed_tilt parameters: %s", params)
         def adjusted_height(pos, params):
@@ -115,7 +76,7 @@ class BedTiltCalibrate:
             logging.info("orig: %s new: %s", adjusted_height(pos, params),
                          adjusted_height(pos, new_params))
         # Update current bed_tilt calculations
-        # bed_tilt = self.printer.lookup_object('bed_tilt')
+        bed_tilt = self.printer.lookup_object('bed_tilt')
         bed_tilt.x_adjust = new_params['x_adjust']
         bed_tilt.y_adjust = new_params['y_adjust']
         z_diff = new_params['z_adjust'] - z_offset

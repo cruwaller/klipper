@@ -3,7 +3,8 @@
 # Setup the toolchain
 CROSS_PREFIX=arm-none-eabi-
 
-CFLAGS += -mthumb -mcpu=cortex-m3 -O2
+CFLAGS += -mthumb -mcpu=cortex-m3
+CFLAGS += -O2
 CFLAGS += -flto -fwhole-program -fno-use-linker-plugin
 CFLAGS += -fno-exceptions -fno-delete-null-pointer-checks
 #CFLAGS += -Ilib/lpc176x/device -Ilib/lpc176x/cmsis
@@ -48,6 +49,8 @@ $(OUT)klipper.disasm: $(OUT)klipper.elf
 
 ifeq ($(CONFIG_SMOOTHIEWARE_BOOTLOADER),y)
 flash: $(OUT)klipper.bin
+	@echo ""
+	@echo "  The LPC176x build does not currently support 'make flash'"
 	@echo ""
 	@echo "  To flash a Smoothieboard, copy the $(OUT)klipper.bin to a file"
 	@echo "  named firmware.bin on an SD card and then restart the"

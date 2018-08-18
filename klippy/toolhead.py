@@ -401,10 +401,8 @@ class ToolHead:
         for cb in self.layer_change_cb:
             cb(change_time, layer, height)
     def move(self, newpos, speed, check=True):
-        # Calculate layer time
-        commanded_pos = self.commanded_pos
         speed = min(speed, self.max_velocity)
-        move = Move(self, commanded_pos, newpos, speed)
+        move = Move(self, self.commanded_pos, newpos, speed)
         if not move.move_d:
             return
         if move.is_kinematic_move and check:

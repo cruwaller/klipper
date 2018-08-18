@@ -6,7 +6,8 @@ src-y += generic/crc16_ccitt.c generic/alloc.c
 
 CFLAGS += -O2 -g
 CFLAGS += -flto -fwhole-program -fno-use-linker-plugin
-CFLAGS_klipper.elf += $(CFLAGS) -lutil
+CFLAGS_klipper.elf += $(CFLAGS)
+CFLAGS_klipper.elf += -lutil
 
 flash: $(OUT)klipper.elf
 	@echo "  Flashing"

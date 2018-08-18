@@ -3,7 +3,8 @@
 # Use the avr toolchain
 CROSS_PREFIX=avr-
 
-CFLAGS += -mmcu=$(CONFIG_MCU) -O2 -g
+CFLAGS += -mmcu=$(CONFIG_MCU)
+CFLAGS += -O2 -g
 CFLAGS += -flto -fwhole-program -fno-use-linker-plugin
 CFLAGS_klipper.elf += $(CFLAGS)
 
@@ -34,6 +35,5 @@ flash: $(OUT)klipper.elf.hex
 	@echo "  Flashing $^ to $(FLASH_DEVICE) via avrdude"
 	$(Q)if [ -z $(FLASH_DEVICE) ]; then echo "Please specify FLASH_DEVICE"; exit 1; fi
 	$(Q)stty $(STTYFARG) $(FLASH_DEVICE) hupcl
-	$(Q)avrdude -p$(CONFIG_MCU) -c$(CONFIG_AVRDUDE_UPLOADPROTOCOL) -P"$(FLASH_DEVICE)" -D -U"flash:w:$(OUT)klipper.elf.hex:i" $(uploadSpeed)
+	$(Q)avrdude -p$(CONFIG_MCU) -c$(CONFIG_AVRDUDE_PROTOCOL) -P"$(FLASH_DEVICE)" -D -U"flash:w:$(OUT)klipper.elf.hex:i" $(uploadSpeed)
 
-# 328p: avrdude -v -D -patmega328p -P/dev/ttyUSB0 -carduino -U"flash:w:out/klipper.elf.hex:i" -b57600
