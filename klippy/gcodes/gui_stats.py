@@ -392,4 +392,5 @@ class GuiStats:
 
 
 def load_gcode(printer, config):
-    GuiStats(printer, config)
+    if config.has_section("reprapgui"):
+        GuiStats(printer, config)
