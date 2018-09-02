@@ -18,10 +18,9 @@ class PrinterHeaterFan:
         self.fan_speed = config.getfloat("fan_speed", 1., minval=0., maxval=1.)
     def printer_state(self, state):
         if state == 'ready':
-            pheater = self.printer.lookup_object('heater')
-            self.heaters = [pheater.lookup_heater(n.strip())
+            self.heaters = [self.printer.lookup_object(n.strip())
                             for n in self.heater_name.split(',')]
-            self.logger = self.fan.logger = self.heater.logger.getChild(
+            self.logger = self.fan.logger = self.printer.logger.getChild(
                 self.fan.name.replace(" ", "_"))
             self.logger.debug("heater = {}".format(self.heater_name))
             reactor = self.printer.get_reactor()

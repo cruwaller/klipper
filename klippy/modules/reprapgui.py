@@ -722,8 +722,8 @@ class RepRapGuiModule(object):
         if not os.path.exists(os.path.join(htmlroot, 'reprap.htm')):
             raise printer.config_error("DuetWebControl files not found '%s'" % htmlroot)
         self.logger.debug("html root: %s" % (htmlroot,))
-        self.user = config.get('user')
-        self.passwd = config.get('password')
+        self.user = config.get('user', '')
+        self.passwd = config.get('password', '')
         # Camera information
         self.feed_interval = config.getfloat('feedrate', minval=.0, default=.1)
         self.camera = printer.try_load_module(

@@ -249,6 +249,7 @@ class ToolHead:
         self.flush_timer = self.reactor.register_timer(self._flush_handler)
         self.move_queue.set_flush_time(self.buffer_time_high)
         self.printer.try_load_module(config, "idle_timeout")
+        self.printer.try_load_module(config, "statistics")
         # Setup iterative solver
         ffi_main, ffi_lib = chelper.get_ffi()
         self.cmove = ffi_main.gc(ffi_lib.move_alloc(), ffi_lib.free)
@@ -426,9 +427,9 @@ class ToolHead:
     def motor_heater_off(self):
         self.motor_off()
         print_time = self.get_last_move_time()
-        for h in self.printer.lookup_module_objects("heater"):
+        for n, h in self.printer.lookup_objects("heater"):
             h.set_temp(print_time, 0.0)
-        for fan in self.printer.lookup_module_objects('fan'):
+        for n, fan in self.printer.lookup_objects('fan'):
             fan.set_speed(print_time, 0.0)
     def motor_off(self):
         self.dwell(STALL_TIME)

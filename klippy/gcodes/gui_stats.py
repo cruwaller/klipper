@@ -169,10 +169,10 @@ class GuiStats:
         }
         curr_extruder = toolhead.get_extruder()
         curr_pos = toolhead.get_position()
-        fans     = [ fan.last_fan_value * 100.0 for fan in
-                     self.printer.lookup_module_objects("fan") ]
+        fans     = [ fan.last_fan_value * 100.0 for n, fan in
+                     self.printer.lookup_objects("fan") ]
         heatbed  = self.printer.lookup_object('heater bed', None)
-        _heaters = self.printer.lookup_module_objects("heater")
+        _heaters = [h for n,h in self.printer.lookup_objects("heater")]
         total_htrs = len(_heaters)
         _extrs   = self.printer.extruder_get()
 
@@ -201,11 +201,11 @@ class GuiStats:
             "temps": {}
         }
 
-        bed_tilt = self.printer.lookup_object('bed_tilt', default=None)
-        if bed_tilt:
-            probe_x, probe_y, probeValue = bed_tilt.get_adjust()
-            status_block['sensors']['probeValue'] = probeValue
-            status_block['sensors']['probeSecondary'] = [probe_x, probe_y]
+        #bed_tilt = self.printer.lookup_object('bed_tilt', default=None)
+        #if bed_tilt:
+        #    probe_x, probe_y, probeValue = bed_tilt.get_adjust()
+        #    status_block['sensors']['probeValue'] = probeValue
+        #    status_block['sensors']['probeSecondary'] = [probe_x, probe_y]
 
         if heatbed is not None:
             heatbed_status = heatbed.get_status(0)

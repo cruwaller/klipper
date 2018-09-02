@@ -51,12 +51,12 @@ class GenericGcode(object):
         if 'S' in params:
             temperature = self.gcode.get_int('S', params, -1)
         resp = []
-        for h in self.printer.lookup_module_objects("heater"):
+        for n, h in self.printer.lookup_objects("heater"):
             if "bed" not in h.name:
                 h.set_min_extrude_temp(temperature, disable)
                 status, temp = h.get_min_extrude_status()
-                resp.append("Heater '%s' cold extrude: %s, min temp %.2fC".
-                            format(h.name, status, temp))
+                resp.append("Heater '%s' cold extrude: %s, min temp %.2fC"
+                            % (h.name, status, temp))
         params['#input'].respond("\n".join(resp))
     def cmd_M301(self, params):
         # M301: Set PID parameters
@@ -74,7 +74,7 @@ class GenericGcode(object):
                     for a, p in self.axis2pos.items() if a in params }
         for p, offset in offsets.items():
             steppers[p].set_homing_offset(offset)
-        params['#input'].respond("Current offsets: X=%.2f Y=%.2f Z=%.2f" % \
+        params['#input'].respond("Current offsets: X=%.2f Y=%.2f Z=%.2f" %
                           (steppers[0].homing_offset,
                            steppers[1].homing_offset,
                            steppers[2].homing_offset))
