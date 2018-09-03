@@ -60,7 +60,7 @@ class SensorBase(object):
                     oid, spi_oid, VALID_SPI_SENSORS[chip_type]))
             mcu.register_msg(self._handle_thermocouple_result,
                 "thermocouple_result", oid)
-            mcu.add_config_object(self)
+            mcu.register_config_callback(self._build_config_cb)
         else:
             self.mcu = ppins.setup_pin('adc', sensor_pin)
             self.mcu.setup_minmax(
@@ -80,7 +80,7 @@ class SensorBase(object):
         self._callback = cb
     def get_report_delta(self):
         return self.report_time
-    def build_config(self):
+    def _build_config_cb(self):
         clock = self.mcu.get_query_slot(self.oid)
         self._report_clock = self.mcu.seconds_to_clock(self.report_time)
         self.mcu.add_config_cmd(

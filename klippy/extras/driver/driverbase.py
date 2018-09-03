@@ -65,7 +65,7 @@ class SpiDriver(DriverBase):
                 cs_pin_params['invert'], spi_mode, spi_speed))
         self._transfer = (lambda *args: 0)
         self.transfer_cmd = None
-        mcu.add_config_object(self)
+        mcu.register_config_callback(self._build_config_cb)
     # ============ SETUP ===============
     def printer_state(self, state):
         if state == 'shutdown':
@@ -77,7 +77,7 @@ class SpiDriver(DriverBase):
             pass
         elif state == 'disconnect':
             pass
-    def build_config(self):
+    def _build_config_cb(self):
         self.transfer_cmd = self.mcu.lookup_command(
             "spi_transfer oid=%c data=%*s")
         self._transfer = self.__transfer
