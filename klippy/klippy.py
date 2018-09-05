@@ -4,10 +4,9 @@
 # Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import sys, os, optparse, logging, time
-import collections, ConfigParser, importlib
+import sys, os, optparse, logging, time, collections, importlib
 import util, reactor, queuelogger, msgproto
-import gcode, pins, mcu, toolhead
+import gcode, configfile, pins, mcu, toolhead
 import hostcpu, gcodes
 
 # Include extras path to search dir
@@ -53,95 +52,8 @@ config, and restart the host software.
 Printer is shutdown
 """
 
-class ConfigWrapper:
-    error = ConfigParser.Error
-    class sentinel:
-        pass
-    def __init__(self, printer, fileconfig, access_tracking, section):
-        self.printer = printer
-        self.fileconfig = fileconfig
-        self.access_tracking = access_tracking
-        self.section = section
-    def get_printer(self):
-        return self.printer
-    def get_name(self):
-        return self.section
-    def _get_wrapper(self, parser, option, default,
-                     minval=None, maxval=None, above=None, below=None):
-        if (default is not self.sentinel
-            and not self.fileconfig.has_option(self.section, option)):
-            return default
-        self.access_tracking[(self.section.lower(), option.lower())] = 1
-        try:
-            v = parser(self.section, option)
-            if type(v) == str:
-                v = v.strip('"|\'')
-        except self.error as e:
-            raise
-        except:
-            raise self.error("Unable to parse option '%s' in section '%s'" % (
-                option, self.section))
-        if minval is not None and v < minval:
-            raise self.error(
-                "Option '%s' in section '%s' must have minimum of %s" % (
-                    option, self.section, minval))
-        if maxval is not None and v > maxval:
-            raise self.error(
-                "Option '%s' in section '%s' must have maximum of %s" % (
-                    option, self.section, maxval))
-        if above is not None and v <= above:
-            raise self.error(
-                "Option '%s' in section '%s' must be above %s" % (
-                    option, self.section, above))
-        if below is not None and v >= below:
-            raise self.error(
-                "Option '%s' in section '%s' must be below %s" % (
-                    option, self.section, below))
-        return v
-    def get(self, option, default=sentinel):
-        return self._get_wrapper(self.fileconfig.get, option, default)
-    def getint(self, option, default=sentinel,
-               minval=None, maxval=None, above=None, below=None):
-        return self._get_wrapper(self.fileconfig.getint, option, default,
-                                 minval, maxval, above, below)
-    def getfloat(self, option, default=sentinel,
-                 minval=None, maxval=None, above=None, below=None):
-        return self._get_wrapper(self.fileconfig.getfloat, option, default,
-                                 minval, maxval, above, below)
-    def getboolean(self, option, default=sentinel):
-        return self._get_wrapper(self.fileconfig.getboolean, option, default)
-    def getchoice(self, option, choices, default=sentinel):
-        c = self.get(option, default)
-        if c not in choices:
-            raise self.error(
-                "Choice '%s' for option '%s' in section '%s'"
-                " is not a valid choice" % (c, option, self.section))
-        if type(choices) == list:
-            return c
-        return choices[c] # dict
-    def getsection(self, section):
-        return ConfigWrapper(self.printer, self.fileconfig,
-                             self.access_tracking, section)
-    def has_section(self, section):
-        return self.fileconfig.has_section(section)
-    def get_prefix_sections(self, prefix):
-        return [self.getsection(s) for s in self.fileconfig.sections()
-                if s.startswith(prefix)]
-
-class ConfigLogger():
-    def __init__(self, cfg, bglogger):
-        self.logger = logging.getLogger('config')
-        self.lines = ["===== Config file ====="]
-        cfg.write(self)
-        self.lines.append("=======================")
-        data = "\n".join(self.lines)
-        self.logger.info(data)
-        bglogger.set_rollover_info("config", data)
-    def write(self, data):
-        self.lines.append(data.strip())
-
 class Printer:
-    config_error = ConfigParser.Error
+    config_error = configfile.error
     def __init__(self, input_fd, bglogger, start_args):
         self.logger = logging.getLogger('printer')
         self.bglogger = bglogger
@@ -172,12 +84,11 @@ class Printer:
         if extr.index in extruders:
             raise self.config_error("Extruders cannot have same index!")
         extruders[extr.index] = extr
-    def extruder_get(self, index=None,
-                     default=ConfigWrapper.sentinel):
+    def extruder_get(self, index=None, default=sentinel):
         extruders = self._extruders
         if index is None:
             return dict(extruders)
-        if default is ConfigWrapper.sentinel:
+        if default is self.sentinel:
             return extruders.get(index)
         return extruders.get(index, default)
     def _set_state(self, msg):
@@ -193,10 +104,10 @@ class Printer:
             raise self.config_error(
                 "Printer object '%s' already created" % (name,))
         self.objects[name] = obj
-    def lookup_object(self, name, default=ConfigWrapper.sentinel):
+    def lookup_object(self, name, default=configfile.sentinel):
         if name in self.objects:
             return self.objects[name]
-        if default is ConfigWrapper.sentinel:
+        if default is configfile.sentinel:
             raise self.config_error("Unknown config object '%s'" % (name,))
         return default
     def lookup_objects(self, module=None):
@@ -246,23 +157,17 @@ class Printer:
             if init_func is not None:
                 init_func(self, config)
     def _read_config(self):
-        fileconfig = ConfigParser.RawConfigParser()
-        config_file = self.start_args['config_file']
-        res = fileconfig.read(config_file)
-        if not res:
-            raise self.config_error("Unable to open config file %s" % (
-                config_file,))
+        self.objects['configfile'] = pconfig = configfile.PrinterConfig(self)
+        config = pconfig.read_main_config()
         if self.bglogger is not None:
-            ConfigLogger(fileconfig, self.bglogger)
+            pconfig.log_config(config)
+        self._extruders = {}
+        all_sections = config.get_prefix_sections('')
         # Create printer components
-        access_tracking = {}
-        config = ConfigWrapper(self, fileconfig, access_tracking, 'printer')
-        # Read config
         for m in [pins, mcu, hostcpu]:
             m.add_printer_objects(config)
-        for section in fileconfig.sections():
-            self.try_load_module(config, section)
-        self._extruders = {}
+        for section_config in all_sections:
+            self.try_load_module(config, section_config.get_name())
         for m in [toolhead]:
             m.add_printer_objects(config)
 
@@ -270,25 +175,12 @@ class Printer:
         gcodes.load_gcodes(config)
         # Load 'auto' modules
         self._try_load_extensions('modules', 'load_module', config)
-        for section in fileconfig.sections():
-            self.try_load_module(config, section, folder="modules")
-        for section in fileconfig.sections():
-            self.try_load_module(config, section, folder="modules_host")
-        '''
+        for section in all_sections:
+            self.try_load_module(config, section.get_name(), folder="modules")
+        for section in all_sections:
+            self.try_load_module(config, section.get_name(), folder="modules_host")
         # Validate that there are no undefined parameters in the config file
-        valid_sections = { s: 1 for s, o in access_tracking }
-        for section_name in fileconfig.sections():
-            section = section_name.lower()
-            if section not in valid_sections and section not in self.objects:
-                raise self.config_error(
-                    "Section '%s' is not a valid config section" % (section,))
-            for option in fileconfig.options(section_name):
-                option = option.lower()
-                if (section, option) not in access_tracking:
-                    raise self.config_error(
-                        "Option '%s' is not valid in section '%s'" % (
-                            option, section))
-        '''
+        # pconfig.check_unused_options(config)
         # Determine which printer objects have state callbacks
         self.state_cb = [o.printer_state for o in self.objects.values()
                          if hasattr(o, 'printer_state')]
