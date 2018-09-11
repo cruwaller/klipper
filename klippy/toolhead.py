@@ -250,22 +250,23 @@ class ToolHead:
                     'delta': delta.DeltaKinematics}
         self.kin = config.getchoice('kinematics', kintypes)(self, config)
         # Pause/Idle position
-        self.idle_position = idle_position = config.get('idle_position', default='')
-        if not idle_position:
+        self.idle_position = idle_position = \
+            config.get('idle_position', default=None)
+        if idle_position is None:
             idle_x = config.getfloat("idle_position_x", default=.0)
             idle_y = config.getfloat("idle_position_y", default=.0)
             idle_z_lift = config.getfloat("idle_position_z_lift", default=.4)
-            idle_travel_s = config.getint("idle_position_travel_speed", default=6000)
+            idle_travel_s = min(60. * self.config_max_velocity,
+                                config.getint("idle_position_travel_speed", default=6000))
             moves = []
             if idle_z_lift:
-                moves.append("G1 Z%s F%s" % (idle_z_lift, idle_travel_s))
+                moves.append("G91\nG1 Z%s F%s\nG90" % (idle_z_lift, idle_travel_s))
             moves.append("G1 X%s Y%s F%s" % (idle_x, idle_y, idle_travel_s))
             self.idle_position = "\n".join(moves)
             self.logger.info("Idle position: X:%s Y:%s Zlift:%s" % (
                 idle_x, idle_y, idle_z_lift))
-        else:
-            self.logger.info("Idle position script: '%s'" %
-                self.idle_position.replace("\n", ", "))
+        self.logger.info("Idle position command: '%s'" %
+            self.idle_position.replace("\n", ", "))
         # SET_VELOCITY_LIMIT command
         gcode = self.printer.lookup_object('gcode')
         gcode.register_command('SET_VELOCITY_LIMIT', self.cmd_SET_VELOCITY_LIMIT,

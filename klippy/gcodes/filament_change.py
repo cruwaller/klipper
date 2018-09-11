@@ -96,6 +96,7 @@ class GCodeFilamentPause(object):
         if self.script_load:
             gcode.run_script_from_command(self.script_load)
         else:
+            gcode.run_script_from_command("G90")
             # Load filament
             gcode.run_script_from_command('G92 E0\nG1 E%s F%u' % (
                 self.len_unload, self.load_speed))
