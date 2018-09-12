@@ -99,6 +99,7 @@ class SelectReactor:
     NOW = 0.
     NEVER = 9999999999999999.
     def __init__(self):
+        self.logger = logging.getLogger("reactor")
         # Main code
         self._process = False
         self.monotonic = chelper.get_ffi()[1].get_monotonic
@@ -157,7 +158,7 @@ class SelectReactor:
             os.write(self._pipe_fds[1], '.')
         except os.error:
             pass
-    def _got_pipe_signal(self, eventtime):
+    def _got_pipe_signal(self, eventtime, handler=None):
         try:
             os.read(self._pipe_fds[0], 4096)
         except os.error:
