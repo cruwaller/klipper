@@ -36,6 +36,7 @@ class PIDCalibrate:
             raise self.gcode.error("Error: Heater not found! Check heater name and try again")
         self.__start(params, tgt_heater, target, write_file=write_file, count=count)
     def __start(self, params, tgt_heater, target, write_file=False, count=12):
+        heater_name = tgt_heater.get_name()
         print_time = self.printer.lookup_object('toolhead').get_last_move_time()
         calibrate = ControlAutoTune(tgt_heater, self.logger, count)
         old_control = tgt_heater.set_control(calibrate)
@@ -48,17 +49,19 @@ class PIDCalibrate:
         tgt_heater.set_control(old_control)
         if write_file:
             calibrate.write_file('/tmp/heattest.txt')
-        try:
-            Kp, Ki, Kd = calibrate.calc_final_pid()
-        except Exception:
-            raise self.gcode.error("Error during calibrarion.")
+        # Log and report results
+        Kp, Ki, Kd = calibrate.calc_final_pid()
         self.logger.info("Autotune: final: Kp=%f Ki=%f Kd=%f", Kp, Ki, Kd)
         params['#input'].respond_info(
             "PID parameters: pid_Kp=%.3f pid_Ki=%.3f pid_Kd=%.3f\n"
-            "To use these parameters, update the printer config file with\n"
-            "the above and then issue a RESTART command.\n"
-            "Or use SET_PID_PARAMS HEATER=%s P=%.3f I=%.3f D=%.3f to test values." % (
-                Kp, Ki, Kd, tgt_heater.index, Kp, Ki, Kd))
+            "The SAVE_CONFIG command will update the printer config file\n"
+            "with these parameters and restart the printer." % (Kp, Ki, Kd))
+        # Store results for SAVE_CONFIG
+        configfile = self.printer.lookup_object('configfile')
+        configfile.set(heater_name, 'control', 'pid')
+        configfile.set(heater_name, 'pid_Kp', "%.3f" % (Kp,))
+        configfile.set(heater_name, 'pid_Ki', "%.3f" % (Ki,))
+        configfile.set(heater_name, 'pid_Kd', "%.3f" % (Kd,))
     def cmd_M303(self, params):
         # Run PID tuning (M303 E<-1 or 0...> S<temp> C<count> W<write_file>)
         tgt_heater = None

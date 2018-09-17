@@ -22,7 +22,10 @@ class error(Exception):
 
 class PrinterHeater:
     error = error
-
+    def get_name(self):
+        return self.name
+    def get_index(self):
+        return self.index
     def __init__(self, config):
         self.printer = printer = config.get_printer()
         self.gcode = gcode = printer.lookup_object('gcode')
