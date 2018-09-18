@@ -296,6 +296,9 @@ class ToolHead:
                                desc=self.cmd_SET_VELOCITY_LIMIT_help)
         gcode.register_command('IDLE_POSITION', self.move_to_idle_pos,
                                desc="Move head to defined idle position")
+        # Register TURN_OFF_HEATERS command
+        gcode.register_command("TURN_OFF_HEATERS", self.cmd_TURN_OFF_HEATERS,
+                               desc=self.cmd_TURN_OFF_HEATERS_help)
         # gcode.register_command('M204', self.cmd_M204)
         self.logger.info("Kinematic created: %s" % self.kin.name)
         self.logger.info("max_accel: %s" % (self.max_accel,))
@@ -553,6 +556,12 @@ class ToolHead:
             accel = gcode.get_float('S', params, above=0.)
         self.max_accel = min(accel, self.config_max_accel)
         self._calc_junction_deviation()
+    cmd_TURN_OFF_HEATERS_help = "Turn off all heaters"
+    def cmd_TURN_OFF_HEATERS(self, params):
+        print_time = self.printer.lookup_object('toolhead').get_last_move_time()
+        for n, h in self.printer.lookup_objects("heater"):
+            h.set_temp(print_time, 0.0)
+
 
 def add_printer_objects(config):
     config.get_printer().add_object('toolhead', ToolHead(config))
