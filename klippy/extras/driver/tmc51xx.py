@@ -8,7 +8,7 @@ import types, struct
 import binascii
 from driverbase import SpiDriver
 from mcu import error
-import chelper
+import chelper, pins
 
 #***************************************************
 # Registers
@@ -109,14 +109,15 @@ class TMC51xx(SpiDriver):
 
     def __init__(self, config):
         self.printer = printer = config.get_printer()
+        # init local variables
         self.__ramp_mode = 0
         self._endstop_config = None
         self._commanded_pos = self._mcu_position_offset = 0.
         self._direction = self._homing_speed = 0
         self._last_state = {}
+        self._home_cmd = None
         # init
         SpiDriver.__init__(self, config, has_step_dir_pins=False, has_endstop=True)
-        self._home_cmd = None
         self._stepper_oid = stepper_oid = self.mcu.create_oid()
         self.mcu.add_config_cmd(
             "stepper_tmc5x_config oid=%u spi_oid=%u" % (stepper_oid, self._oid,))
@@ -126,11 +127,14 @@ class TMC51xx(SpiDriver):
         self._stepqueue = ffi_main.gc(self._ffi_lib.stepcompress_alloc(stepper_oid),
                                       self._ffi_lib.stepcompress_free)
         self.mcu.register_stepqueue(self._stepqueue)
+        # configure pins
+        ppins = printer.lookup_object('pins')
         self.enable = enable_pin = config.get('enable_pin', None)
         if enable_pin is not None:
-            ppins = printer.lookup_object('pins')
             self.enable = ppins.setup_pin('digital_out', enable_pin)
             self.enable.setup_max_duration(0.)
+        # register driver as a virtual endstop
+        ppins.register_chip('driver', self)
         # Driver configuration
         self._invert_dir = config.getboolean('direction_inverted', False)
         self._endstop_logic = config.getboolean('endstop_inverted', False)
@@ -173,6 +177,9 @@ class TMC51xx(SpiDriver):
         mode = { "spreadCycle" : False, "stealthChop" : True }
         self.silent_mode = config.getchoice('mode', mode, default='stealthChop')
         self._direction = config.getboolean('dir_invert', default=False)
+        # local inits
+        self.set_ignore_move(False)
+        self.set_homing_dir()
         # register command handlers
         self.gcode = gcode = printer.lookup_object('gcode')
         cmds = ["DRV_STATUS", "DRV_CURRENT", "DRV_STALLGUARD"]
@@ -181,7 +188,11 @@ class TMC51xx(SpiDriver):
                 cmd, "DRIVER", self.name,
                 getattr(self, 'cmd_' + cmd),
                 desc=getattr(self, 'cmd_' + cmd + '_help', None))
-        self.set_ignore_move(False)
+    def setup_pin(self, pin_type, pin_params):
+        if pin_type != 'endstop' or pin_params['pin'] != 'virtual':
+            raise pins.error("Probe virtual endstop only useful as endstop pin")
+        return self
+    # === GCode handlers ===
     cmd_DRV_STATUS_help = "args: DRIVER=driver_name"
     def cmd_DRV_STATUS(self, params):
         params['#input'].respond(self.status())
@@ -205,7 +216,7 @@ class TMC51xx(SpiDriver):
     def cmd_DRV_STALLGUARD(self, params):
         sg = self.gcode.get_float('SG', params, default=None)
         params['#input'].respond(self.set_stallguard(sg))
-
+    # === Internal classes ===
     speed_factor = accel_factor = accel_factor_t = 0.
     def _build_config(self):
         self.mcu.add_config_cmd(
@@ -233,8 +244,8 @@ class TMC51xx(SpiDriver):
     #**************************************************************************
 
     # ============ HOMING ===============
-    def set_homing_speed(self, speed):
-        self._homing_speed = speed
+    #def set_homing_speed(self, speed):
+    #    self._homing_speed = speed
     def set_homing_dir(self, homedir="min"):
         # TODO: Is it ok to set endstop settings once during init??
         # FIXME : Change to commands
@@ -245,10 +256,15 @@ class TMC51xx(SpiDriver):
         self._endstop_config |= 0x0C if not self._endstop_logic else 0x00
         self.logger.info("Homing direction '%s' , inverted %s" % (
             homedir, self._endstop_logic))
+    def add_stepper(self, stepper):
+        # Just pass to make code more common
+        pass
     def get_steppers(self):
         return [self]
-    def home_prepare(self):
-        self.logger.info("----- HOME INIT -----")
+    def home_prepare(self, speed, dir):
+        self.logger.info("----- HOME INIT ----- speed: %s, dir: %s" % (speed, dir))
+        self.set_homing_dir(['min', 'max'][dir])
+        self._homing_speed = speed
         # Init homing here!
         self.set_ignore_move(True)
         if self.sensor_less_homing:

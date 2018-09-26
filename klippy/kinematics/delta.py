@@ -112,7 +112,8 @@ class DeltaKinematics:
         coord = list(homepos)
         coord[2] = -1.5 * math.sqrt(max(self.arm2)-self.max_xy2)
         homing_state.home(coord, homepos, endstops, homing_speed,
-                          init_sensor=hi.init_home_funcs)
+                          init_sensor=hi.init_home_funcs,
+                          dir=hi.positive_dir)
         # Retract
         coord[2] = homepos[2] - hi.retract_dist
         homing_state.retract(coord, homing_speed)
@@ -120,7 +121,8 @@ class DeltaKinematics:
         coord[2] -= hi.retract_dist
         homing_state.home(coord, homepos, endstops,
                           hi.speed_slow, second_home=True,
-                          init_sensor=hi.init_home_funcs)
+                          init_sensor=hi.init_home_funcs,
+                          dir=hi.positive_dir)
         # Set final homed position
         spos = [ep + rail.get_homed_offset()
                 for ep, rail in zip(self.abs_endstops, self.rails)]

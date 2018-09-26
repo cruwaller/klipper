@@ -94,7 +94,8 @@ class CoreXYKinematics:
             else:
                 endstops = rail.get_endstops()
             homing_state.home(coord, homepos, endstops, homing_speed,
-                              init_sensor=hi.init_home_funcs)
+                              init_sensor=hi.init_home_funcs,
+                              dir=hi.positive_dir)
             # Retract
             coord[axis] = rpos
             homing_state.retract(coord, homing_speed)
@@ -102,7 +103,8 @@ class CoreXYKinematics:
             coord[axis] = r2pos
             homing_state.home(coord, homepos, endstops,
                               hi.speed_slow, second_home=True,
-                              init_sensor=hi.init_home_funcs)
+                              init_sensor=hi.init_home_funcs,
+                              dir=hi.positive_dir)
             if axis == 2:
                 # Support endstop phase detection on Z axis
                 coord[axis] = hi.position_endstop + rail.get_homed_offset()

@@ -179,7 +179,7 @@ class MCU_endstop:
                                                    cq=cmd_queue)
         self._mcu.register_msg(self._handle_end_stop_state, "end_stop_state"
                                , self._oid)
-    def home_prepare(self):
+    def home_prepare(self, *args):
         pass
     def home_start(self, print_time, sample_time, sample_count, rest_time):
         clock = self._mcu.print_time_to_clock(print_time)

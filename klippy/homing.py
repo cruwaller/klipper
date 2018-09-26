@@ -4,6 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math
+import logging
 
 HOMING_STEP_DELAY = 0.00000025
 ENDSTOP_SAMPLE_TIME = .000015
@@ -11,6 +12,7 @@ ENDSTOP_SAMPLE_COUNT = 4
 
 class Homing:
     def __init__(self, toolhead):
+        self.logger = logging.getLogger('homing')
         self.toolhead = toolhead
         self.changed_axes = []
         self.verify_retract = True
@@ -89,7 +91,8 @@ class Homing:
         mcu_probe.home_prepare()
         self._homing_move(movepos, [(mcu_probe, "probe")], speed,
                           probe_pos=True, verify_movement=True)
-    def home(self, forcepos, movepos, endstops, speed, second_home=False, init_sensor=[]):
+    def home(self, forcepos, movepos, endstops, speed, second_home=False,
+             init_sensor=[], dir=False):
         if second_home and forcepos == movepos:
             return
         # Alter kinematics class to think printer is at forcepos
@@ -98,7 +101,7 @@ class Homing:
             self._fill_coord(forcepos), homing_axes=homing_axes)
         # Notify endstops of upcoming home
         for mcu_endstop, name in endstops:
-            mcu_endstop.home_prepare()
+            mcu_endstop.home_prepare(speed, dir)
         for sensor_func in init_sensor:
             if sensor_func is not None:
                 sensor_func(enable=True)
