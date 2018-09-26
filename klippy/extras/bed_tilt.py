@@ -58,7 +58,7 @@ class BedTiltCalibrate:
     def cmd_BED_TILT_CALIBRATE(self, params):
         self.sender = params["#input"]
         self.gcode.run_script_from_command("G28")
-        self.probe_helper.start_probe()
+        self.probe_helper.start_probe(params)
     def probe_finalize(self, offsets, positions):
         z_offset = offsets[2]
         logging.info("Calculating bed_tilt with: %s", positions)

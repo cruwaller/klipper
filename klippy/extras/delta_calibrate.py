@@ -278,7 +278,7 @@ class DeltaCalibrate:
     def cmd_DELTA_CALIBRATE(self, params):
         self.sender = params["#input"]
         self.gcode.run_script_from_command("G28")
-        self.probe_helper.start_probe()
+        self.probe_helper.start_probe(params)
     def do_extended_calibration(self):
         # Extract distance positions
         if len(self.delta_analyze_entry) <= 1:
