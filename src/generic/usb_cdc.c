@@ -355,7 +355,8 @@ usb_do_xfer(void *data, uint_fast8_t size, uint_fast8_t flags)
 static void
 usb_req_get_descriptor(struct usb_ctrlrequest *req)
 {
-    // XXX - validate req
+    if (req->bRequestType != USB_DIR_IN)
+        goto fail;
     uint_fast8_t i;
     for (i=0; i<ARRAY_SIZE(cdc_descriptors); i++) {
         const struct descriptor_s *d = &cdc_descriptors[i];
@@ -371,19 +372,27 @@ usb_req_get_descriptor(struct usb_ctrlrequest *req)
             return;
         }
     }
+fail:
     usb_do_stall();
 }
 
 static void
 usb_req_set_address(struct usb_ctrlrequest *req)
 {
+    if (req->bRequestType || req->wIndex || req->wLength) {
+        usb_do_stall();
+        return;
+    }
     usb_set_address(req->wValue);
 }
 
 static void
 usb_req_set_configuration(struct usb_ctrlrequest *req)
 {
-    (void)req;
+    if (req->bRequestType || req->wValue != 1 || req->wIndex || req->wLength) {
+        usb_do_stall();
+        return;
+    }
     usb_set_configure();
     usb_notify_bulk_in();
     usb_do_xfer(NULL, 0, UX_SEND);
@@ -394,38 +403,33 @@ static struct usb_cdc_line_coding line_coding;
 static void
 usb_req_set_line_coding(struct usb_ctrlrequest *req)
 {
-<<<<<<< HEAD
-    (void)req;
-    usb_state = US_READ;
-    usb_xfer = &line_coding;
-    usb_xfer_size = sizeof(line_coding);
-=======
+    if (req->bRequestType != 0x21 || req->wValue || req->wIndex
+        || req->wLength != sizeof(line_coding)) {
+        usb_do_stall();
+        return;
+    }
     usb_do_xfer(&line_coding, sizeof(line_coding), UX_READ);
->>>>>>> be1effe... usb_cdc: Rework transfer state tracking code
 }
 
 static void
 usb_req_get_line_coding(struct usb_ctrlrequest *req)
 {
-<<<<<<< HEAD
-    (void)req;
-    usb_state = US_SEND;
-    usb_xfer = &line_coding;
-    usb_xfer_size = sizeof(line_coding);
-=======
+    if (req->bRequestType != 0xa1 || req->wValue || req->wIndex
+        || req->wLength < sizeof(line_coding)) {
+        usb_do_stall();
+        return;
+    }
     usb_do_xfer(&line_coding, sizeof(line_coding), UX_SEND);
->>>>>>> be1effe... usb_cdc: Rework transfer state tracking code
 }
 
 static void
 usb_req_set_line(struct usb_ctrlrequest *req)
 {
-<<<<<<< HEAD
-    (void)req;
-    usb_send_ep0(NULL, 0);
-=======
+    if (req->bRequestType != 0x21 || req->wIndex || req->wLength) {
+        usb_do_stall();
+        return;
+    }
     usb_do_xfer(NULL, 0, UX_SEND);
->>>>>>> be1effe... usb_cdc: Rework transfer state tracking code
 }
 
 static void
