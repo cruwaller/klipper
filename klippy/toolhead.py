@@ -216,7 +216,9 @@ class ToolHead:
             , above=0., maxval=self.max_accel)
         if max_accel_to_decel is None:
             max_accel_to_decel = self.max_accel * self.max_accel_to_decel_ratio
-        self.max_accel_to_decel = min(max_accel_to_decel, self.max_accel)
+        #self.max_accel_to_decel = min(max_accel_to_decel, self.max_accel)
+        self.requested_accel_to_decel = max_accel_to_decel
+        self.max_accel_to_decel = self.requested_accel_to_decel
         self.square_corner_velocity = config.getfloat(
             'square_corner_velocity', 5., minval=0.)
         self.config_max_velocity = self.max_velocity
@@ -507,6 +509,8 @@ class ToolHead:
     def _calc_junction_deviation(self):
         scv2 = self.square_corner_velocity**2
         self.junction_deviation = scv2 * (math.sqrt(2.) - 1.) / self.max_accel
+        self.max_accel_to_decel = min(self.requested_accel_to_decel,
+                                      self.max_accel)
     cmd_SET_VELOCITY_LIMIT_help = "Set printer velocity limits. " \
                                   "Args: [VELOCITY=] [ACCEL=] [SQUARE_CORNER_VELOCITY=]" \
                                   " [ACCEL_TO_DECEL=] [ACCEL_TO_DECEL_RATIO=]"
@@ -528,10 +532,9 @@ class ToolHead:
             'ACCEL_TO_DECEL_RATIO', params,
             self.max_accel_to_decel_ratio, above=0.)
         if max_accel_to_decel is None:
-            max_accel_to_decel = max_accel * self.max_accel_to_decel_ratio
+            self.requested_accel_to_decel = max_accel * self.max_accel_to_decel_ratio
         self.max_velocity = max_velocity
         self.max_accel = max_accel
-        self.max_accel_to_decel = min(max_accel_to_decel, max_accel)
         self.square_corner_velocity = square_corner_velocity
         self._calc_junction_deviation()
         msg = ("max_velocity: %.6f\n"
