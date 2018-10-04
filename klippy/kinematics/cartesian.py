@@ -77,6 +77,7 @@ class CartKinematics:
             r2pos = rpos + hi.retract_dist
         # Initial homing
         homing_speed = hi.speed
+        second_homing_speed = hi.second_homing_speed
         if axis == 2:
             homing_speed = min(homing_speed, self.max_z_velocity)
         homepos = [None, None, None, None]
@@ -90,11 +91,11 @@ class CartKinematics:
                           dir=hi.positive_dir)
         # Retract
         coord[axis] = rpos
-        homing_state.retract(coord, homing_speed)
+        homing_state.retract(coord, homing_speed) #second_homing_speed)
         # Home again
         coord[axis] = r2pos
         homing_state.home(coord, homepos, rail.get_endstops(),
-                          hi.speed_slow, second_home=True,
+                          second_homing_speed, second_home=True,
                           init_sensor=hi.init_home_funcs,
                           dir=hi.positive_dir)
         # Set final homed position

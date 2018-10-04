@@ -108,6 +108,7 @@ class DeltaKinematics:
         # Initial homing - assume homing speed same for all steppers
         hi = self.rails[0].get_homing_info()
         homing_speed = min(hi.speed, self.max_z_velocity)
+        second_homing_speed = min(hi.second_homing_speed, self.max_z_velocity)
         homepos = [0., 0., self.max_z, None]
         coord = list(homepos)
         coord[2] = -1.5 * math.sqrt(max(self.arm2)-self.max_xy2)
@@ -116,11 +117,11 @@ class DeltaKinematics:
                           dir=hi.positive_dir)
         # Retract
         coord[2] = homepos[2] - hi.retract_dist
-        homing_state.retract(coord, homing_speed)
+        homing_state.retract(coord, homing_speed) #second_homing_speed)
         # Home again
         coord[2] -= hi.retract_dist
         homing_state.home(coord, homepos, endstops,
-                          hi.speed_slow, second_home=True,
+                          second_homing_speed, second_home=True,
                           init_sensor=hi.init_home_funcs,
                           dir=hi.positive_dir)
         # Set final homed position

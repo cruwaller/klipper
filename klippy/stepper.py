@@ -218,6 +218,8 @@ class PrinterRail:
         # Homing mechanics
         self.homing_slowdown = config.getfloat('homing_slowdown', 5.0)
         self.homing_speed = config.getfloat('homing_speed', 5.0, above=0.)
+        self.second_homing_speed = config.getfloat(
+            'second_homing_speed', self.homing_speed/self.homing_slowdown, above=0.)
         self.homing_retract_dist = config.getfloat(
             'homing_retract_dist', 5., minval=0.)
         self.homing_positive_dir = config.getboolean(
@@ -325,12 +327,11 @@ class PrinterRail:
         return self.position_min, self.position_max
     def get_homing_info(self):
         homing_info = collections.namedtuple('homing_info', [
-            'speed', 'position_endstop', 'retract_dist', 'positive_dir',
-            'speed_slow', 'homing_pos', 'travel_speed',
+            'speed', 'position_endstop', 'retract_dist', 'positive_dir', 'second_homing_speed',
+            'homing_pos', 'travel_speed',
             'retract_after_home', 'init_home_funcs'])(
                 self.homing_speed, self.position_endstop,
-                self.homing_retract_dist, self.homing_positive_dir,
-                (self.homing_speed / self.homing_slowdown),
+                self.homing_retract_dist, self.homing_positive_dir, self.second_homing_speed,
                 [self.homing_pos_x, self.homing_pos_y, None, None],
                 self.homing_travel_speed,
                 self.retract_after_home,
