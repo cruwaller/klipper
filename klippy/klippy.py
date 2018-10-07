@@ -66,6 +66,7 @@ class Printer:
         self.is_shutdown = False
         self.run_result = None
         self.state_cb = [gc.printer_state]
+        self.event_handlers = {}
         self._extruders = {}
     class sentinel:
         pass
@@ -242,6 +243,10 @@ class Printer:
     def invoke_async_shutdown(self, msg):
         self.reactor.register_async_callback(
             (lambda e: self.invoke_shutdown(msg)))
+    def register_event_handler(self, event, callback):
+        self.event_handlers.setdefault(event, []).append(callback)
+    def send_event(self, event, *params):
+        return [cb(*params) for cb in self.event_handlers.get(event, [])]
     def request_exit(self, result):
         self.run_result = result
         self.reactor.end()
