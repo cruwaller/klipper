@@ -80,6 +80,7 @@ class CartKinematics:
         second_homing_speed = hi.second_homing_speed
         if axis == 2:
             homing_speed = min(homing_speed, self.max_z_velocity)
+            second_homing_speed = min(second_homing_speed, self.max_z_velocity)
         homepos = [None, None, None, None]
         # Set Z homing position if defined
         homing_state.retract(hi.homing_pos, hi.travel_speed)
