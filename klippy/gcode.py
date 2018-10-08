@@ -594,7 +594,7 @@ class GCodeParser:
                 axes.append(self.axis2pos[axis])
         if not axes:
             axes = [self.axis2pos[axis] for axis in homing_order]
-        homing_state = homing.Homing(self.toolhead)
+        homing_state = homing.Homing(self.printer)
         if self.is_fileinput:
             homing_state.set_no_verify_retract()
         try:

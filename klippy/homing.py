@@ -11,9 +11,10 @@ ENDSTOP_SAMPLE_TIME = .000015
 ENDSTOP_SAMPLE_COUNT = 4
 
 class Homing:
-    def __init__(self, toolhead):
+    def __init__(self, printer):
         self.logger = logging.getLogger('homing')
-        self.toolhead = toolhead
+        self.printer = printer
+        self.toolhead = printer.lookup_object('toolhead')
         self.changed_axes = []
         self.verify_retract = True
     def set_no_verify_retract(self):
