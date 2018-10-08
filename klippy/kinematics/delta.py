@@ -117,7 +117,7 @@ class DeltaKinematics:
                           dir=hi.positive_dir)
         # Retract
         coord[2] = homepos[2] - hi.retract_dist
-        homing_state.retract(coord, homing_speed) #second_homing_speed)
+        homing_state.retract(coord, homing_speed)
         # Home again
         coord[2] -= hi.retract_dist
         homing_state.home(coord, homepos, endstops,

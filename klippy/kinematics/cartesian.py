@@ -92,7 +92,7 @@ class CartKinematics:
                           dir=hi.positive_dir)
         # Retract
         coord[axis] = rpos
-        homing_state.retract(coord, homing_speed) #second_homing_speed)
+        homing_state.retract(coord, homing_speed)
         # Home again
         coord[axis] = r2pos
         homing_state.home(coord, homepos, rail.get_endstops(),
