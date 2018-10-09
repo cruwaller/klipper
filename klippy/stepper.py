@@ -155,7 +155,11 @@ class PrinterStepper:
     def get_driver(self):
         return self.driver
     def has_driver_endstop(self):
-        return getattr(self.driver, "has_endstop", False)
+        return getattr(self.mcu_stepper, "has_endstop", False)
+    def set_homing_dir(self, homing_dir):
+        self.logger.debug("Homing dir: %s" % ['min', 'max'][homing_dir])
+        if hasattr(self.mcu_stepper, 'set_homing_dir'):
+            self.mcu_stepper.set_homing_dir(homing_dir)
 
 
 ######################################################################
@@ -174,6 +178,9 @@ class PrinterRail:
             False: 'endstop_min_pin',
             True: 'endstop_max_pin',
             None: 'endstop_pin'}[homing_dir]
+        if config.get(endstop_pin, default=None) is None:
+            endstop_pin = 'endstop_pin'
+            homing_dir = None
         return homing_dir, endstop_pin
     def __init__(self, config, need_position_minmax=True,
                  default_position_endstop=None):
@@ -275,21 +282,29 @@ class PrinterRail:
             if mcu_endstop.get_mcu().is_fileoutput():
                 self.homing_endstop_accuracy = self.homing_stepper_phases
         # Valid for CoreXY and Cartesian Z axis
-        if 'Z' in self.name.upper():
-            self.homing_pos_x = config.getfloat('homing_pos_x', default=None,
-                                                minval=self.position_min,
-                                                maxval=self.position_max)
-            self.homing_pos_y = config.getfloat('homing_pos_y', default=None,
-                                                minval=self.position_min,
-                                                maxval=self.position_max)
-        else:
-            # None for X and Y axis
-            self.homing_pos_x = None
-            self.homing_pos_y = None
-        self.homing_travel_speed = config.getfloat(
-            'homing_travel_speed', default=60, minval=0)
-        self.retract_after_home = config.getfloat(
-            'homing_retract_dist_after', 0., minval=0.)
+        self.homing_position = [None, None, None, None]
+        name_test = self.name[:1].upper()
+        if 'Z' in name_test:
+            self.homing_position[0] = config.getfloat(
+                'homing_pos_x', default=None,
+                minval=0.,
+                maxval=200.)
+            self.homing_position[1] = config.getfloat(
+                'homing_pos_y', default=None,
+                minval=0.,
+                maxval=200.)
+            # TODO: Add support for Z raise before homing!
+            self.homing_position[2] = config.getfloat(
+                'homing_z_raise', default=None,
+                minval=self.position_min,
+                maxval=self.position_max)
+        self.retract_after_home = self.homing_travel_speed = .0
+        if name_test in 'XYZ':
+            # Only for cartesian machines
+            self.homing_travel_speed = config.getfloat(
+                'homing_travel_speed', default=self.homing_speed, above=0)
+            self.retract_after_home = config.getfloat(
+                'homing_retract_dist_after', 0., minval=0.)
         # Homing offset will be substracted from homed position
         self.homing_offset = config.getfloat('homing_offset', None)
         if self.homing_offset is None:
@@ -302,6 +317,8 @@ class PrinterRail:
         if self.tune_after_homing is None:
             self.tune_after_homing = (config.getfloat('endstop_correction_steps', 0.) *
                                       stepper.get_step_dist())
+        # Set homing direction to stepper
+        stepper.set_homing_dir(self.homing_positive_dir)
     def get_tune_after_homing(self):
         return self.tune_after_homing
     def set_homing_offset(self, offset):
@@ -329,20 +346,20 @@ class PrinterRail:
         homing_info = collections.namedtuple('homing_info', [
             'speed', 'position_endstop', 'retract_dist', 'positive_dir',
             'second_homing_speed',
-            'homing_pos', 'travel_speed',
-            'retract_after_home', 'init_home_funcs'])(
+            'homing_pos', 'travel_speed', 'retract_after_home'])(
                 self.homing_speed, self.position_endstop,
                 self.homing_retract_dist, self.homing_positive_dir,
                 self.second_homing_speed,
-                [self.homing_pos_x, self.homing_pos_y, None, None],
-                self.homing_travel_speed,
-                self.retract_after_home,
-                [getattr(s.driver, 'init_home', None) for s in self.steppers])
+                self.homing_position,
+                self.homing_travel_speed, self.retract_after_home)
         return homing_info
     def get_steppers(self):
         return list(self.steppers)
     def get_endstops(self):
         return list(self.endstops)
+    def get_homing_init_func(self):
+        return [s.driver.init_homing for s in self.steppers
+                if hasattr(s.driver, 'init_homing')]
     def add_extra_stepper(self, config):
         stepper = PrinterStepper(config)
         self.steppers.append(stepper)
@@ -359,6 +376,8 @@ class PrinterRail:
             query_endstops = printer.try_load_module(config, 'query_endstops')
             query_endstops.register_endstop(mcu_endstop, name)
         stepper.add_to_endstop(mcu_endstop)
+        # Set homing direction to stepper
+        stepper.set_homing_dir(self.homing_positive_dir)
     def add_to_endstop(self, mcu_endstop):
         for stepper in self.steppers:
             stepper.add_to_endstop(mcu_endstop)

@@ -59,20 +59,22 @@ class MAX31865(SensorBase):
             self.fault("MAX31865 Overvoltage or undervoltage fault")
         if fault & 0x03:
             self.fault("MAX31865 Unspecified error")
+        rtd_nominal_r = self.rtd_nominal_r
         adc = adc >> 1 # remove fault bit
         R_rtd = (self.reference_r * adc) / VAL_ADC_MAX
         temp = (
-            (( ( -1 * self.rtd_nominal_r ) * VAL_A ) +
-             math.sqrt( ( self.rtd_nominal_r * self.rtd_nominal_r * VAL_A * VAL_A ) -
-                        ( 4 * self.rtd_nominal_r * VAL_B * ( self.rtd_nominal_r - R_rtd ) )))
-            / (2 * self.rtd_nominal_r * VAL_B))
+            (( ( -1 * rtd_nominal_r ) * VAL_A ) +
+             math.sqrt( ( rtd_nominal_r * rtd_nominal_r * VAL_A * VAL_A ) -
+                        ( 4 * rtd_nominal_r * VAL_B * ( rtd_nominal_r - R_rtd ) )))
+            / (2 * rtd_nominal_r * VAL_B))
         return temp
     def calc_adc(self, temp):
-        R_rtd = temp * ( 2 * self.rtd_nominal_r * VAL_B )
-        R_rtd = math.pow( ( R_rtd + ( self.rtd_nominal_r * VAL_A ) ), 2)
-        R_rtd = -1 * ( R_rtd - ( self.rtd_nominal_r * self.rtd_nominal_r * VAL_A * VAL_A ) )
-        R_rtd = R_rtd / ( 4 * self.rtd_nominal_r * VAL_B )
-        R_rtd = ( -1 * R_rtd ) + self.rtd_nominal_r
+        rtd_nominal_r = self.rtd_nominal_r
+        R_rtd = temp * ( 2 * rtd_nominal_r * VAL_B )
+        R_rtd = math.pow( ( R_rtd + ( rtd_nominal_r * VAL_A ) ), 2)
+        R_rtd = -1 * ( R_rtd - ( rtd_nominal_r * rtd_nominal_r * VAL_A * VAL_A ) )
+        R_rtd = R_rtd / ( 4 * rtd_nominal_r * VAL_B )
+        R_rtd = ( -1 * R_rtd ) + rtd_nominal_r
         adc = int( ( ( R_rtd * VAL_ADC_MAX ) / self.reference_r) + 0.5 )
         adc = adc << 1 # Add fault bit
         return adc

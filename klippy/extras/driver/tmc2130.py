@@ -153,7 +153,7 @@ class TMC2130(SpiDriver):
         self.__get_LOST_STEPS(log=res)
         return "\n".join(res)
 
-    def init_home(self, enable=True):
+    def init_homing(self, enable=True, *args):
         if self.sensor_less_homing:
             if enable is True:
                 self.__set_REG_TCOOLTHRS(0xFFFFF)

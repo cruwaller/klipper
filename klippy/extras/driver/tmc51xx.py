@@ -249,7 +249,7 @@ class TMC51xx(SpiDriver):
     def set_homing_dir(self, homedir="min"):
         # TODO: Is it ok to set endstop settings once during init??
         # FIXME : Change to commands
-        if homedir == "min":
+        if homedir in ["min", False]:
             self._endstop_config = 0x21 # 0b10 0001
         else:
             self._endstop_config = 0x11 # 0b01 0001
@@ -261,9 +261,8 @@ class TMC51xx(SpiDriver):
         pass
     def get_steppers(self):
         return [self]
-    def home_prepare(self, speed, dir):
-        self.logger.info("----- HOME INIT ----- speed: %s, dir: %s" % (speed, dir))
-        self.set_homing_dir(['min', 'max'][dir])
+    def home_prepare(self, speed):
+        self.logger.info("----- HOME INIT ----- speed: %s" % (speed,))
         self._homing_speed = speed
         # Init homing here!
         self.set_ignore_move(True)

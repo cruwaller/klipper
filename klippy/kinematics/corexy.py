@@ -65,53 +65,27 @@ class CoreXYKinematics:
         # Each axis is homed independently and in order
         for axis in homing_state.get_axes():
             rail = self.rails[axis]
-            # Determine moves
+            # Determine movement
             position_min, position_max = rail.get_range()
             hi = rail.get_homing_info()
-            if hi.positive_dir:
-                pos = hi.position_endstop - 1.5*(
-                    hi.position_endstop - position_min)
-                rpos = hi.position_endstop - hi.retract_dist
-                r2pos = rpos - hi.retract_dist
-            else:
-                pos = hi.position_endstop + 1.5*(
-                    position_max - hi.position_endstop)
-                rpos = hi.position_endstop + hi.retract_dist
-                r2pos = rpos + hi.retract_dist
-            # Initial homing
-            homing_speed = hi.speed
-            second_homing_speed = hi.second_homing_speed
-            if axis == 2:
-                homing_speed = min(homing_speed, self.max_z_velocity)
-                second_homing_speed = min(second_homing_speed,
-                                          self.max_z_velocity)
             homepos = [None, None, None, None]
-            # Set Z homing position if defined
-            homing_state.retract(hi.homing_pos, hi.travel_speed)
             homepos[axis] = hi.position_endstop
-            coord = [None, None, None, None]
-            coord[axis] = pos
-            if axis < 2 and self.combined_endstops:
-                endstops = ( self.rails[0].get_endstops()
-                           + self.rails[1].get_endstops() )
+            forcepos = list(homepos)
+            if hi.positive_dir:
+                forcepos[axis] -= 1.5 * (hi.position_endstop - position_min)
             else:
-                endstops = rail.get_endstops()
-            homing_state.home(coord, homepos, endstops, homing_speed,
-                              init_sensor=hi.init_home_funcs,
-                              dir=hi.positive_dir)
-            # Retract
-            coord[axis] = rpos
-            homing_state.retract(coord, homing_speed)
-            # Home again
-            coord[axis] = r2pos
-            homing_state.home(coord, homepos, endstops,
-                              second_homing_speed, second_home=True,
-                              init_sensor=hi.init_home_funcs,
-                              dir=hi.positive_dir)
+                forcepos[axis] += 1.5 * (position_max - hi.position_endstop)
+            # Move to homing position if defined
+            homing_state.retract(hi.homing_pos, hi.travel_speed)
+            # Perform homing
+            limit_speed = None
+            if axis == 2:
+                limit_speed = self.max_z_velocity
+            homing_state.home_rails([rail], forcepos, homepos, limit_speed)
             if axis == 2:
                 # Support endstop phase detection on Z axis
-                coord[axis] = hi.position_endstop + rail.get_homed_offset()
-                homing_state.set_homed_position(coord)
+                forcepos[axis] = hi.position_endstop + rail.get_homed_offset()
+                homing_state.set_homed_position(forcepos)
             if 0. < hi.retract_after_home:
                 movepos = [None, None, None, None]
                 # Retract
@@ -119,6 +93,9 @@ class CoreXYKinematics:
                     movepos[axis] = hi.position_endstop - hi.retract_after_home
                 else:
                     movepos[axis] = hi.position_endstop + hi.retract_after_home
+                homing_speed = hi.speed
+                if axis == 2:
+                    homing_speed = min(homing_speed, limit_speed)
                 homing_state.retract(movepos, homing_speed)
     def motor_off(self, print_time):
         if self.toolhead.require_home_after_motor_off is True \
