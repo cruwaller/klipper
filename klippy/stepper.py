@@ -120,6 +120,12 @@ class PrinterStepper:
         self.set_commanded_position = mcu_stepper.set_commanded_position
         self.get_mcu_position = mcu_stepper.get_mcu_position
         self.get_step_dist = mcu_stepper.get_step_dist
+        # Homing finetune after enstop hit
+        self.tune_after_homing = \
+            config.getfloat('endstop_correction', None) # in mm
+        if self.tune_after_homing is None:
+            self.tune_after_homing = config.getfloat(
+                'endstop_correction_steps', 0.) * self.get_step_dist()
         self.logger.info("steps per mm {} , step in mm {}".
                          format(inv_step_dist, step_dist))
         printer.add_object(self.name, self) # to get printer_state called
@@ -161,6 +167,9 @@ class PrinterStepper:
         self.logger.debug("Homing dir: %s" % ['min', 'max'][homing_dir])
         if hasattr(self.mcu_stepper, 'set_homing_dir'):
             self.mcu_stepper.set_homing_dir(homing_dir)
+    def apply_endstop_correction(self):
+        pos = self.get_commanded_position()
+        self.set_commanded_position(pos - self.tune_after_homing)
 
 
 ######################################################################
@@ -312,16 +321,11 @@ class PrinterRail:
             # Try in steps and convert steps to mm
             self.homing_offset = (config.getfloat('homing_offset_steps', 0.) *
                                   stepper.get_step_dist())
-        # Homing finetune after enstop hit (mainly for deltas)
-        self.tune_after_homing = \
-            config.getfloat('endstop_correction', None) # in mm
-        if self.tune_after_homing is None:
-            self.tune_after_homing = (config.getfloat('endstop_correction_steps', 0.) *
-                                      stepper.get_step_dist())
         # Set homing direction to stepper
         stepper.set_homing_dir(self.homing_positive_dir)
-    def get_tune_after_homing(self):
-        return self.tune_after_homing
+    def apply_endstop_correction(self):
+        for s in self.steppers:
+            s.apply_endstop_correction()
     def set_homing_offset(self, offset):
         self.homing_offset = offset
     def get_homed_offset(self):

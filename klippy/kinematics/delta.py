@@ -110,20 +110,6 @@ class DeltaKinematics:
         forcepos[2] = -1.5 * math.sqrt(max(self.arm2)-self.max_xy2)
         homing_state.home_rails(self.rails, forcepos, self.home_position,
                                 limit_speed=self.max_z_velocity)
-        # Set final homed position
-        spos = [ep + rail.get_homed_offset()
-                for ep, rail in zip(self.abs_endstops, self.rails)]
-        # Apply fine tune to towers after homing
-        fine_tune = [rail.get_tune_after_homing() for rail in self.rails]
-        spos = [ a-b for a, b in zip(spos, fine_tune) ]
-        cart_pos = self._actuator_to_cartesian(spos)
-        hi = self.rails[0].get_homing_info()
-        homing_speed = min(hi.speed, self.max_z_velocity)
-        homing_state.retract(cart_pos, homing_speed, check=False) # could be neagtive
-        # Reset X and Y to 0 since delta should be in center after homing
-        cart_pos[0] = 0
-        cart_pos[1] = 0
-        homing_state.set_homed_position(cart_pos)
     def motor_off(self, print_time):
         self.limit_xy2 = -1.
         for rail in self.rails:

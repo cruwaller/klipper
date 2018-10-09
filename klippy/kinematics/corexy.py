@@ -82,10 +82,7 @@ class CoreXYKinematics:
             if axis == 2:
                 limit_speed = self.max_z_velocity
             homing_state.home_rails([rail], forcepos, homepos, limit_speed)
-            if axis == 2:
-                # Support endstop phase detection on Z axis
-                forcepos[axis] = hi.position_endstop + rail.get_homed_offset()
-                homing_state.set_homed_position(forcepos)
+            # retract from endstop
             if 0. < hi.retract_after_home:
                 movepos = [None, None, None, None]
                 # Retract
