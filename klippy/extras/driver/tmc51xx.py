@@ -342,7 +342,7 @@ class TMC51xx(SpiDriver):
     def calc_position_from_coord(self, coord):
         return self._ffi_lib.itersolve_calc_position_from_coord(
             self._stepper_kinematics, coord[0], coord[1], coord[2])
-    def set_position(self, newpos):
+    def set_position(self, coord):
         # TODO : Handle with driver, no delta needed!
         """
         steppos = newpos * self.inv_step_dist
@@ -353,14 +353,16 @@ class TMC51xx(SpiDriver):
         self.__set_REG_XACTUAL(steppos)
         self.__set_REG_RAMPMODE('positioning')
         """
-        spos = self.calc_position_from_coord(newpos)
-        self._mcu_position_offset += self.get_commanded_position() - spos
-        self._ffi_lib.itersolve_set_commanded_pos(self._stepper_kinematics, spos)
+        self.set_commanded_position(self.calc_position_from_coord(coord))
 
     def get_commanded_position(self):
         # TODO : Handle with driver!
         return self._ffi_lib.itersolve_get_commanded_pos(
             self._stepper_kinematics)
+
+    def set_commanded_position(self, pos):
+        self._mcu_position_offset += self.get_commanded_position() - pos
+        self._ffi_lib.itersolve_set_commanded_pos(self._stepper_kinematics, pos)
 
     def get_mcu_position(self):
         # TODO : Handle with driver, no delta needed!
