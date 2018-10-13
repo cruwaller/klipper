@@ -796,7 +796,7 @@ class GCodeParser:
             params['#input'].respond_state("Ready")
             return
         msg = self.printer.get_state_message()
-        params['#input'].respond_state("Not ready")
+        msg = msg.rstrip() + "\nKlipper state: Not ready"
         params['#input'].respond_error(msg)
     cmd_HELP_when_not_ready = True
     def cmd_HELP(self, params):
