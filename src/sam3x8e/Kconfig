@@ -8,6 +8,7 @@ config SAM_SELECT
     select HAVE_GPIO
     select HAVE_GPIO_ADC
     select HAVE_GPIO_SPI
+    select HAVE_GPIO_BITBANGING
 
 config BOARD_DIRECTORY
     string
@@ -20,7 +21,6 @@ config CLOCK_FREQ
 config SERIAL
     bool
     default y
-
 config SERIAL_BAUD
     depends on SERIAL
     int "Baud rate for serial port"

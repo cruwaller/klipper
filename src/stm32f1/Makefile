@@ -34,7 +34,7 @@ $(OUT)klipper.elf: $(patsubst %.s, $(OUT)src/%.o,$(asmsrc-y))
 # Build the linker script
 target-y := $(OUT)stm32f1.ld $(target-y)
 
-$(OUT)stm32f1.ld: src/stm32f1/stm32f1.ld $(OUT)board-link
+$(OUT)stm32f1.ld: src/stm32f1/stm32f1.ld $(OUT)autoconf.h $(OUT)board-link
 	@echo "  Preprocessing $@"
 	$(Q)$(CPP) -P -MD -MT $@ -DFLASH_START=$(CONFIG_FLASH_START) $< -o $@
 

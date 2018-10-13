@@ -21,39 +21,30 @@ else
 endif
 # Common command definitions
 CC  = $(GCC_PATH)gcc
-AS  = $(GCC_PATH)gcc
-CXX = $(GCC_PATH)g++
+AS  = $(GCC_PATH)as
 LD  = $(GCC_PATH)ld
-CPP = $(GCC_PATH)cpp
-
 OBJCOPY = $(GCC_PATH)objcopy
 OBJDUMP = $(GCC_PATH)objdump
 STRIP   = $(GCC_PATH)strip
+CPP = cpp # $(GCC_PATH)cpp
 PYTHON  = python2
 
-#STD-c   = -std=gnu99
-STD-c   = -std=gnu11
-STD-cpp = -std=gnu++11
-
 # Source files
-src-y  =
-asm-y  =
+src-y =
 dirs-y =
 
 # Default compiler flags
 cc-option=$(shell if test -z "`$(1) $(2) -S -o /dev/null -xc /dev/null 2>&1`" \
     ; then echo "$(2)"; else echo "$(3)"; fi ;)
 
-# dep file generation
-DEPFLAGS := -MMD -MP
+CFLAGS := -I$(OUT) -Isrc -I$(OUT)board-generic/ -std=gnu11 -O2 -MD -g \
+    -Wall -Wold-style-definition $(call cc-option,$(CC),-Wtype-limits,) \
+    -ffunction-sections -fdata-sections
+CFLAGS += -flto -fwhole-program -fno-use-linker-plugin -Wextra
 
-CFLAGS   := $(DEPFLAGS) -I$(OUT) -Isrc -I$(OUT)board-generic/ -Wall \
- -ffunction-sections -fdata-sections -Wold-style-definition $(call cc-option,$(CC),-Wtype-limits,)
-CFLAGS   += -Wextra
-CXXFLAGS := -fno-rtti
-ASFLAGS  :=
-CFLAGS_klipper.elf := -Wl,--gc-sections
-CFLAGS_END_klipper.elf :=
+CFLAGS_klipper.elf = $(CFLAGS) -Wl,--gc-sections
+
+CPPFLAGS = -I$(OUT) -P -MD -MT $@
 
 # Default targets
 target-y := $(OUT)klipper.elf
@@ -62,19 +53,16 @@ all:
 
 # Run with "make V=1" to see the actual compile commands
 ifdef V
-  Q=
+Q=
 else
-  Q=@
-  MAKEFLAGS += --no-print-directory
+Q=@
+MAKEFLAGS += --no-print-directory
 endif
-
-proc_makefile = src/$(patsubst "%",%,$(CONFIG_BOARD_DIRECTORY))/Makefile
 
 # Include board specific makefile
 include src/Makefile
+proc_makefile = src/$(patsubst "%",%,$(CONFIG_BOARD_DIRECTORY))/Makefile
 -include $(proc_makefile)
-
-CXXFLAGS += $(CFLAGS)
 
 ################ Convert sources to objects
 
@@ -82,7 +70,7 @@ objects-y = $(src-y:%.c=$(OUT)src/%.o)
 objects-y := $(objects-y:%.cpp=$(OUT)src/%.o)
 objects-y := $(objects-y:%.S=$(OUT)src/%.o)
 objects-y := $(objects-y:%.s=$(OUT)src/%.o)
-objects-y += $(asm-y:%.s=$(OUT)src/%.o)
+objects-y += $(asmsrc-y:%.s=$(OUT)src/%.o)
 objects-y := $(objects-y:%.S=$(OUT)src/%.o)
 
 # parse only c/cpp files
@@ -96,20 +84,8 @@ dirs-y := $(dir $(objects-y))
 ################ Common build rules
 
 $(OUT)%.o: %.c $(OUT)autoconf.h $(OUT)board-link
-	@echo "  Compiling C   $@"
-	$(Q)$(CC) $(STD-c) $(CFLAGS) -c $< -o $@
-
-$(OUT)%.o: %.cpp $(OUT)autoconf.h $(OUT)board-link
-	@echo "  Compiling C++ $@"
-	$(Q)$(CC) $(STD-cpp) $(CXXFLAGS) -c $< -o $@
-
-$(OUT)%.o: %.s $(OUT)autoconf.h $(OUT)board-link
-	@echo "  Compiling ASM $@"
-	$(Q)$(AS) $(ASFLAGS) -c $< -o $@
-
-$(OUT)%.o: %.S $(OUT)autoconf.h $(OUT)board-link
-	@echo "  Compiling ASM $@"
-	$(Q)$(AS) -c $< -o $@
+	@echo "  Compiling $@"
+	$(Q)$(CC) $(CFLAGS) -c $< -o $@
 
 ################ Main build rules
 
@@ -128,11 +104,11 @@ $(OUT)compile_time_request.o: $(ctr-y) ./scripts/buildcommands.py
 	@echo "  Building $@"
 	$(Q)cat $(ctr-y) > $(OUT)klipper.compile_time_request
 	$(Q)$(PYTHON) ./scripts/buildcommands.py -d $(OUT)klipper.dict -t "$(CC);$(AS);$(LD);$(OBJCOPY);$(OBJDUMP);$(STRIP)" $(OUT)klipper.compile_time_request $(OUT)compile_time_request.c
-	$(Q)$(CC) $(STD-c) $(CFLAGS) -c $(OUT)compile_time_request.c -o $@
+	$(Q)$(CC) $(CFLAGS) -c $(OUT)compile_time_request.c -o $@
 
-$(OUT)klipper.elf: $(objects-y) $(OUT)compile_time_request.o
+$(OUT)klipper.elf: $(OUT)autoconf.h $(objects-y) $(OUT)compile_time_request.o
 	@echo "  Linking $@"
-	$(Q)$(CC) $(CFLAGS_klipper.elf) $^ $(CFLAGS_END_klipper.elf) -o $@
+	$(Q)$(CC) $^ $(CFLAGS_klipper.elf) -o $@
 
 ################ Kconfig rules
 

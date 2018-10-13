@@ -3,11 +3,10 @@
 # Setup the toolchain
 CROSS_PREFIX=arm-none-eabi-
 
+dirs-y += src/lpc176x src/generic
+dirs-y += lib/lpc176x/device/TOOLCHAIN_GCC_ARM
+
 CFLAGS += -mthumb -mcpu=cortex-m3
-CFLAGS += -O2
-CFLAGS += -flto -fwhole-program -fno-use-linker-plugin
-CFLAGS += -fno-exceptions -fno-delete-null-pointer-checks
-#CFLAGS += -Ilib/lpc176x/device -Ilib/lpc176x/cmsis
 CFLAGS += -Ilib/lpc176x/device -Ilib/cmsis-core
 
 CFLAGS_klipper.elf += -T $(OUT)LPC1768.ld
@@ -23,7 +22,13 @@ src-$(CONFIG_USBSERIAL) += lpc176x/usbserial.c generic/usb_cdc.c
 src-$(CONFIG_SERIAL) += lpc176x/serial.c generic/serial_irq.c
 
 # Add the TOOLCHAIN_GCC_ARM files to the build
-asm-y := ../lib/lpc176x/device/TOOLCHAIN_GCC_ARM/startup_LPC17xx.S
+$(OUT)%.o: %.S
+	@echo "  Assembling $@"
+	$(Q)$(AS) $< -o $@
+
+asmsrc-y := ../lib/lpc176x/device/TOOLCHAIN_GCC_ARM/startup_LPC17xx.S
+
+$(OUT)klipper.elf: $(patsubst %.S, $(OUT)src/%.o,$(asmsrc-y))
 
 target-y := $(OUT)LPC1768.ld $(target-y)
 

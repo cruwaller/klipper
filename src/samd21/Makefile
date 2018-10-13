@@ -24,7 +24,7 @@ src-$(CONFIG_SERIAL) += samd21/serial.c generic/serial_irq.c
 # Support bootloader offset address
 target-y := $(OUT)samd21.ld $(target-y)
 
-$(OUT)samd21.ld: lib/samd21/samd21a/gcc/gcc/samd21g18a_flash.ld $(OUT)board-link
+$(OUT)samd21.ld: lib/samd21/samd21a/gcc/gcc/samd21g18a_flash.ld $(OUT)autoconf.h $(OUT)board-link
 	@echo "  Preprocessing $@"
 	$(Q)$(CPP) -P -MD -MT $@ -DFLASH_START=$(CONFIG_FLASH_START) $< -o $@
 

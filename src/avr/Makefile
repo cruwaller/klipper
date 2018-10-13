@@ -3,10 +3,9 @@
 # Use the avr toolchain
 CROSS_PREFIX=avr-
 
+dirs-y += src/avr src/generic
+
 CFLAGS += -mmcu=$(CONFIG_MCU)
-CFLAGS += -O2 -g
-CFLAGS += -flto -fwhole-program -fno-use-linker-plugin
-CFLAGS_klipper.elf += $(CFLAGS)
 
 # Add avr source files
 src-y += avr/main.c avr/timer.c avr/gpio.c
@@ -23,7 +22,6 @@ target-y += $(OUT)klipper.elf.hex
 $(OUT)klipper.elf.hex: $(OUT)klipper.elf
 	@echo "  Creating hex file $@"
 	$(Q)$(OBJCOPY) -j .text -j .data -O ihex $< $@
-
 
 ifneq ($(CONFIG_AVRDUDE_UPLOADSPEED),)
   uploadSpeed = -b$(CONFIG_AVRDUDE_UPLOADSPEED)
