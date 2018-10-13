@@ -771,9 +771,8 @@ class GCodeParser:
             "gcode homing: %s" % (
                 mcu_pos, stepper_pos, kinematic_pos, toolhead_pos,
                 gcode_pos, base_pos, homing_pos))
-    def request_restart(self, result, handler):
+    def request_restart(self, result):
         if self.is_printer_ready:
-            handler.respond_info("Preparing to restart...")
             self.toolhead.motor_heater_off()
             self.toolhead.dwell(0.500)
             self.toolhead.wait_moves()
@@ -781,11 +780,11 @@ class GCodeParser:
     cmd_RESTART_when_not_ready = True
     cmd_RESTART_help = "Reload config file and restart host software"
     def cmd_RESTART(self, params):
-        self.request_restart('restart', params['#input'])
+        self.request_restart('restart')
     cmd_FIRMWARE_RESTART_when_not_ready = True
     cmd_FIRMWARE_RESTART_help = "Restart firmware, host, and reload config"
     def cmd_FIRMWARE_RESTART(self, params):
-        self.request_restart('firmware_restart', params['#input'])
+        self.request_restart('firmware_restart')
     cmd_ECHO_help = "Repond same command back to sender"
     cmd_ECHO_when_not_ready = True
     def cmd_ECHO(self, params):
