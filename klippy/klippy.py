@@ -190,12 +190,12 @@ class Printer:
             self._read_config()
             for cb in self.state_cb:
                 if self.state_message is not message_startup:
-                    return self.reactor.NEVER
+                    return
                 cb('connect')
             self._set_state(message_ready)
             for cb in self.state_cb:
                 if self.state_message is not message_ready:
-                    return self.reactor.NEVER
+                    return
                 cb('ready')
         except (self.config_error, pins.error) as e:
             self.logger.exception("Config error")
@@ -210,7 +210,6 @@ class Printer:
             self.logger.exception("Unhandled exception during connect")
             self._set_state("Internal error during connect.%s" % (
                 message_restart,))
-        return self.reactor.NEVER
     def run(self):
         systime = time.time()
         monotime = self.reactor.monotonic()
