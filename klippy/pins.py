@@ -55,15 +55,11 @@ def esp_pins_io_expanders():
 
 
 MCU_PINS = {
-    "atmega168": port_pins(5),
-    "atmega168p": port_pins(5),
-    "atmega328": port_pins(5),
-    "atmega328p": port_pins(5),
-    "atmega644p": port_pins(4),
-    "atmega1284p": port_pins(4),
-    "at90usb1286": port_pins(6),
-    "atmega1280": port_pins(12),
-    "atmega2560": port_pins(12),
+    "atmega168": port_pins(5), "atmega168p": port_pins(5),
+    "atmega328": port_pins(5), "atmega328p": port_pins(5),
+    "atmega644p": port_pins(4), "atmega1284p": port_pins(4),
+    "at90usb1286": port_pins(6), "at90usb646": port_pins(6),
+    "atmega1280": port_pins(12), "atmega2560": port_pins(12),
     "sam3x8e": port_pins(4, 32),
     "samd21g": port_pins(2, 32),
     "sam4e8e" : port_pins(5,32),

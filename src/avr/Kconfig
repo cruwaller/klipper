@@ -30,6 +30,8 @@ choice
         bool "atmega1284p"
     config MACH_atmega644p
         bool "atmega644p"
+    config MACH_atmega328p
+        bool "atmega328p"
     config MACH_atmega328
         bool "atmega328"
     config MACH_atmega328p
@@ -44,6 +46,7 @@ config MCU
     string
     default "atmega168" if MACH_atmega168
     default "atmega168p" if MACH_atmega168p
+    default "atmega328" if MACH_atmega328
     default "atmega328p" if MACH_atmega328p
     default "atmega1284p" if MACH_atmega1284p
     default "atmega644p" if MACH_atmega644p
