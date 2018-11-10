@@ -67,6 +67,8 @@ class GCodeParser:
             fd_handle = self.__start_reader(
                 fd, self.process_data_fd, DEFAULT_PRIORITY)
             self.fds['default'] = fd_handle
+            self.cmd_CREATE_PIPE(
+                {"PATH": "/tmp/reprapgui", "PRIO": 15})
         self.bytes_read = 0
         self.input_log = collections.deque([], 50)
         # Command handling
@@ -123,7 +125,8 @@ class GCodeParser:
             fd_handle = self.__start_reader(fd, self.process_data_fd, prio)
             self.fds[path] = fd_handle
             self.logger.info("PTYs: %s created. fd = %s" % (path, fd,))
-        params['#input'].respond("ok - input is %s" % (path,))
+            if '#input' in params:
+                params['#input'].respond("ok - input is %s" % (path,))
     def cmd_AUTO_TEMP_REPORT(self, params):
         self.auto_temp_report = self.get_int("AUTO", params,
             default=self.auto_temp_report, minval=0, maxval=1)
@@ -296,6 +299,7 @@ class GCodeParser:
             data = os.read(fd_r, 4096)
         except OSError:
             return False
+        # self.logger.info("input: %s" % data)
         self.input_log.append((eventtime, data))
         self.bytes_read += len(data)
         lines = data.split('\n')
@@ -670,7 +674,7 @@ class GCodeParser:
             p[3] /= self.extruder.extrude_factor
         except AttributeError:
             pass
-            params['#input'].respond("X:%.3f Y:%.3f Z:%.3f E:%.3f" % tuple(p))
+        params['#input'].respond("X:%.3f Y:%.3f Z:%.3f E:%.3f" % tuple(p))
     def cmd_M220(self, params):
         # Set speed factor override percentage
         value = self.get_float('S', params, 100., above=0.) / (60. * 100.)
