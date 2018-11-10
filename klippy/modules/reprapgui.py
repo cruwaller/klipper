@@ -629,8 +629,10 @@ class rrHandler(tornado.web.RequestHandler):
             respdata = self.parent.gui_stats.get_config_stats()
 
         elif "rr_reply" in path:
-            if len(self.parent.gcode_resps):
+            try:
                 self.write(self.parent.gcode_resps.pop(0))
+            except IndexError:
+                self.write("Buffer empty")
             return
 
         else:
