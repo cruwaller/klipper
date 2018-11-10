@@ -116,7 +116,9 @@ class ConfigWrapper:
             raise self.error(
                 "Choice '%s' for option '%s' in section '%s'"
                 " is not a valid choice" % (c, option, self.section))
-        return choices[c]
+        if type(choices) == list:
+            return c
+        return choices[c] # dict
     def getsection(self, section):
         return ConfigWrapper(self.printer, self.fileconfig, section)
     def has_section(self, section):
