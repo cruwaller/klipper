@@ -394,6 +394,7 @@ class rrHandler(tornado.web.RequestHandler):
             # get status from Klippy
             respdata["err"] = 0
             respdata.update(self.parent.gui_stats.get_status_stats(_type))
+            respdata['seq'] += len(self.parent.gcode_resps)
 
         # rr_gcode?gcode=XXX
         elif "rr_gcode" in path:
