@@ -98,7 +98,8 @@ class GuiStats:
     def cmd_GUISTATS_GET_STATUS(self, params):
         _type = self.gcode.get_int("TYPE", params,
             default=1, minval=1, maxval=3)
-        dump = json.dumps(self.get_status_stats(_type))
+        stats = self.get_status_stats(_type)
+        dump = json.dumps(stats)
         params["#input"].respond(dump)
 
     # ================================================================================
@@ -392,5 +393,6 @@ class GuiStats:
 
 
 def load_gcode(printer, config):
-    if config.has_section("reprapgui"):
+    if config.has_section("reprapgui") or \
+            config.has_section("reprapgui_process"):
         GuiStats(printer, config)
