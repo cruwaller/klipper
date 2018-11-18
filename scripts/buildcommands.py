@@ -1,7 +1,7 @@
 #!/usr/bin/env python2
 # Script to handle build time requests embedded in C code.
 #
-# Copyright (C) 2016  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import sys, os, subprocess, optparse, logging, shlex, socket, time, traceback
@@ -314,34 +314,6 @@ Handlers.append(HandleCommandGeneration())
 
 
 ######################################################################
-# Identify data dictionary generation
-######################################################################
-
-def build_identify():
-    data = {}
-    for h in Handlers:
-        h.update_data_dictionary(data)
-
-    # Format compressed info into C code
-    data = json.dumps(data)
-    zdata = zlib.compress(data, 9)
-    out = []
-    for i in range(len(zdata)):
-        if i % 8 == 0:
-            out.append('\n   ')
-        out.append(" 0x%02x," % (ord(zdata[i]),))
-    fmt = """
-const uint8_t command_identify_data[] PROGMEM = {%s
-};
-
-// Identify size = %d (%d uncompressed)
-const uint32_t command_identify_size PROGMEM
-    = ARRAY_SIZE(command_identify_data);
-"""
-    return data, fmt % (''.join(out), len(zdata), len(data))
-
-
-######################################################################
 # Version generation
 ######################################################################
 
@@ -431,6 +403,49 @@ Handlers.append(HandleVersions())
 
 
 ######################################################################
+# Identify data dictionary generation
+######################################################################
+
+# Automatically generate the wire protocol data dictionary
+class HandleIdentify:
+    def __init__(self):
+        self.ctr_dispatch = {}
+    def update_data_dictionary(self, data):
+        pass
+    def generate_code(self, options):
+        # Generate data dictionary
+        data = {}
+        for h in Handlers:
+            h.update_data_dictionary(data)
+        datadict = json.dumps(data)
+
+        # Write data dictionary
+        if options.write_dictionary:
+            f = open(options.write_dictionary, 'wb')
+            f.write(datadict)
+            f.close()
+
+        # Format compressed info into C code
+        zdatadict = zlib.compress(datadict, 9)
+        out = []
+        for i in range(len(zdatadict)):
+            if i % 8 == 0:
+                out.append('\n   ')
+            out.append(" 0x%02x," % (ord(zdatadict[i]),))
+        fmt = """
+const uint8_t command_identify_data[] PROGMEM = {%s
+};
+
+// Identify size = %d (%d uncompressed)
+const uint32_t command_identify_size PROGMEM
+    = ARRAY_SIZE(command_identify_data);
+"""
+        return fmt % (''.join(out), len(zdatadict), len(datadict))
+
+Handlers.append(HandleIdentify())
+
+
+######################################################################
 # Main code
 ######################################################################
 
@@ -468,23 +483,18 @@ def main():
         if cmd not in ctr_dispatch:
             error("Unknown build time command '%s'" % cmd)
         ctr_dispatch[cmd](req)
-    # Create identify information
-    code = "".join([h.generate_code(options) for h in Handlers])
-    datadict, icode = build_identify()
+
     # Write output
+    code = "".join([FILEHEADER] + [h.generate_code(options) for h in Handlers])
     f = open(outcfile, 'wb')
-    if options.esp_build:
-        f.write(FILEHEADER_ESP)
-    else:
-        f.write(FILEHEADER)
-    f.write(code + icode)
+    f.write(code)
     f.close()
 
-    # Write data dictionary
-    if options.write_dictionary:
-        f = open(options.write_dictionary, 'wb')
-        f.write(datadict)
-        f.close()
+    #if options.esp_build:
+    #    f.write(FILEHEADER_ESP)
+    #else:
+    #    f.write(FILEHEADER)
+    #f.write(code)
 
 if __name__ == '__main__':
     main()
