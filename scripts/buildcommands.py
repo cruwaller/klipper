@@ -468,6 +468,8 @@ def main():
                     help="enable debug messages")
     opts.add_option("-x", action="store_true", dest="esp_build",
                     help="header for ESP build")
+    if options.esp_build:
+        FILEHEADER = FILEHEADER_ESP
 
     options, args = opts.parse_args()
     if len(args) != 2:
@@ -495,12 +497,6 @@ def main():
     f = open(outcfile, 'wb')
     f.write(code)
     f.close()
-
-    #if options.esp_build:
-    #    f.write(FILEHEADER_ESP)
-    #else:
-    #    f.write(FILEHEADER)
-    #f.write(code)
 
 if __name__ == '__main__':
     main()
