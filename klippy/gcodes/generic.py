@@ -73,14 +73,14 @@ class GenericGcode(object):
             disable = self.gcode.get_int('P', params, 0) == 1
         if 'S' in params:
             temperature = self.gcode.get_int('S', params, -1)
+        resp = []
         for h in self.printer.lookup_module_objects("heater"):
-            h.set_min_extrude_temp(temperature, disable)
-            status, temp = h.get_min_extrude_status()
             if "bed" not in h.name:
-                params['#input'].respond(
-                    "Heater '{}' cold extrude: {}, min temp {}C".
-                    format(h.name, status, temp))
-
+                h.set_min_extrude_temp(temperature, disable)
+                status, temp = h.get_min_extrude_status()
+                resp.append("Heater '%s' cold extrude: %s, min temp %.2fC".
+                            format(h.name, status, temp))
+        params['#input'].respond("\n".join(resp))
     def cmd_M301(self, params):
         # M301: Set PID parameters
         params['#input'].respond("Obsolete, use SET_PID_PARAMS")
