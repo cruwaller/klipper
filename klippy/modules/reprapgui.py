@@ -632,7 +632,8 @@ class rrHandler(tornado.web.RequestHandler):
             try:
                 self.write(self.parent.gcode_resps.pop(0))
             except IndexError:
-                self.write("Buffer empty")
+                #self.write("Buffer empty")
+                self.write("")
             return
 
         else:
