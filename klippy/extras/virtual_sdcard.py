@@ -249,6 +249,9 @@ class VirtualSD:
                     self.reactor.pause(self.reactor.monotonic() + 0.100)
                     continue
             except self.gcode.error as e:
+                self.logger.error("GCode error: %s" % e)
+                self.gcode.respond_error(self.last_gco_sender,
+                                         "VSD GCode error: %s" % e)
                 for cb in self.done_cb:
                     cb('error')
                 break
