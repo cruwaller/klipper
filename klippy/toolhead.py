@@ -271,7 +271,6 @@ class ToolHead:
         gcode = self.printer.lookup_object('gcode')
         gcode.register_command('SET_VELOCITY_LIMIT', self.cmd_SET_VELOCITY_LIMIT,
                                desc=self.cmd_SET_VELOCITY_LIMIT_help)
-        gcode.register_command('M204', self.cmd_M204, desc=self.cmd_M204_help)
         gcode.register_command('IDLE_POSITION', self.move_to_idle_pos,
                                desc="Move head to defined idle position")
         self.logger.info("Kinematic created: %s" % self.kin.name)
@@ -532,22 +531,6 @@ class ToolHead:
                    junction_deviation))
         self.printer.set_rollover_info("toolhead", "toolhead: %s" % (msg,))
         params['#input'].respond_info(msg)
-    cmd_M204_help = "Set max accel/decel. [Sval|Pval] [Dval]"
-    def cmd_M204(self, params):
-        # Set default acceleration
-        gcode = self.printer.lookup_object('gcode')
-        accel = gcode.get_float('P', params, None)
-        if accel is None:
-            accel = gcode.get_float('S', params, None, above=0.)
-        if accel is not None and 0. < accel:
-            self.max_accel = min(accel, self.config_max_accel)
-        decel = gcode.get_float('D', params, None)
-        if decel is None:
-            decel = self.max_accel * self.max_accel_to_decel_ratio
-        self.max_accel_to_decel = min(decel, self.max_accel)
-        # self.get_kinematics().update_velocities()
-        params['#input'].respond_info("Accel %u, decel %u" % (
-            self.max_accel, self.max_accel_to_decel,))
 
 
 def add_printer_objects(printer, config):
