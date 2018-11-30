@@ -4,7 +4,7 @@ class GenericGcode(object):
         self.printer = printer
         self.gcode = printer.lookup_object('gcode')
         self.toolhead = printer.lookup_object('toolhead')
-        for cmd in ['M0', 'M1', 'M118', 'M205',
+        for cmd in ['M0', 'M1', 'M118',
                     'M301', 'M302', 'M304',
                     'M851', 'M900']:
             self.gcode.register_command(
@@ -28,8 +28,8 @@ class GenericGcode(object):
         pass
 
     def motor_heater_off(self):
-        self.gcode.toolhead.motor_off()
-        print_time = self.gcode.toolhead.get_last_move_time()
+        self.toolhead.motor_off()
+        print_time = self.toolhead.get_last_move_time()
         for h in self.printer.lookup_module_objects("heater"):
             h.set_temp(print_time, 0.0)
         for fan in self.printer.lookup_module_objects('fan'):
@@ -39,24 +39,16 @@ class GenericGcode(object):
         heaters_on = self.gcode.get_int('H', params, 0)
         if heaters_on is 0:
             self.motor_heater_off()
-        elif self.gcode.toolhead is not None:
-            self.gcode.toolhead.motor_off()
+        elif self.toolhead is not None:
+            self.toolhead.motor_off()
 
     def cmd_M1(self, params):
         # Wait for current moves to finish
-        self.gcode.toolhead.wait_moves()
+        self.toolhead.wait_moves()
         self.motor_heater_off()
 
     def cmd_M118(self, params):
         params['#input'].respond(params['#original'].replace(params['#command'], ""))
-
-    def cmd_M205(self, params):
-        # Set advanced settings
-        value = self.gcode.get_float('X', params, None)
-        if value is not None and 0. < value:
-            self.gcode.toolhead.junction_deviation = value
-            self.gcode.toolhead.get_kinematics().update_velocities()
-        params['#input'].respond("Junction deviation %.2f" % (self.gcode.toolhead.junction_deviation,))
 
     cmd_M302_help = "Cold Extrude. Args [P<bool>] [S<temp>]"
     def cmd_M302(self, params):
@@ -92,7 +84,7 @@ class GenericGcode(object):
     cmd_M851_help = "Set axis offset. Args [X<offset] [Y<offset>] [Z<offset>]"
     def cmd_M851(self, params):
         # Set X, Y, Z offsets
-        steppers = self.gcode.toolhead.get_kinematics().get_rails()
+        steppers = self.toolhead.get_kinematics().get_rails()
         offsets = { self.axis2pos[a]: self.gcode.get_float(a, params)
                     for a, p in self.axis2pos.items() if a in params }
         for p, offset in offsets.items():
