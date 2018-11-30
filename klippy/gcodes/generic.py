@@ -1,27 +1,27 @@
 
 class GenericGcode(object):
-    def __init__(self, printer):
-        self.printer = printer
-        self.gcode = printer.lookup_object('gcode')
+    def __init__(self, config):
+        self.printer = printer = config.get_printer()
+        self.gcode = gcode = printer.lookup_object('gcode')
         self.toolhead = printer.lookup_object('toolhead')
         for cmd in ['M0', 'M1', 'M118',
                     'M301', 'M302', 'M304',
                     'M851', 'M900']:
-            self.gcode.register_command(
+            gcode.register_command(
                 cmd, getattr(self, 'cmd_' + cmd),
                 desc=getattr(self, 'cmd_%s_help' % cmd, None))
         # just discard
         for cmd in ['M120', 'M121', 'M122',
                     'M291', 'M292',
                     'M752', 'M753', 'M754', 'M755', 'M756', 'M997']:
-            self.gcode.register_command(cmd, self.gcode.cmd_IGNORE)
+            gcode.register_command(cmd, gcode.cmd_IGNORE)
         # M999 to reset
-        self.gcode.register_command('M999',
-                                    self.gcode.cmd_FIRMWARE_RESTART,
-                                    when_not_ready=True,
-                                    desc="Alias to FIRMWARE_RESTART")
-        self.axis2pos = self.gcode.axis2pos
-        self.logger = self.gcode.logger
+        gcode.register_command('M999',
+                               gcode.cmd_FIRMWARE_RESTART,
+                               when_not_ready=True,
+                               desc="Alias to FIRMWARE_RESTART")
+        self.axis2pos = gcode.axis2pos
+        self.logger = gcode.logger
         self.logger.info("Generic GCode extension initialized")
 
     def cmd_ignore(self, params):
@@ -97,7 +97,3 @@ class GenericGcode(object):
     def cmd_M900(self, params):
         # Pressure Advance configuration
         params['#input'].respond("Obsolete, use SET_PRESSURE_ADVANCE")
-
-
-def load_gcode(printer, config):
-    GenericGcode(printer)

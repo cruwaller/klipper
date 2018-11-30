@@ -8,7 +8,7 @@ import sys, os, optparse, logging, time
 import collections, ConfigParser, importlib
 import util, reactor, queuelogger, msgproto
 import gcode, pins, mcu, toolhead, extruder
-import hostcpu
+import hostcpu, gcodes
 
 # Include extras path to search dir
 sys.path.append(os.path.abspath(
@@ -271,8 +271,8 @@ class Printer:
         for m in [toolhead, extruder]:
             m.add_printer_objects(self, config)
 
-        # Load gcode extensions
-        self._try_load_extensions('gcodes', 'load_gcode', config)
+        # Load generic gcode extensions
+        gcodes.load_gcodes(config)
         # Load 'auto' modules
         self._try_load_extensions('modules', 'load_module', config)
         for section in fileconfig.sections():

@@ -1,13 +1,20 @@
-'''
+"""
 files in this folder will be loaded
-
-    - automatically if file contains
-        def load_module(printer)
-      method.
-
+    - default modules are loaded always
     - if file contains
         def load_config(config) or
         def load_config_prefix(config)
       method and section (e.g. gcodes.retract) is
       defined in config file.
-'''
+"""
+import babysteps
+import generic
+import gui_stats
+
+def load_gcodes(config):
+    # Load all default gcode files
+    babysteps.BabySteps(config)
+    generic.GenericGcode(config)
+    if config.has_section("reprapgui") or \
+            config.has_section("reprapgui_process"):
+        gui_stats.GuiStats(config)

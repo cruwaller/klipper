@@ -6,14 +6,14 @@ class ParseError(Exception):
 
 
 class GuiStats:
-    def __init__(self, printer, config):
-        self.printer = printer
+    def __init__(self, config):
+        self.printer = printer = config.get_printer()
         self.logger = printer.logger.getChild("gui_stats")
         # required modules
         self.gcode = gcode = printer.lookup_object('gcode')
         self.toolhead = printer.lookup_object('toolhead')
         self.toolhead.register_cb('layer', self.layer_changed)
-        self.babysteps = printer.lookup_object('babysteps')
+        self.babysteps = printer.try_load_module(config, 'babysteps')
         self.sd = printer.try_load_module(config, "virtual_sdcard")
         # variables
         self.starttime = time.time()
@@ -32,10 +32,10 @@ class GuiStats:
         self.sd.register_done_cb(self.sd_print_done)
         # register control commands
         for cmd in ["GUISTATS_GET_CONFIG"]:
-            self.gcode.register_command(
+            gcode.register_command(
                 cmd, getattr(self, 'cmd_' + cmd), when_not_ready=True)
         for cmd in ["GUISTATS_GET_STATUS"]:
-            self.gcode.register_command(
+            gcode.register_command(
                 cmd, getattr(self, 'cmd_' + cmd), when_not_ready=True)
         printer.add_object("gui_stats", self)
 
@@ -390,9 +390,3 @@ class GuiStats:
                 }
             } )
         return status_block
-
-
-def load_gcode(printer, config):
-    if config.has_section("reprapgui") or \
-            config.has_section("reprapgui_process"):
-        GuiStats(printer, config)
