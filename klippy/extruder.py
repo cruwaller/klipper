@@ -177,8 +177,7 @@ class PrinterExtruder:
         cruise_v = move.cruise_v * axis_r
         accel_t, cruise_t, decel_t = move.accel_t, move.cruise_t, move.decel_t
 
-        if 0 < axis_d:
-            self.raw_filament += axis_d
+        self.raw_filament += axis_d
 
         # Update for pressure advance
         extra_accel_v = extra_decel_v = 0.
