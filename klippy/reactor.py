@@ -39,46 +39,57 @@ class ReactorFileHandlerThread(ReactorFileHandler):
     def __init__(self, reactor, fd, callback, args):
         ReactorFileHandler.__init__(self, fd, callback, args)
         self.reactor = reactor
-        self._stop = False
         self._poll = select.poll()
-        self.paused = False
         self.pause_cond = threading.Condition(threading.Lock())
+        self._stop_event = threading.Event()
+        self._stop_event.set() # mark to stopped
+        self._pause_event = threading.Event()
         self.thread = threading.Thread(target=self.__execute)
         self.thread.daemon = True
-        self.thread.start()
+        # self.thread.start()
     #READ_ONLY = select.POLLIN | select.POLLHUP
     READ_ONLY = select.POLLIN | select.POLLPRI | select.POLLHUP | select.POLLERR
     READ_WRITE = READ_ONLY | select.POLLOUT
     def __execute(self):
         self._poll.register(self, self.READ_ONLY)
-        while not self._stop:
-            with self.pause_cond:
-                #while self.paused:
-                #    self.pause_cond.wait()
-                #r, w, e = select.select([self], [], [])
-                #if self in r:
-                fd, event = self._poll.poll()[0]
+        self._stop_event.clear()
+        while not self._stop_event.is_set():
+            #with self.pause_cond:
+                if self._pause_event.is_set():
+                    self.pause_cond.wait()
+
+                result = self._poll.poll(200) # timeout is 200ms
+                if not len(result):
+                    continue
+                fd, event = result[0]
                 if event & select.POLLHUP:
                     logging.error("Connection lost [HUP]")
                     break
                 elif event & select.POLLERR:
                     logging.error("Connection lost [ERR]")
                     break
-                elif fd == self.fd and not self.paused:
-                    self._stop = self.callback(
-                        self.reactor.monotonic(), self)
+                elif (event & select.POLLIN or event & select.POLLPRI) \
+                        and fd == self.fd and not self._pause_event.is_set():
+                    # logging.info("REACTOR POLL %s" % self)
+                    if self.callback(self.reactor.monotonic(), self):
+                        break # Stop thread if requested
         self._poll.unregister(self)
+        self._stop_event.set() # mark to stopped
+    def start(self):
+        if not self.is_running():
+            self.thread.start()
     def is_running(self):
-        return not self._stop
+        return not self._stop_event.is_set()
     def stop(self):
-        self._stop = True
+        self._stop_event.set()
+        self.thread.join()
     def pause(self):
-        self.paused = True
-        #self.pause_cond.acquire()
+        self._pause_event.set()
+        self.pause_cond.acquire()
     def resume(self):
-        self.paused = False
-        #self.pause_cond.notify()
-        #self.pause_cond.release()
+        self._pause_event.clear()
+        self.pause_cond.notify()
+        self.pause_cond.release()
 
 class ReactorGreenlet(greenlet.greenlet):
     def __init__(self, run):

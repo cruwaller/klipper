@@ -19,9 +19,9 @@ status_delay = 1.0
 message_ready = "Printer is ready"
 
 message_startup = """
-Printer is not ready
-The klippy host software is attempting to connect.  Please
-retry in a few moments.
+Printer is not ready!
+The klippy host software is attempting to connect.
+Please retry in a few moments.
 """
 
 message_restart = """
@@ -390,7 +390,7 @@ def main():
     opts.add_option("-i", "--debuginput", dest="debuginput",
                     help="read commands from file instead of from tty port")
     opts.add_option("-I", "--input-tty", dest="inputtty", default='/tmp/printer',
-                    help="input tty name (default is /tmp/printer)")
+                    help="Default input tty name (default is /tmp/printer)")
     opts.add_option("-l", "--logfile", dest="logfile",
                     help="write log to file instead of stderr")
     opts.add_option("-v", action="store_true", dest="verbose",
@@ -405,12 +405,15 @@ def main():
     options, args = opts.parse_args()
     if len(args) != 1:
         opts.error("Incorrect number of arguments")
-    start_args = {'config_file': args[0], 'start_reason': 'startup'}
+    start_args = {
+        'config_file': os.path.abspath(os.path.normpath(os.path.expanduser(args[0]))),
+        'start_reason': 'startup'}
 
     if options.status_delay:
         status_delay = options.status_delay
 
-    input_fd = bglogger = None
+    bglogger = None
+    input_fd = {}
 
     debuglevel = logging.INFO
     if options.verbose:
@@ -418,10 +421,14 @@ def main():
     if options.debuginput:
         start_args['debuginput'] = options.debuginput
         debuginput = open(options.debuginput, 'rb')
-        input_fd = debuginput.fileno()
+        input_fd['default'] = {'fd': debuginput.fileno(), 'prio': 0 }
     else:
+        # Default input tty
         start_args['inputtty'] = options.inputtty
-        input_fd = util.create_pty(options.inputtty)
+        input_fd['default'] = {'fd': util.create_pty(options.inputtty), 'prio': 0}
+        # Reprap gui specific input
+        if options.inputtty != '/tmp/reprapgui':
+            input_fd['reprapgui'] = {'fd': util.create_pty('/tmp/reprapgui'), 'prio': 15}
     if options.debugoutput:
         start_args['debugoutput'] = options.debugoutput
         start_args.update(options.dictionary)

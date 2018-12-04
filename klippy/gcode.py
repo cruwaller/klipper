@@ -5,8 +5,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import os, re, collections, Queue
 import homing, extruder, heater, util
-
-DEFAULT_PRIORITY = 0
+import logging
 
 
 class error(Exception):
@@ -34,28 +33,41 @@ class InputGcode:
             self._write("ok %s\n" % (msg,))
         else:
             self._write("ok\n")
-    def respond(self, msg):
+        self.need_ack = False
+    def respond(self, msg, need_ack=True):
+        self.need_ack = need_ack
         self._write(msg+"\n")
-    def respond_info(self, msg):
+    def respond_info(self, msg, need_ack=True):
+        self.respond('// %s' % (msg.replace("\n", " ").strip(),), need_ack)
+        '''
         lines = [l.strip() for l in msg.strip().split('\n')]
-        self.respond("// " + "\n// ".join(lines))
-    def respond_error(self, msg):
+        self.respond("// %s" % ("\n// ".join(lines),), need_ack=need_ack)
+        '''
+    def respond_error(self, msg, need_ack=True):
+        logging.getLogger('printer.gcode').error("ERROR: %s" % msg)
+        self.respond('Error: %s' % (msg.replace("\n", " ").strip(),), need_ack)
+        '''
         lines = msg.strip().split('\n')
         if len(lines) > 1:
-            self.respond("Error: %s" % "\n".join(lines[:-1]))
-        self.respond_info('%s' % (lines[-1].strip(),))
-    def respond_stop(self, msg):
+            self.respond("Error: %s" % "\n".join(lines[:-1]), need_ack)
+        self.respond_info('%s' % (lines[-1].strip(),), need_ack)
+        '''
+    def respond_stop(self, msg, need_ack=True):
+        logging.getLogger('printer.gcode').error("FATAL: %s" % msg)
+        self.respond('!! %s' % (msg.replace("\n", " ").strip(),), need_ack)
+        '''
         lines = msg.strip().split('\n')
         if len(lines) > 1:
-            self.respond_info("\n".join(lines))
-        self.respond('!! %s' % (lines[0].strip(),))
+            self.respond_info("\n".join(lines), need_ack)
+        self.respond('!! %s' % (lines[0].strip(),), need_ack)
+        '''
 
 
 # Parse and handle G-Code commands
 class GCodeParser:
     error = error
     RETRY_TIME = 0.100
-    def __init__(self, printer, fd):
+    def __init__(self, printer, input_fds):
         self.logger = printer.logger.getChild('gcode')
         self.printer = printer
         self.fds = {}
@@ -63,12 +75,6 @@ class GCodeParser:
         self.reactor = printer.get_reactor()
         self.is_processing_data = False
         self.is_fileinput = not not printer.get_start_args().get("debuginput")
-        if not self.is_fileinput:
-            fd_handle = self.__start_reader(
-                fd, self.process_data_fd, DEFAULT_PRIORITY)
-            self.fds['default'] = fd_handle
-            self.cmd_CREATE_PIPE(
-                {"PATH": "/tmp/reprapgui", "PRIO": 15})
         self.bytes_read = 0
         self.input_log = collections.deque([], 50)
         # Command handling
@@ -109,11 +115,16 @@ class GCodeParser:
         self.register_command("AUTO_TEMP_REPORT", self.cmd_AUTO_TEMP_REPORT,
                               when_not_ready=True,
                               desc="Disable/Enable auto temperature reports. [AUTO=0|1]")
+        if not self.is_fileinput:
+            for name, fd in input_fds.items():
+                self.fds[name] = self.__start_reader(
+                    fd['fd'], self.process_data_fd, fd['prio'])
+                self.logger.info("PTYs: %s registered. fd = %s" % (name, fd,))
     def cmd_CREATE_PIPE(self, params):
         if self.is_fileinput:
             return
         path = self.get_str("PATH", params)
-        prio = self.get_int("PRIO", params, default=DEFAULT_PRIORITY,
+        prio = self.get_int("PRIO", params, default=0,
                             minval=0, maxval=15)
         if path == self.printer.get_start_arg('inputtty'):
             msg = "Cannot override main input: %s" % (path,)
@@ -130,12 +141,15 @@ class GCodeParser:
     def cmd_AUTO_TEMP_REPORT(self, params):
         self.auto_temp_report = self.get_int("AUTO", params,
             default=self.auto_temp_report, minval=0, maxval=1)
-        params['#input'].respond_info("Auto temperature reporting %s" %
-                                      bool(self.auto_temp_report))
+        params['#input'].respond_info(
+            "Auto temperature reporting %s" % bool(self.auto_temp_report),
+            need_ack=False)
+        params['#input'].need_ack = False
     def __start_reader(self, fd, func, prio=0):
         handle = self.reactor.register_fd_thread(fd, func)
         handle.partial_input = ""
         handle.priority = prio
+        handle.start()
         return handle
     def register_fd(self, name, fd, prio=5):
         if name not in self.fds:
@@ -196,6 +210,11 @@ class GCodeParser:
         busy = self.is_processing_data
         return {'speed_factor': self.speed_factor * 60., 'busy': busy}
     def printer_state(self, state):
+        self.logger.info("printer_state: %s" % state)
+        if state == 'shutdown' or state == "disconnect":
+            for name, fd in self.fds.items():
+                fd.stop()
+                self.logger.info("PTY: %s stopped" % name)
         if state == 'shutdown':
             if not self.is_printer_ready:
                 return
@@ -299,7 +318,7 @@ class GCodeParser:
             data = os.read(fd_r, 4096)
         except OSError:
             return False
-        # self.logger.info("input: %s" % data)
+        # data = data.replace("\r", "")
         self.input_log.append((eventtime, data))
         self.bytes_read += len(data)
         lines = data.split('\n')
@@ -312,11 +331,6 @@ class GCodeParser:
                 block=True)
             return False
         for line in lines:
-            #if self.m112_r.match(line) is not None:
-            #    self.process_queue.put(
-            #        InputGcode("M112", fd_r, prio=99),
-            #        block=True)
-            #    return True
             if len(line) <= 1:
                 continue
             self.process_queue.put(
@@ -512,7 +526,7 @@ class GCodeParser:
     # G-Code special command handlers
     def cmd_default(self, params):
         if not self.is_printer_ready:
-            params['#input'].respond_error(self.printer.get_state_message())
+            params['#input'].respond_error(self.printer.get_state_message(), need_ack=False)
             return
         cmd = params.get('#command')
         if not cmd:

@@ -17,7 +17,7 @@ class GuiStats:
         self.sd = printer.try_load_module(config, "virtual_sdcard")
         # variables
         self.starttime = time.time()
-        self.curr_state = 'C'
+        self.curr_state = 'PNR'
         self.name = config.getsection('printer').get(
             'name', default="Klipper printer")
         self.cpu_info = util.get_cpu_info()
@@ -31,10 +31,8 @@ class GuiStats:
         # register callbacks
         self.sd.register_done_cb(self.sd_print_done)
         # register control commands
-        for cmd in ["GUISTATS_GET_CONFIG"]:
-            gcode.register_command(
-                cmd, getattr(self, 'cmd_' + cmd), when_not_ready=True)
-        for cmd in ["GUISTATS_GET_STATUS"]:
+        for cmd in ["GUISTATS_GET_ARGS",
+                    "GUISTATS_GET_CONFIG", "GUISTATS_GET_STATUS"]:
             gcode.register_command(
                 cmd, getattr(self, 'cmd_' + cmd), when_not_ready=True)
         printer.add_object("gui_stats", self)
@@ -48,7 +46,6 @@ class GuiStats:
         if state == "connect":
             self.curr_state = "B"
         elif state == "ready":
-
             self.curr_state = "I"
         elif state == "disconnect":
             self.curr_state = "C"
@@ -91,16 +88,20 @@ class GuiStats:
 
     # ================================================================================
     # Commands
+    def cmd_GUISTATS_GET_ARGS(self, params):
+        dump = json.dumps(self.printer.get_start_args())
+        params["#input"].respond(dump, need_ack=False)
+
     def cmd_GUISTATS_GET_CONFIG(self, params):
         dump = json.dumps(self.get_config_stats())
-        params["#input"].respond(dump)
+        params["#input"].respond(dump, need_ack=False)
 
     def cmd_GUISTATS_GET_STATUS(self, params):
         _type = self.gcode.get_int("TYPE", params,
             default=1, minval=1, maxval=3)
         stats = self.get_status_stats(_type)
         dump = json.dumps(stats)
-        params["#input"].respond(dump)
+        params["#input"].respond(dump, need_ack=False)
 
     # ================================================================================
     # Statistics
