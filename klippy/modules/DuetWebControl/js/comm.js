@@ -871,7 +871,7 @@ function updateStatus() {
 						progressText.push(T("Layer: {0} of {1}", status.currentLayer, numLayers));
 					}
 
-					// Try to calculate the progress by checking the filament usage
+					// Get the current filament usage test
 					if (fileInfo.filament.length > 0) {
 						var totalFileFilament = (fileInfo.filament.reduce(function(a, b) { return a + b; })).toFixed(1);
 						var totalRawFilament = (status.extrRaw.reduce(function(a, b) { return a + b; })).toFixed(1);
@@ -886,14 +886,13 @@ function updateStatus() {
 							remainingFilament = 0;
 							printJustFinished = printHasFinished = true;
 						}
-						progressText.push(T("Filament Usage: {0}mm of {1}mm", totalRawFilament, totalFileFilament));
-
+						progressText.push(T("Filament: {0}mm of {1}mm", totalRawFilament, totalFileFilament));
 						// TODO: Make this optional
-						progressText[progressText.length - 1] += " " + T("({0}mm remaining)", remainingFilament.toFixed(1));
-
+						//progressText[progressText.length - 1] += " " + T("({0}mm remaining)", remainingFilament.toFixed(1));
 					}
-					// Otherwise by comparing the current Z position to the total height
-					else if (fileInfo.height > 0 && fileInfo.layerHeight > 0) {
+
+				  // Get the progress by comparing the current Z position to the total height
+					if (fileInfo.height > 0 && fileInfo.layerHeight > 0 && status.progressType == 1) {
 						progress = ((status.coords.xyz[2] / fileInfo.height) * 100.0).toFixed(1);
 						if (progress < 0) {
 							progress = 0;

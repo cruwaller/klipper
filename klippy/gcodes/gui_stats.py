@@ -372,6 +372,7 @@ class GuiStats:
 
             # Fill status block
             status_block.update( {
+                "progressType"       : 0, # 1 = layer, else file progress
                 "currentLayer"       : curr_layer,
                 "currentLayerTime"   : layer_time_curr,
                 # How much filament would have been printed without extrusion factors applied
@@ -380,7 +381,7 @@ class GuiStats:
                 "fractionPrinted"    : float("%.1f" % (progress * 100.)),
 
                 "firstLayerDuration" : first_layer_time,
-                "SKIP_ firstLayerHeight"   : self.firstLayerHeight,
+                "SKIP_ firstLayerHeight"   : float("%.1f" % self.firstLayerHeight),
                 "printDuration"      : printing_time,
                 "warmUpDuration"     : float("%.1f" % self.warmup_time),
 
