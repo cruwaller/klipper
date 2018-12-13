@@ -5,8 +5,10 @@ import tornado.web
 import time, sys, os, errno, threading, json, re, logging
 import argparse, ConfigParser
 import Queue
+from multiprocessing import Queue as QueueMulti
+
 # Local modules
-import util, queuelogger, reactor
+import queuelogger, reactor
 import modules.videocam as videocam
 
 # Include www data to search dir
@@ -391,8 +393,6 @@ class rrHandler(tornado.web.RequestHandler):
             # Clean up gcode command
             gcode = gcode.replace("0:/", "").replace("0%3A%2F", "")
 
-            printer_write = self.parent.write_async
-
             if "M80" in gcode:
                 atx_on = self.parent.atx_on
                 if atx_on is not None:
@@ -413,10 +413,7 @@ class rrHandler(tornado.web.RequestHandler):
                 if "M0" in gcode and self.parent.curr_state == "S":
                     # Cancel print after pause, change state to idle
                     self.parent.curr_state = "I"
-                try:
-                    printer_write(gcode)
-                except self.parent.gcode.error as e:
-                    respdata["err"] = 1
+                self.parent.write_async_with_resp(gcode)
 
         # rr_download?name=XXX
         elif "rr_download" in path:
@@ -701,9 +698,6 @@ class RepRapGuiModule(object):
             self.logger_tornado.setLevel(logging.INFO)
         self.starttime = time.time()
         self.curr_state = 'C'
-        self.gcode_resps = []
-        self.lock = threading.Lock()
-        self.write_lock = threading.Lock()
         # Read config
         htmlroot = os.path.normpath(os.path.join(os.path.dirname(__file__)))
         htmlroot = os.path.join(htmlroot, "modules", "DuetWebControl")
@@ -741,6 +735,12 @@ class RepRapGuiModule(object):
         self.partial_input = ""
         self.printer_start_args = {}
         self.input_fd = None
+        self.gcode_resps = [] # TODO: Multi Queue?
+        # self.lock = threading.Lock()
+        self.write_lock = threading.Lock()
+        self.write_queue_sync = QueueMulti(maxsize=8)
+        self.write_queue_async = QueueMulti(maxsize=8)
+        self.serial = None
         # ------------------------------
         # Start tornado webserver
         if _TORNADO_THREAD is None or not _TORNADO_THREAD.isAlive():
@@ -811,6 +811,7 @@ class RepRapGuiModule(object):
 
     # ================================================================================
     def open_pipe(self):
+        # Keep thread running...
         while True:
             try:
                 comm_path = open("/tmp/reprapgui", "wb+")
@@ -823,13 +824,14 @@ class RepRapGuiModule(object):
             fd_handle.start()
             self.logger.debug("Klipper communication pipe ok...")
             try:
+                self.logger.info("Version: %s" % self.write_sync("M115"))
                 # ------------------------------
                 # Disable auto temperature reporting
                 self.write_sync("AUTO_TEMP_REPORT AUTO=0")
                 # ------------------------------
                 # Get start arguments from printer
                 self.printer_start_args = \
-                    json.loads(self.write_sync("GUISTATS_GET_ARGS"))
+                    json.loads(self.write_sync("GUISTATS_GET_ARGS").replace("ok", ""))
                 self.logger.info("Printer start args: %s" % self.printer_start_args)
             except ValueError as e:
                 self.logger.error("Communication failure: '%s' - restart..." % e)
@@ -840,6 +842,7 @@ class RepRapGuiModule(object):
             while fd_handle.is_running():
                 time.sleep(0.5)
             # reset params
+            self.write_count = 0
             self.partial_input = ""
             self.printer_start_args = {}
             self.input_fd = None
@@ -853,9 +856,10 @@ class RepRapGuiModule(object):
 
     # ================================================================================
     def read(self, fileno):
+        data = ""
         try:
-            data = os.read(fileno, 8192) # 8192 -> 4096
-            # self.logger.info("DATA < %s", data)
+            while "ok" not in data:
+                data += os.read(fileno, 4096)
         except OSError as e:
             self.logger.error("read failed! %s" % e)
             return "FAILURE"
@@ -863,11 +867,10 @@ class RepRapGuiModule(object):
         lines[0] = self.partial_input + lines[0]
         self.partial_input = lines.pop()
         data = "\n".join(lines)
-        return data
+        return data.strip()
     def write(self, cmd):
         if self.input_fd is None:
             return
-        # self.logger.debug("Write: %s" % (cmd,))
         try:
             os.write(self.input_fd, "%s\n" % cmd)
         except OSError as e:
@@ -875,6 +878,11 @@ class RepRapGuiModule(object):
     def write_async(self, cmd):
         with self.write_lock:
             self.write(cmd)
+    write_count = 0
+    def write_async_with_resp(self, cmd):
+        with self.write_lock:
+            self.write(cmd)
+            self.write_count = 1
     sync_resp = None
     def write_sync(self, cmd):
         if self.input_fd is None:
@@ -892,12 +900,7 @@ class RepRapGuiModule(object):
                     raise ValueError("Read timeout")
             self.input_state = 0
             resp = self.sync_resp
-        #self.logger.debug("write_sync: resp %s" % resp)
         return resp
-
-    def printer_write(self, cmd):
-        with self.write_lock:
-            self.write(cmd)
 
     # Callback method for input fd poller thread
     input_state = 0
@@ -905,7 +908,7 @@ class RepRapGuiModule(object):
         # self.logger.info("input handler called at %s" % eventtime)
         data_in = self.read(handler.fileno())
         if self.input_state == 3:
-            self.sync_resp = data_in
+            self.sync_resp = data_in.replace("ok", "")
         else:
             self.append_gcode_resp(data_in)
         return False
@@ -915,9 +918,10 @@ class RepRapGuiModule(object):
             self.logger.warning("Not valid resp '%s' received!", msg)
             return
         msg = msg.strip()
-        if msg not in self.gcode_resps:
-            self.logger.debug("append_gcode_resp(%s)" % (msg,))
+        if self.write_count > 0 and len(msg):
+            self.logger.debug("append_gcode_resp(%s) cnt %s" % (msg,self.write_count))
             self.gcode_resps.append(msg)
+            self.write_count -= 1
 
     # ================================================================================
     def web_getconfig(self):

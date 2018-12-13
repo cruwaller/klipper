@@ -7,7 +7,7 @@ import math, logging
 import probe, delta, mathutil
 
 class DeltaCalibrate:
-    sender_fd = None
+    sender = None
     def __init__(self, config):
         self.printer = config.get_printer()
         if config.getsection('printer').get('kinematics') != 'delta':
@@ -29,7 +29,7 @@ class DeltaCalibrate:
             desc=self.cmd_DELTA_CALIBRATE_help)
     cmd_DELTA_CALIBRATE_help = "Delta calibration script"
     def cmd_DELTA_CALIBRATE(self, params):
-        self.sender_fd = params["#input"].fd
+        self.sender = params["#input"]
         self.gcode.run_script_from_command("G28")
         self.probe_helper.start_probe()
     def get_probed_position(self):
@@ -55,7 +55,7 @@ class DeltaCalibrate:
             logging.info("orig: %s new: %s",
                          delta.get_position_from_stable(spos, params),
                          delta.get_position_from_stable(spos, new_params))
-        self.gcode.respond_info(self.sender_fd,
+        self.sender.respond_info(
             "stepper_a: position_endstop: %.6f angle: %.6f\n"
             "stepper_b: position_endstop: %.6f angle: %.6f\n"
             "stepper_c: position_endstop: %.6f angle: %.6f\n"
@@ -66,7 +66,7 @@ class DeltaCalibrate:
                 new_params['endstop_b'], new_params['angle_b'],
                 new_params['endstop_c'], new_params['angle_c'],
                 new_params['radius']))
-        self.sender_fd = None
+        self.sender = None
 
 def load_config(config):
     return DeltaCalibrate(config)

@@ -650,10 +650,10 @@ function updateStatus() {
 						if ((response != "") || (lastSentGCode != "" && (settings.logSuccess || currentPage == "console"))) {
 							// What kind of reply are we dealing with?
 							var style = "success", content = response;
-							if (response.match("^Warning: ") != null) {
+							if (response.match("Warning: ") != null) {
 								style = "warning";
 								content = content.replace(/Warning:/g, "<strong>Warning:</strong>");
-							} else if (response.match("^Error: ") != null) {
+							} else if (response.match("Error: ") != null) {
 								style = "danger";
 								content = content.replace(/Error:/g, "<strong>Error:</strong>");
 							} else if (response != "") {

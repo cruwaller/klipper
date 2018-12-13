@@ -146,7 +146,7 @@ class VirtualSD:
         self.must_pause_work = False
         self.work_timer = self.reactor.register_timer(
             self.work_handler, self.reactor.NOW)
-        self.last_gco_sender = params['#input'].fd
+        self.last_gco_sender = params['#input']
     def cmd_M25(self, params):
         # Pause SD print
         if self.work_timer is not None:
@@ -209,8 +209,7 @@ class VirtualSD:
             self.current_file.seek(self.file_position)
         except:
             self.logger.exception("virtual_sdcard seek")
-            self.gcode.respond_error(self.last_gco_sender,
-                                     "Unable to seek file")
+            self.last_gco_sender.respond_error("Unable to seek file")
             self.work_timer = None
             self.gcode.simulate_print = False
             return self.reactor.NEVER
@@ -223,8 +222,7 @@ class VirtualSD:
                     data = self.current_file.read(8192)
                 except:
                     self.logger.exception("virtual_sdcard read")
-                    self.gcode.respond_error(self.last_gco_sender,
-                                             "Error on virtual sdcard read")
+                    self.last_gco_sender.respond_error("Error on virtual sdcard read")
                     for cb in self.done_cb:
                         cb('error')
                     break
@@ -233,7 +231,7 @@ class VirtualSD:
                     self.current_file.close()
                     self.current_file = None
                     self.logger.info("Finished SD card print")
-                    self.gcode.respond(self.last_gco_sender, "Done printing file")
+                    self.last_gco_sender.respond("Done printing file")
                     for cb in self.done_cb:
                         cb('done')
                     break
@@ -250,8 +248,7 @@ class VirtualSD:
                     continue
             except self.gcode.error as e:
                 self.logger.error("GCode error: %s" % e)
-                self.gcode.respond_error(self.last_gco_sender,
-                                         "VSD GCode error: %s" % e)
+                self.last_gco_sender.respond_error("VSD GCode error: %s" % e)
                 for cb in self.done_cb:
                     cb('error')
                 break

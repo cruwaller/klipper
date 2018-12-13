@@ -219,7 +219,6 @@ class PrinterHeater:
         return eventtime + next_time
     def __protect_error(self, errorstr):
         self.set_temp(0, 0)
-        self.gcode.respond_stop(None, errorstr)
         self.printer.request_exit('shutdown')
     def get_min_extrude_status(self):
         stat = "prevented"

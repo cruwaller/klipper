@@ -215,10 +215,10 @@ class TelegramModule(object):
                 update.message.reply_text('not printing')
     def kill(self, bot, update):
         if update.message.from_user['id'] in self.chat_ids:
-            self.gcode.push_command_to_queue('M112')
+            self.gcode.push_command_to_queue('M112', prio=True)
     def restart_printer(self, bot, update):
         if update.message.from_user['id'] in self.chat_ids:
-            self.gcode.push_command_to_queue('M999')
+            self.gcode.push_command_to_queue('M999', prio=True)
     def error(self, bot, update, error):
         """Log Errors caused by Updates."""
         self.logger.warning('Update "%s" caused error "%s"', update, error)

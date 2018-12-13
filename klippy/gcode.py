@@ -3,23 +3,19 @@
 # Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import os, re, collections, Queue
-import homing, extruder, heater, util
-import logging
-
+import os, re, collections, Queue, logging
+from multiprocessing import Queue as QueueMulti
+import homing, util
 
 class error(Exception):
     pass
 
 class InputGcode:
-    def __init__(self, gcode, fd_r, fd_func=None, need_ack=True, prio=0):
-        self.prio = prio
+    def __init__(self, gcode, fd_r, fd_func=None, need_ack=True):
         self.fd = fd_r
         self.fd_func = fd_func
         self.gcode = gcode
         self.need_ack = need_ack
-    def __cmp__(self, other):
-        return cmp(self.prio, other.prio)
     def _write(self, msg):
         if self.fd_func is not None:
             self.fd_func(msg)
@@ -34,33 +30,21 @@ class InputGcode:
         else:
             self._write("ok\n")
         self.need_ack = False
-    def respond(self, msg, need_ack=True):
-        self.need_ack = need_ack
+    def respond(self, msg):
         self._write(msg+"\n")
-    def respond_info(self, msg, need_ack=True):
-        self.respond('// %s' % (msg.replace("\n", " ").strip(),), need_ack)
-        '''
+    def respond_info(self, msg):
         lines = [l.strip() for l in msg.strip().split('\n')]
-        self.respond("// %s" % ("\n// ".join(lines),), need_ack=need_ack)
-        '''
-    def respond_error(self, msg, need_ack=True):
-        logging.getLogger('printer.gcode').error("ERROR: %s" % msg)
-        self.respond('Error: %s' % (msg.replace("\n", " ").strip(),), need_ack)
-        '''
+        self.respond("// %s" % ("\n// ".join(lines),))
+    def respond_error(self, msg):
         lines = msg.strip().split('\n')
         if len(lines) > 1:
-            self.respond("Error: %s" % "\n".join(lines[:-1]), need_ack)
-        self.respond_info('%s' % (lines[-1].strip(),), need_ack)
-        '''
-    def respond_stop(self, msg, need_ack=True):
-        logging.getLogger('printer.gcode').error("FATAL: %s" % msg)
-        self.respond('!! %s' % (msg.replace("\n", " ").strip(),), need_ack)
-        '''
+            self.respond_info("%s" % "\n".join(lines[:-1]))
+        self.respond('Warning: %s' % (lines[-1].strip(),))
+    def respond_stop(self, msg):
         lines = msg.strip().split('\n')
         if len(lines) > 1:
-            self.respond_info("\n".join(lines), need_ack)
-        self.respond('!! %s' % (lines[0].strip(),), need_ack)
-        '''
+            self.respond_info("%s" % "\n".join(lines[:-1]))
+        self.respond('!! Error: %s' % (lines[-1].strip(),))
 
 
 # Parse and handle G-Code commands
@@ -106,8 +90,8 @@ class GCodeParser:
         self.simulate_print = False
         self.auto_temp_report = True
         # GCode input Queue
-        self.process_queue = Queue.PriorityQueue(maxsize=20)  # TODO maxsize?
-        self.logger.info("queue fileno %s" % self.process_queue)
+        self.process_queue = QueueMulti(maxsize=32)
+        self.priority_queue = QueueMulti(maxsize=8)
         self.q_timer = self.reactor.register_timer(
             self.__process_queue, self.reactor.NOW)
         # Register control commands
@@ -129,8 +113,7 @@ class GCodeParser:
         if path == self.printer.get_start_arg('inputtty'):
             msg = "Cannot override main input: %s" % (path,)
             self.logger.error(msg)
-            params['#input'].respond_error(msg)
-            return
+            raise error(msg)
         if path not in self.fds:
             fd = util.create_pty(path)
             fd_handle = self.__start_reader(fd, self.process_data_fd, prio)
@@ -142,9 +125,7 @@ class GCodeParser:
         self.auto_temp_report = self.get_int("AUTO", params,
             default=self.auto_temp_report, minval=0, maxval=1)
         params['#input'].respond_info(
-            "Auto temperature reporting %s" % bool(self.auto_temp_report),
-            need_ack=False)
-        params['#input'].need_ack = False
+            "Auto temperature reporting %s" % bool(self.auto_temp_report))
     def __start_reader(self, fd, func, prio=0):
         handle = self.reactor.register_fd_thread(fd, func)
         handle.partial_input = ""
@@ -272,6 +253,7 @@ class GCodeParser:
         cpos = line.find(';')
         if cpos >= 0:
             line = line[:cpos]
+        #self.logger.debug("GCode in: '%s'" % (line))
         # Break command into parts
         parts = self.args_r.split(line.upper())[1:]
         params = { parts[i]: parts[i+1].strip()
@@ -326,23 +308,27 @@ class GCodeParser:
         handler.partial_input = lines.pop()
         if "M112" in data:
             # Emergency stop, kill immediately
-            self.process_queue.put(
-                InputGcode("M112", fd_r, prio=99),
-                block=True)
+            self.priority_queue.put(InputGcode("M112", fd_r), block=True)
             return False
+        if prio:
+            q = self.priority_queue
+        else:
+            q = self.process_queue
         for line in lines:
             if len(line) <= 1:
                 continue
-            self.process_queue.put(
-                InputGcode(line, fd_r, prio=prio),
-                block=True)
+            q.put(InputGcode(line, fd_r), block=True)
         return False # do not stop processing
 
     def __process_queue(self, eventtime):
         self.reactor.unregister_timer(self.q_timer)
         while True:
             try:
-                _gco = self.process_queue.get_nowait()
+                try:
+                    # Emergency is handled immediately
+                    _gco = self.priority_queue.get_nowait()
+                except Queue.Empty:
+                    _gco = self.process_queue.get_nowait()
                 self.is_processing_data = True
                 try:
                     self.process_command(_gco)
@@ -350,12 +336,15 @@ class GCodeParser:
                     self.is_processing_data = False
             except Queue.Empty:
                 self.reactor.pause(self.reactor.monotonic() + 0.100)
-    def push_command_to_queue(self, cmd, resp_func=None, prio=5):
+
+    def push_command_to_queue(self, cmd, resp_func=None, prio=False):
+        if prio:
+            q = self.priority_queue
+        else:
+            q = self.process_queue
         lines = cmd.split('\n')
         for line in lines:
-            self.process_queue.put(
-                InputGcode(line, None, fd_func=resp_func, prio=prio),
-                block=True)
+            q.put(InputGcode(line, None, fd_func=resp_func), block=True)
 
     def process_batch(self, command):
         if self.is_processing_data:
@@ -372,32 +361,7 @@ class GCodeParser:
             self.process_commands(script.split('\n'), need_ack=False)
         finally:
             self.need_ack = prev_need_ack
-    def respond(self, fd, msg):
-        if self.is_fileinput:
-            return
-        if fd is not None:
-            os.write(fd, msg+"\n")
-        else:
-            for path, handler in self.fds.items():
-                os.write(handler.fd, msg + "\n")
-    def respond_info(self, fd, msg):
-        self.logger.debug(msg)
-        lines = [l.strip() for l in msg.strip().split('\n')]
-        self.respond(fd, "// " + "\n// ".join(lines))
-    def respond_error(self, fd, msg):
-        self.logger.warning(msg.replace('\n', ". "))
-        lines = msg.strip().split('\n')
-        if len(lines) > 1:
-            self.respond(fd, "Error: %s" % "\n".join(lines[:-1]))
-        self.respond_info(fd, '%s' % (lines[-1].strip(),))
-    def respond_stop(self, fd, msg):
-        self.logger.error(msg.replace('\n', ". "))
-        lines = msg.strip().split('\n')
-        if len(lines) > 1:
-            self.respond_info(fd, "\n".join(lines))
-        self.respond(fd, '!! %s' % (lines[0].strip(),))
-        if self.is_fileinput:
-            self.printer.request_exit('error_exit')
+
     # Parameter parsing helpers
     class sentinel: pass
     def get_str(self, name, params, default=sentinel, parser=str,
@@ -506,8 +470,7 @@ class GCodeParser:
 
         if heater is None:
             if temp > 0.:
-                params['#input'].respond_error("Heater not configured")
-            return
+                raise error("Heater not configured")
         print_time = self.toolhead.get_last_move_time()
         try:
             heater.set_temp(print_time, temp)
@@ -515,19 +478,18 @@ class GCodeParser:
             raise error(str(e))
         if wait and temp and self.simulate_print is False:
             self.bg_temp(heater, params['#input'].fd)
-    def set_fan_speed(self, speed, index, handler=None):
+    def set_fan_speed(self, speed, index):
         fan = self.printer.lookup_object('fan %d' % (index,), None)
         if fan is None:
-            if speed and not self.is_fileinput and handler is not None:
-                handler.respond_info("Fan not configured")
+            if speed and not self.is_fileinput:
+                raise error("Fan not configured")
             return
         print_time = self.toolhead.get_last_move_time()
         fan.set_speed(print_time, speed)
     # G-Code special command handlers
     def cmd_default(self, params):
         if not self.is_printer_ready:
-            params['#input'].respond_error(self.printer.get_state_message(), need_ack=False)
-            return
+            raise error(self.printer.get_state_message())
         cmd = params.get('#command')
         if not cmd:
             self.logger.debug(params['#original'])
@@ -545,9 +507,7 @@ class GCodeParser:
             return
         e = self.printer.extruder_get(index)
         if e is None:
-            params['#input'].respond_error(
-                "Extruder %d not configured" % (index,))
-            return
+            raise error("Extruder %d not configured" % (index,))
         if self.extruder is e:
             return
         if self.extruder is not None:
@@ -754,12 +714,10 @@ class GCodeParser:
     def cmd_M106(self, params):
         # Set fan speed
         self.set_fan_speed(self.get_float('S', params, 255., minval=0.) / 255.,
-                           self.get_int('P', params, 0),
-                           params['#input'])
+                           self.get_int('P', params, 0))
     def cmd_M107(self, params):
         # Turn fan off
-        self.set_fan_speed(0., self.get_int('P', params, 0),
-                           params['#input'])
+        self.set_fan_speed(0., self.get_int('P', params, 0))
     # G-Code miscellaneous commands
     cmd_M112_help = "Emergency shutdown"
     cmd_M112_when_not_ready = True
@@ -844,10 +802,9 @@ class GCodeParser:
     cmd_STATUS_help = "Report the printer status"
     def cmd_STATUS(self, params):
         msg = self.printer.get_state_message()
-        if self.is_printer_ready:
-            params['#input'].respond_info(msg)
-        else:
-            params['#input'].respond_error(msg)
+        if not self.is_printer_ready:
+            raise error(msg)
+        params['#input'].respond_info(msg)
     cmd_HELP_when_not_ready = True
     def cmd_HELP(self, params):
         cmdhelp = []

@@ -86,7 +86,7 @@ class BedTiltCalibrate:
     cmd_BED_TILT_CALIBRATE_help = "Bed tilt calibration script"
     def cmd_BED_TILT_CALIBRATE(self, params):
         self.bedtilt.disabled = False
-        self.sender = params["#input"].respond_info
+        self.sender = params["#input"]
         self.gcode.run_script_from_command("G28")
         self.probe_helper.start_probe()
     def get_probed_position(self):

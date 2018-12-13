@@ -805,11 +805,11 @@ class RepRapGuiModule(object):
 
     def printer_write_no_update(self, cmd):
         self.logger.debug("GCode send: %s" % (cmd,))
-        self.gcode.push_command_to_queue(cmd, None)
+        self.gcode.push_command_to_queue(cmd, None, prio=True)
 
     def printer_write(self, cmd):
         self.logger.debug("GCode send: %s" % (cmd,))
-        self.gcode.push_command_to_queue(cmd, self.gcode_resp_handler)
+        self.gcode.push_command_to_queue(cmd, self.gcode_resp_handler, prio=True)
 
     def gcode_resp_handler(self, msg):
         msg = msg.strip()

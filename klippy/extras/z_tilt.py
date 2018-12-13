@@ -7,7 +7,7 @@ import logging
 import probe, mathutil
 
 class ZTilt:
-    sender_fd = None
+    sender = None
     def __init__(self, config):
         self.printer = config.get_printer()
         z_positions = config.get('z_positions').split('\n')
@@ -44,7 +44,7 @@ class ZTilt:
         self.z_steppers = z_steppers
     cmd_Z_TILT_ADJUST_help = "Adjust the Z tilt"
     def cmd_Z_TILT_ADJUST(self, params):
-        self.sender_fd = params["#input"]
+        self.sender = params["#input"]
         self.probe_helper.start_probe()
     def get_probed_position(self):
         kin = self.printer.lookup_object('toolhead').get_kinematics()
@@ -70,7 +70,7 @@ class ZTilt:
         except:
             logging.exception("z_tilt adjust_steppers")
             for s in self.z_steppers:
-                z.mcu_stepper.set_ignore_move(False)
+                s.mcu_stepper.set_ignore_move(False)
             raise
     def adjust_steppers(self, x_adjust, y_adjust, z_adjust, z_offset):
         toolhead = self.printer.lookup_object('toolhead')
@@ -87,7 +87,7 @@ class ZTilt:
             "\n".join(["%s = %.6f" % (s.get_name(), so) for so, s in positions]),
             z_adjust - z_offset)
         logging.info(msg)
-        self.sender_fd.respond_info(msg)
+        self.sender.respond_info(msg)
         # Move each z stepper (sorted from lowest to highest) until they match
         positions.sort()
         first_stepper_offset, first_stepper = positions[0]
@@ -105,7 +105,7 @@ class ZTilt:
         curpos[2] -= z_adjust - z_offset
         toolhead.set_position(curpos)
         self.gcode.reset_last_position()
-        self.sender_fd = None
+        self.sender = None
 
 def load_config(config):
     return ZTilt(config)

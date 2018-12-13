@@ -19,9 +19,9 @@ status_delay = 1.0
 message_ready = "Printer is ready"
 
 message_startup = """
-Printer is not ready!
 The klippy host software is attempting to connect.
 Please retry in a few moments.
+Printer is not ready!
 """
 
 message_restart = """
