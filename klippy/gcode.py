@@ -4,7 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import os, re, collections, Queue, logging
-from multiprocessing import Queue as QueueMulti
+#from multiprocessing import Queue as QueueMulti
 import homing, util
 
 class error(Exception):
@@ -90,8 +90,8 @@ class GCodeParser:
         self.simulate_print = False
         self.auto_temp_report = True
         # GCode input Queue
-        self.process_queue = QueueMulti(maxsize=32)
-        self.priority_queue = QueueMulti(maxsize=8)
+        self.process_queue = Queue.Queue(maxsize=32)
+        self.priority_queue = Queue.Queue(maxsize=8)
         self.q_timer = self.reactor.register_timer(
             self.__process_queue, self.reactor.NOW)
         # Register control commands

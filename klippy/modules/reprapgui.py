@@ -91,7 +91,8 @@ def analyse_gcode_file(filepath):
         "height" : 0,
         "layerHeight" : 0,
         "firstLayerHeight": 0,
-        "filament" : []
+        "filament" : [],
+        "buildTime" : 0
     }
     if filepath is None:
         return info
@@ -406,8 +407,6 @@ class rrHandler(tornado.web.RequestHandler):
             # Clean up gcode command
             gcode = gcode.replace("0:/", "").replace("0%3A%2F", "")
 
-            printer_write = self.parent.printer_write
-
             if "M80" in gcode:
                 atx_on = self.parent.atx_on
                 if atx_on is not None:
@@ -425,11 +424,8 @@ class rrHandler(tornado.web.RequestHandler):
                 # Skip...
                 pass
             else:
-                if "M0" in gcode and self.parent.gui_stats.get_current_state() == "S":
-                    # Cancel print after pause, change state to idle
-                    self.parent.gui_stats.sd_print_done("stop")
                 try:
-                    printer_write(gcode)
+                    self.parent.printer_write(gcode)
                 except self.parent.gcode.error as e:
                     respdata["err"] = 1
 
@@ -585,11 +581,13 @@ class rrHandler(tornado.web.RequestHandler):
                 respdata["layerHeight"]      = info["layerHeight"]
                 respdata["filament"]         = info["filament"]
 
-                if is_printing is True:
-                    # Current file information
-                    toolhead = self.printer.lookup_object('toolhead')
-                    respdata["printDuration"] = toolhead.get_print_time()
-                    respdata["fileName"] = os.path.relpath(path, sd_path) # os.path.basename ?
+                #if is_printing is True:
+                #    # Current file information
+                #    toolhead = self.printer.lookup_object('toolhead')
+                #    respdata["printDuration"] = toolhead.get_print_time()
+                #    respdata["fileName"] = os.path.relpath(path, sd_path) # os.path.basename ?
+                respdata["printDuration"] = info['buildTime']
+                respdata["fileName"] = os.path.relpath(path, sd_path) # os.path.basename ?
 
         # rr_move?old=XXX&new=YYY
         elif "rr_move" in path:
@@ -632,7 +630,6 @@ class rrHandler(tornado.web.RequestHandler):
             try:
                 self.write(self.parent.gcode_resps.pop(0))
             except IndexError:
-                #self.write("Buffer empty")
                 self.write("")
             return
 
@@ -807,15 +804,23 @@ class RepRapGuiModule(object):
         self.logger.debug("GCode send: %s" % (cmd,))
         self.gcode.push_command_to_queue(cmd, None, prio=True)
 
+    ok_rcvd = False
     def printer_write(self, cmd):
         self.logger.debug("GCode send: %s" % (cmd,))
+        self.ok_rcvd = False
+        self.resp = ""
         self.gcode.push_command_to_queue(cmd, self.gcode_resp_handler, prio=True)
 
+    resp = ""
     def gcode_resp_handler(self, msg):
-        msg = msg.strip()
-        if msg != "ok":
-            self.logger.debug("GCode resps: %s" % (msg.strip(),))
-            self.gcode_resps.append(msg)
+        if not self.ok_rcvd:
+            self.resp += msg
+            if "ok" not in self.resp:
+                return
+            resp = self.resp.strip()
+            self.logger.debug("GCode resps: %s" % (resp,))
+            self.gcode_resps.append(resp)
+            self.ok_rcvd = True
 
     def append_gcode_resp(self, msg):
         self.gcode_resps.append(msg)

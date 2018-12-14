@@ -614,9 +614,6 @@ class rrHandler(tornado.web.RequestHandler):
         # Send response back to client
         respstr = json.dumps(respdata)
         self.write(respstr)
-        #self.logger.info(json.dumps(respdata,
-        #                        sort_keys=True,
-        #                        indent=4, separators=(',', ': ')))
 
     def post(self, path, *args, **kwargs):
         respdata = { "err" : 1 }

@@ -381,11 +381,13 @@ class GuiStats:
                     remaining_time_layer = (printing_time / proc) - printing_time
             '''
 
+            '''
             self.logger.debug(
                 "TYPE3: layer %s, time: %s, 1st time: %s, warmup: %.2f, progress: %.2f, "
                 "file_time: %.2f, printing_time: %f" % (
                 curr_layer, layer_time_curr, first_layer_time, self.warmup_time, progress,
                 remaining_time_file, printing_time))
+            #'''
 
             # Fill status block
             status_block.update( {
