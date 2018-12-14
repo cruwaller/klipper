@@ -143,7 +143,8 @@ def analyse_gcode_file(filepath):
         "height" : 0,
         "layerHeight" : 0,
         "firstLayerHeight": 0,
-        "filament" : []
+        "filament" : [],
+        "buildTime" : 0
     }
     if filepath is None:
         return info
@@ -410,9 +411,6 @@ class rrHandler(tornado.web.RequestHandler):
                 # Skip...
                 pass
             else:
-                if "M0" in gcode and self.parent.curr_state == "S":
-                    # Cancel print after pause, change state to idle
-                    self.parent.curr_state = "I"
                 self.parent.write_async_with_resp(gcode)
 
         # rr_download?name=XXX
@@ -535,19 +533,12 @@ class rrHandler(tornado.web.RequestHandler):
         # rr_fileinfo?name=XXX
         elif "rr_fileinfo" in path:
             name = self.get_argument('name', default=None)
-            #self.logger.debug("rr_fileinfo: {} , name: {}".format(self.request.uri, name))
+            # self.logger.debug("rr_fileinfo: {} , name: {}".format(self.request.uri, name))
             is_printing = False
             if name is None:
-                try:
-                    is_printing = (self.parent.sd.current_file is not None and
-                                   self.parent.sd.work_timer is not None)
-                    # current file printed
-                    if self.parent.sd.current_file is not None:
-                        path = self.parent.sd.current_file.name
-                    else:
-                        raise AttributeError
-                except AttributeError:
-                    path = None
+                stat = self.parent.web_getsd()
+                is_printing = stat.get('printing', False)
+                path = stat.get('file', None)
             else:
                 path = self.get_argument('name').replace("0:/", "").replace("0%3A%2F", "")
                 path = os.path.abspath(os.path.join(sd_path, path))
@@ -567,10 +558,10 @@ class rrHandler(tornado.web.RequestHandler):
                 respdata["layerHeight"]      = info["layerHeight"]
                 respdata["filament"]         = info["filament"]
 
-                if is_printing is True:
-                    # Current file information
-                    respdata["printDuration"] = self.parent.toolhead.get_print_time()
-                    respdata["fileName"] = os.path.relpath(path, sd_path) # os.path.basename ?
+                #if is_printing is True:
+                #    # Current file information
+                respdata["printDuration"] = info['buildTime']
+                respdata["fileName"] = os.path.relpath(path, sd_path) # os.path.basename ?
 
         # rr_move?old=XXX&new=YYY
         elif "rr_move" in path:
@@ -678,6 +669,9 @@ def create_dir(_dir):
             raise Exception("cannot create directory {}".format(_dir))
 
 
+class CommError(Exception):
+    pass
+
 _TORNADO_THREAD = None
 
 class RepRapGuiModule(object):
@@ -784,6 +778,11 @@ class RepRapGuiModule(object):
         # ------------------------------
         self.logger.info("RepRep Web GUI loaded")
 
+    # ================================================================================
+    def is_printing(self):
+        return self.curr_state == "P"
+
+    # ================================================================================
     def Tornado_LoggerCb(self, req):
         values  = [req.request.remote_ip, req.request.method, req.request.uri]
         self.logger_tornado.debug(" ".join(values))
@@ -855,22 +854,10 @@ class RepRapGuiModule(object):
         return self.printer_start_args[name]
 
     # ================================================================================
-    def read(self, fileno):
-        data = ""
-        try:
-            while "ok" not in data:
-                data += os.read(fileno, 4096)
-        except OSError as e:
-            self.logger.error("read failed! %s" % e)
-            return "FAILURE"
-        lines = data.split('\n')
-        lines[0] = self.partial_input + lines[0]
-        self.partial_input = lines.pop()
-        data = "\n".join(lines)
-        return data.strip()
     def write(self, cmd):
         if self.input_fd is None:
             return
+        # self.logger.debug("GCode > '%s'" % cmd)
         try:
             os.write(self.input_fd, "%s\n" % cmd)
         except OSError as e:
@@ -895,7 +882,7 @@ class RepRapGuiModule(object):
             while self.sync_resp is None:
                 time.sleep(0.05)
                 timeout += 0.05
-                if timeout > 1.:
+                if timeout > 2.:
                     self.input_state = 0
                     raise ValueError("Read timeout")
             self.input_state = 0
@@ -905,21 +892,33 @@ class RepRapGuiModule(object):
     # Callback method for input fd poller thread
     input_state = 0
     def input_handler(self, eventtime, handler):
-        # self.logger.info("input handler called at %s" % eventtime)
-        data_in = self.read(handler.fileno())
+        try:
+            data_in = self.read(handler.fileno())
+        except OSError:
+            return True # Exit to reconnect...
         if self.input_state == 3:
             self.sync_resp = data_in.replace("ok", "")
         else:
             self.append_gcode_resp(data_in)
         return False
+    def read(self, fileno):
+        data = ""
+        while "ok" not in data:
+            data += os.read(fileno, 4096)
+        lines = data.split('\n')
+        lines[0] = self.partial_input + lines[0]
+        self.partial_input = lines.pop()
+        data = "\n".join(lines)
+        return data.strip()
 
     def append_gcode_resp(self, msg):
         if type(msg) is not str:
             self.logger.warning("Not valid resp '%s' received!", msg)
             return
         msg = msg.strip()
+        # self.logger.debug("Gcode < '%s'" % msg)
         if self.write_count > 0 and len(msg):
-            self.logger.debug("append_gcode_resp(%s) cnt %s" % (msg,self.write_count))
+            # self.logger.debug("append_gcode_resp(%s) cnt %s" % (msg,self.write_count))
             self.gcode_resps.append(msg)
             self.write_count -= 1
 
@@ -928,7 +927,6 @@ class RepRapGuiModule(object):
         try:
             resp = json.loads(self.write_sync("GUISTATS_GET_CONFIG"))
         except ValueError as e:
-            # self.logger.error("Config fail: %s" % e)
             resp = {'seq': 0, "err": 1}
         return resp
 
@@ -936,9 +934,17 @@ class RepRapGuiModule(object):
         try:
             resp = json.loads(self.write_sync("GUISTATS_GET_STATUS TYPE=%d" % _type))
         except ValueError as e:
-            # self.logger.error("Status fail: %s" % e)
             resp = {'seq': 0,  "status": "C", "err": 1}
+        self.curr_state = resp['status']
         return resp
+
+    def web_getsd(self):
+        try:
+            resp = json.loads(self.write_sync("GUISTATS_GET_SD_INFO"))
+        except ValueError as e:
+            resp = {}
+        return resp
+
 
 # =================================================================================================
 

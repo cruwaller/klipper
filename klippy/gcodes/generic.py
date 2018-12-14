@@ -4,7 +4,7 @@ class GenericGcode(object):
         self.printer = printer = config.get_printer()
         self.gcode = gcode = printer.lookup_object('gcode')
         self.toolhead = printer.lookup_object('toolhead')
-        for cmd in ['M0', 'M1', 'M118',
+        for cmd in ['M1', 'M118',
                     'M301', 'M302', 'M304',
                     'M851', 'M900']:
             gcode.register_command(
@@ -27,25 +27,10 @@ class GenericGcode(object):
     def cmd_ignore(self, params):
         pass
 
-    def motor_heater_off(self):
-        self.toolhead.motor_off()
-        print_time = self.toolhead.get_last_move_time()
-        for h in self.printer.lookup_module_objects("heater"):
-            h.set_temp(print_time, 0.0)
-        for fan in self.printer.lookup_module_objects('fan'):
-            fan.set_speed(print_time, 0.0)
-
-    def cmd_M0(self, params):
-        heaters_on = self.gcode.get_int('H', params, 0)
-        if heaters_on is 0:
-            self.motor_heater_off()
-        elif self.toolhead is not None:
-            self.toolhead.motor_off()
-
     def cmd_M1(self, params):
         # Wait for current moves to finish
         self.toolhead.wait_moves()
-        self.motor_heater_off()
+        self.toolhead.motor_heater_off()
 
     def cmd_M118(self, params):
         params['#input'].respond(params['#original'].replace(params['#command'], ""))

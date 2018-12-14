@@ -221,13 +221,6 @@ class GCodeParser:
             self.toolhead.set_extruder(self.extruder)
     def reset_last_position(self):
         self.last_position = self.position_with_transform()
-    def motor_heater_off(self):
-        self.toolhead.motor_off()
-        print_time = self.toolhead.get_last_move_time()
-        for h in self.printer.lookup_module_objects("heater"):
-            h.set_temp(print_time, 0.0)
-        for fan in self.printer.lookup_module_objects('fan'):
-            fan.set_speed(print_time, 0.0)
     def dump_debug(self):
         out = ["Dumping gcode input %d blocks" % (
             len(self.input_log),)]
@@ -487,12 +480,19 @@ class GCodeParser:
         print_time = self.toolhead.get_last_move_time()
         fan.set_speed(print_time, speed)
     # G-Code special command handlers
+    layer_r = re.compile(r'^.*;.*layer\s+([0-9]+).*([0-9]+\.[0-9]+).*', flags=re.IGNORECASE)
     def cmd_default(self, params):
         if not self.is_printer_ready:
             raise error(self.printer.get_state_message())
         cmd = params.get('#command')
         if not cmd:
-            self.logger.debug(params['#original'])
+            original = params['#original']
+            # Detect layer change from gcode comment
+            try:
+                layer = self.layer_r.search(original).groups()
+                self.toolhead.layer_changed(layer[0], layer[1])
+            except AttributeError:
+                pass
             return
         if cmd[0] == 'T' and len(cmd) > 1 and cmd[1].isdigit():
             # Tn command has to be handled specially
@@ -782,7 +782,7 @@ class GCodeParser:
     def request_restart(self, result, handler):
         if self.is_printer_ready:
             handler.respond_info("Preparing to restart...")
-            self.motor_heater_off()
+            self.toolhead.motor_heater_off()
             self.toolhead.dwell(0.500)
             self.toolhead.wait_moves()
         self.printer.request_exit(result)

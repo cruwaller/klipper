@@ -884,34 +884,38 @@ function updateStatus() {
 							progress = 100;
 							totalRawFilament = totalFileFilament;
 							remainingFilament = 0;
-							printJustFinished = printHasFinished = true;
 						}
 						progressText.push(T("Filament: {0}mm of {1}mm", totalRawFilament, totalFileFilament));
 						// TODO: Make this optional
 						//progressText[progressText.length - 1] += " " + T("({0}mm remaining)", remainingFilament.toFixed(1));
 					}
 
-				  // Get the progress by comparing the current Z position to the total height
-					if (fileInfo.height > 0 && fileInfo.layerHeight > 0 && status.progressType == 1) {
+					// Use the file-based progress as a fallback option
+					if (status.fractionPrinted >= 0) {
+						progress = status.fractionPrinted;
+						if (progress >= 100) {
+							progress = 100;
+						}
+					}
+					// Get the progress by comparing the current Z position to the total height
+					else if (fileInfo.height > 0 && fileInfo.layerHeight > 0) {
 						progress = ((status.coords.xyz[2] / fileInfo.height) * 100.0).toFixed(1);
 						if (progress < 0) {
 							progress = 0;
 						} else if (progress > 100) {
 							progress = 100;
-							printJustFinished = printHasFinished = true;
 						}
 					}
-					// Use the file-based progress as a fallback option
 					else {
-						progress = status.fractionPrinted;
-						if (progress < 0) {
-							progress = 100;
-							printJustFinished = printHasFinished = true;
-						}
+						progress = 100;
 					}
 
 					setProgress(progress, T("Printing {0}, {1}% Complete", fileInfo.fileName, progress),
-							(progressText.length > 0) ? progressText.reduce(function(a, b) { return a + ", " + b; }) : "");
+							    (progressText.length > 0) ? progressText.reduce(function(a, b) { return a + ", " + b; }) : "");
+
+					if (progress == 100) {
+						printJustFinished = printHasFinished = true;
+					}
 				}
 
 				// Print Chart

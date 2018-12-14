@@ -289,12 +289,10 @@ class ToolHead:
             if cb not in self.layer_change_cb:
                 self.layer_change_cb.append(cb)
     def deregister_cb(self, cb_type, cb):
-        if cb_type == "motor":
-            if cb in self.motor_cbs:
-                self.motor_cbs.remove(cb)
-        elif cb_type == "layer":
-            if cb in self.layer_change_cb:
-                self.layer_change_cb.remove(cb)
+        if cb in self.motor_cbs:
+            self.motor_cbs.remove(cb)
+        if cb in self.layer_change_cb:
+            self.layer_change_cb.remove(cb)
     def move_to_idle_pos(self, *args):
         if self.idle_position:
             gcode = self.printer.lookup_object('gcode')
@@ -396,22 +394,31 @@ class ToolHead:
         self._flush_lookahead()
         self.commanded_pos[:] = newpos
         self.kin.set_position(newpos, homing_axes)
+    def layer_changed(self, layer, height):
+        # change_time = self.print_time # self.get_print_time()
+        change_time = self.get_print_time()
+        for cb in self.layer_change_cb:
+            cb(change_time, layer, height)
     def move(self, newpos, speed, check=True):
         # Calculate layer time
         commanded_pos = self.commanded_pos
+        '''
         self.z_hop_detect_cntr += 1
         if newpos[2] - commanded_pos[2] > 0:
             if self.z_hop_detect is None:
                 self.z_hop_detect_cntr = 0
                 self.z_hop_detect = { 'pos' : newpos[2], 'time': self.print_time }
+                self.logger.info("LAYER CHANGE > z_hop Z=%s" % newpos[2])
         elif newpos[2] - commanded_pos[2] < 0:
             self.z_hop_detect = None
+            self.logger.info("LAYER CHANGE < z_hop Z=%s" % newpos[2])
         if self.z_hop_detect_cntr >= 2 and self.z_hop_detect is not None:
             change_time = self.z_hop_detect['time']
             for cb in self.layer_change_cb:
                 cb(change_time)
             self.z_hop_detect = None
-
+            self.logger.info("LAYER CHANGE: layer changed Z=%s" % newpos[2])
+        '''
         speed = min(speed, self.max_velocity)
         move = Move(self, commanded_pos, newpos, speed)
         if not move.move_d:
@@ -429,6 +436,13 @@ class ToolHead:
         self.update_move_time(delay)
         if check_stall:
             self._check_stall()
+    def motor_heater_off(self):
+        self.motor_off()
+        print_time = self.get_last_move_time()
+        for h in self.printer.lookup_module_objects("heater"):
+            h.set_temp(print_time, 0.0)
+        for fan in self.printer.lookup_module_objects('fan'):
+            fan.set_speed(print_time, 0.0)
     def motor_off(self):
         self.dwell(STALL_TIME)
         last_move_time = self.get_last_move_time()

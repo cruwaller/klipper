@@ -26,13 +26,13 @@ class GuiStats:
         self.layer_stats = []
         self.warmup_time = .1
         self.first_layer_start = None
-        self.last_used_file = None
         self.firstLayerHeight = .0
         # register callbacks
         self.sd.register_done_cb(self.sd_print_done)
         # register control commands
         for cmd in ["GUISTATS_GET_ARGS",
-                    "GUISTATS_GET_CONFIG", "GUISTATS_GET_STATUS"]:
+                    "GUISTATS_GET_CONFIG", "GUISTATS_GET_STATUS",
+                    "GUISTATS_GET_SD_INFO"]:
             gcode.register_command(
                 cmd, getattr(self, 'cmd_' + cmd), when_not_ready=True)
         printer.add_object("gui_stats", self)
@@ -68,7 +68,20 @@ class GuiStats:
             self.layer_stats = []
             self.warmup_time = .1
 
-    def layer_changed(self, change_time):
+    def layer_changed(self, change_time, layer, height):
+        self.logger.info("Layer changed cb: time %s, layer %s, h=%s" % (
+            change_time, layer, height))
+        try:
+            start_time = self.layer_stats[-1]['end time']
+        except IndexError:
+            # 1st layer change
+            self.warmup_time = change_time # finalize warmup time
+            start_time = 0
+        self.layer_stats.append(
+            {'start time': start_time,
+             'layer time': (change_time - start_time),
+             'end time': change_time})
+        '''
         if len(self.layer_stats) == 0 and self.first_layer_start is None:
             # First layer started
             self.logger.info(" ====== 1st LAYER ===== %s " % (change_time,))
@@ -85,6 +98,7 @@ class GuiStats:
                 {'start time': start_time,
                  'layer time': (change_time - start_time),
                  'end time': change_time} )
+        '''
 
     # ================================================================================
     # Commands
@@ -101,6 +115,10 @@ class GuiStats:
             default=1, minval=1, maxval=3)
         stats = self.get_status_stats(_type)
         dump = json.dumps(stats)
+        params["#input"].respond(dump)
+
+    def cmd_GUISTATS_GET_SD_INFO(self, params):
+        dump = json.dumps(self.sd.get_status(0, True))
         params["#input"].respond(dump)
 
     # ================================================================================
@@ -316,27 +334,20 @@ class GuiStats:
             status_block["tools"] = tools
 
         elif _type == 3:
-            fname = self.sd.get_current_file_name()
-            if fname is None:
-                fname = self.last_used_file
-            self.last_used_file = fname
-
+            lstat = self.layer_stats
             printing_time = toolhead.get_print_time()
-            curr_layer = len(self.layer_stats)
+            curr_layer = len(lstat)
+            try:
+                first_layer_time = lstat[0]['layer time']
+            except IndexError:
+                first_layer_time = 0. # printing_time
+            try:
+                layer_time_curr = printing_time - lstat[-1]['end time']
+            except IndexError:
+                layer_time_curr = 0. # printing_time
 
-            first_layer_time = 0.
-            layer_time_curr = .0
-            if curr_layer > 0 or self.first_layer_start is not None:
-                lstat = self.layer_stats
-                try:
-                    first_layer_time = lstat[0]['layer time']
-                except IndexError:
-                    first_layer_time = printing_time
-                try:
-                    layer_time_curr = lstat[-1]['layer time']
-                except IndexError:
-                    layer_time_curr = printing_time
-            else:
+            if curr_layer == 0:
+                # Update warmup time
                 self.warmup_time += printing_time - self.warmup_time
 
             # Print time estimations
@@ -369,6 +380,12 @@ class GuiStats:
                 if proc > 0:
                     remaining_time_layer = (printing_time / proc) - printing_time
             '''
+
+            self.logger.debug(
+                "TYPE3: layer %s, time: %s, 1st time: %s, warmup: %.2f, progress: %.2f, "
+                "file_time: %.2f, printing_time: %f" % (
+                curr_layer, layer_time_curr, first_layer_time, self.warmup_time, progress,
+                remaining_time_file, printing_time))
 
             # Fill status block
             status_block.update( {

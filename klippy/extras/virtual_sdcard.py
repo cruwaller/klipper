@@ -10,6 +10,7 @@ class VirtualSD:
         self.printer = printer = config.get_printer()
         self.logger = printer.logger.getChild('VirtualSD')
         self.simulate_print = False
+        self.toolhead = None
         # sdcard state
         sd = config.get('path')
         self.sdcard_dirname = os.path.normpath(os.path.expanduser(sd))
@@ -22,7 +23,7 @@ class VirtualSD:
         # Register commands
         self.gcode = printer.lookup_object('gcode')
         self.gcode.register_command('M21', None)
-        for cmd in ['M20', 'M21', 'M23', 'M24', 'M25', 'M26', 'M27',
+        for cmd in ['M0', 'M20', 'M21', 'M23', 'M24', 'M25', 'M26', 'M27',
                     'M32', 'M37', 'M98']:
             self.gcode.register_command(cmd, getattr(self, 'cmd_' + cmd))
         for cmd in ['M28', 'M29', 'M30']:
@@ -55,6 +56,8 @@ class VirtualSD:
             self.logger.info("Virtual sdcard (%d): %s\nUpcoming (%d): %s",
                              readpos, repr(data[:readcount]),
                              self.file_position, repr(data[readcount:]))
+        elif state == "ready":
+            self.toolhead = self.printer.lookup_object('toolhead')
     def stats(self, eventtime):
         if self.work_timer is None:
             return False, ""
@@ -68,11 +71,19 @@ class VirtualSD:
         except:
             self.logger.exception("virtual_sdcard get_file_list")
             raise self.gcode.error("Unable to get file list")
-    def get_status(self, eventtime):
+    def get_status(self, eventtime, extended=False):
         progress = 0.
         if self.work_timer is not None and self.file_size:
             progress = float(self.file_position) / self.file_size
-        return {'progress': progress}
+        stat = {'progress': progress}
+        if extended:
+            try:
+                stat["file"] = self.current_file.name
+            except AttributeError:
+                stat["file"] = 'N/A'
+            stat['simulation'] = int(self.simulate_print)
+            stat['printing'] = int(self.work_timer is not None)
+        return stat
     def register_done_cb(self, cb):
         if cb not in self.done_cb:
             self.done_cb.append(cb)
@@ -83,6 +94,14 @@ class VirtualSD:
     # G-Code commands
     def cmd_error(self, params):
         raise self.gcode.error("SD write not supported")
+    def cmd_M0(self, params):
+        heaters_on = self.gcode.get_int('H', params, 0)
+        if heaters_on is 0:
+            self.toolhead.motor_heater_off()
+        elif self.toolhead is not None:
+            self.toolhead.motor_off()
+        for cb in self.done_cb:
+            cb('stop')
     def cmd_M20(self, params):
         # List SD card
         in_gco = params['#input']
