@@ -54,7 +54,6 @@ class GCodeParser:
     def __init__(self, printer, input_fds):
         self.logger = printer.logger.getChild('gcode')
         self.printer = printer
-        self.fds = {}
         # Input handling
         self.reactor = printer.get_reactor()
         self.is_processing_data = False
@@ -95,32 +94,20 @@ class GCodeParser:
         self.q_timer = self.reactor.register_timer(
             self.__process_queue, self.reactor.NOW)
         # Register control commands
-        self.register_command("CREATE_PTY", self.cmd_CREATE_PIPE, when_not_ready=True)
         self.register_command("AUTO_TEMP_REPORT", self.cmd_AUTO_TEMP_REPORT,
                               when_not_ready=True,
                               desc="Disable/Enable auto temperature reports. [AUTO=0|1]")
         if not self.is_fileinput:
             for name, fd in input_fds.items():
-                self.fds[name] = self.__start_reader(
+                try:
+                    # Stop all existing handlers
+                    fd['handle'].stop()
+                    self.logger.info("PTY: %s stopped" % name)
+                except KeyError:
+                    pass
+                fd['handle'] = self.__start_reader(
                     fd['fd'], self.process_data_fd, fd['prio'])
                 self.logger.info("PTYs: %s registered. fd = %s" % (name, fd,))
-    def cmd_CREATE_PIPE(self, params):
-        if self.is_fileinput:
-            return
-        path = self.get_str("PATH", params)
-        prio = self.get_int("PRIO", params, default=0,
-                            minval=0, maxval=15)
-        if path == self.printer.get_start_arg('inputtty'):
-            msg = "Cannot override main input: %s" % (path,)
-            self.logger.error(msg)
-            raise error(msg)
-        if path not in self.fds:
-            fd = util.create_pty(path)
-            fd_handle = self.__start_reader(fd, self.process_data_fd, prio)
-            self.fds[path] = fd_handle
-            self.logger.info("PTYs: %s created. fd = %s" % (path, fd,))
-            if '#input' in params:
-                params['#input'].respond("ok - input is %s" % (path,))
     def cmd_AUTO_TEMP_REPORT(self, params):
         self.auto_temp_report = self.get_int("AUTO", params,
             default=self.auto_temp_report, minval=0, maxval=1)
@@ -132,10 +119,6 @@ class GCodeParser:
         handle.priority = prio
         handle.start()
         return handle
-    def register_fd(self, name, fd, prio=5):
-        if name not in self.fds:
-            fd_handle = self.__start_reader(fd, self.process_data_fd, prio)
-            self.fds[name] = fd_handle
     def temperature_auto_report(self, val=True):
         self.auto_temp_report = val
     def register_command(self, cmd, func, when_not_ready=False, desc=None):
@@ -191,11 +174,6 @@ class GCodeParser:
         busy = self.is_processing_data
         return {'speed_factor': self.speed_factor * 60., 'busy': busy}
     def printer_state(self, state):
-        self.logger.info("printer_state: %s" % state)
-        if state == 'shutdown' or state == "disconnect":
-            for name, fd in self.fds.items():
-                fd.stop()
-                self.logger.info("PTY: %s stopped" % name)
         if state == 'shutdown':
             if not self.is_printer_ready:
                 return

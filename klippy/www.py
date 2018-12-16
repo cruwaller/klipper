@@ -395,6 +395,7 @@ class rrHandler(tornado.web.RequestHandler):
             gcode = gcode.replace("0:/", "").replace("0%3A%2F", "")
 
             if "M80" in gcode:
+                # ATX ON
                 atx_on = self.parent.atx_on
                 if atx_on is not None:
                     resp = os.popen(atx_on).read()
@@ -408,7 +409,7 @@ class rrHandler(tornado.web.RequestHandler):
                     self.parent.append_gcode_resp(resp)
                     self.logger.info("ATX OFF: %s" % resp)
             elif "T-1" in gcode:
-                # Skip...
+                # ignore
                 pass
             else:
                 self.parent.write_async_with_resp(gcode)
@@ -778,6 +779,8 @@ class RepRapGuiModule(object):
     # ================================================================================
     def is_printing(self):
         return self.curr_state == "P"
+    def is_halted(self):
+        return self.curr_state == 'H'
 
     # ================================================================================
     def Tornado_LoggerCb(self, req):
@@ -803,7 +806,10 @@ class RepRapGuiModule(object):
         http_server = tornado.httpserver.HTTPServer(application,
                                                     ssl_options=ssl_options)
         http_server.listen(port)
-        tornado.ioloop.IOLoop.current().start()
+        try:
+            tornado.ioloop.IOLoop.current().start()
+        except Exception as err:
+            self.logger.error("IOLoop caused a failure! %s" % err)
 
     # ================================================================================
     def open_pipe(self):
@@ -838,6 +844,7 @@ class RepRapGuiModule(object):
             while fd_handle.is_running():
                 time.sleep(0.5)
             # reset params
+            self.curr_state = 'C'
             self.write_count = 0
             self.partial_input = ""
             self.printer_start_args = {}
@@ -879,7 +886,7 @@ class RepRapGuiModule(object):
             while self.sync_resp is None:
                 time.sleep(0.05)
                 timeout += 0.05
-                if timeout > 2.:
+                if timeout > 5.:
                     self.input_state = 0
                     raise ValueError("Read timeout")
             self.input_state = 0
@@ -923,22 +930,22 @@ class RepRapGuiModule(object):
     def web_getconfig(self):
         try:
             resp = json.loads(self.write_sync("GUISTATS_GET_CONFIG"))
-        except ValueError as e:
+        except ValueError:
             resp = {'seq': 0, "err": 1}
         return resp
 
     def web_getstatus(self, _type=1):
         try:
             resp = json.loads(self.write_sync("GUISTATS_GET_STATUS TYPE=%d" % _type))
-        except ValueError as e:
-            resp = {'seq': 0,  "status": "C", "err": 1}
-        self.curr_state = resp['status']
+            self.curr_state = resp['status']
+        except ValueError:
+            resp = {'seq': 0,  "status": self.curr_state, "err": 1}
         return resp
 
     def web_getsd(self):
         try:
             resp = json.loads(self.write_sync("GUISTATS_GET_SD_INFO"))
-        except ValueError as e:
+        except ValueError:
             resp = {}
         return resp
 
