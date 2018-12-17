@@ -224,7 +224,7 @@ class GCodeParser:
         cpos = line.find(';')
         if cpos >= 0:
             line = line[:cpos]
-        #self.logger.debug("GCode in: '%s'" % (line))
+        # self.logger.debug("GCode in: %s" % repr(line))
         # Break command into parts
         parts = self.args_r.split(line.upper())[1:]
         params = { parts[i]: parts[i+1].strip()
@@ -264,30 +264,26 @@ class GCodeParser:
 
     m112_r = re.compile('^(?:[nN][0-9]+)?\s*[mM]112(?:\s|$)')
     def process_data_fd(self, eventtime, handler):
-        prio = handler.priority
+        # prio = handler.priority
         fd_r = handler.fileno()
         # Read input, separate by newline, and add to queue
         try:
             data = os.read(fd_r, 4096)
         except OSError:
             return False
-        # data = data.replace("\r", "")
-        self.input_log.append((eventtime, data))
+        # self.logger.debug("GCode FD: %s" % repr(data))
         self.bytes_read += len(data)
         lines = data.split('\n')
         lines[0] = handler.partial_input + lines[0]
         handler.partial_input = lines.pop()
-        if "M112" in data:
-            # Emergency stop, kill immediately
-            self.priority_queue.put(InputGcode("M112", fd_r), block=True)
-            return False
-        if prio:
-            q = self.priority_queue
-        else:
-            q = self.process_queue
+        q = self.process_queue
         for line in lines:
-            if len(line) <= 1:
-                continue
+            if "GUISTATS" not in line:
+                self.input_log.append((eventtime, line))
+                if "M112" in line:
+                    self.priority_queue.put(
+                        InputGcode("M112", fd_r), block=True)
+                    continue
             q.put(InputGcode(line, fd_r), block=True)
         return False # do not stop processing
 
@@ -309,12 +305,13 @@ class GCodeParser:
                 self.reactor.pause(self.reactor.monotonic() + 0.100)
 
     def push_command_to_queue(self, cmd, resp_func=None, prio=False):
-        if prio:
-            q = self.priority_queue
-        else:
-            q = self.process_queue
+        q = self.process_queue
         lines = cmd.split('\n')
         for line in lines:
+            if "M112" in line:
+                self.priority_queue.put(
+                    InputGcode("M112", None, fd_func=resp_func), block=True)
+                continue
             q.put(InputGcode(line, None, fd_func=resp_func), block=True)
 
     def process_batch(self, command):
