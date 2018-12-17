@@ -803,10 +803,10 @@ class RepRapGuiModule(object):
         http_server.listen(port)
         try:
             tornado.ioloop.IOLoop.current().start()
-        except Exception as err:
-            self.logger.error("IOLoop caused a failure! %s" % err)
+        except (Exception, RuntimeError) as err:
+            self.logger.error("Serving failure! %s" % err)
         except KeyboardInterrupt:
-            pass
+            self.logger.info("Exiting...")
 
     # ================================================================================
     def open_pipe(self):
@@ -842,6 +842,9 @@ class RepRapGuiModule(object):
                 self.logger.error("Communication failure: '%s' - restart..." % err)
                 time.sleep(1.0) # 1sec delay
                 continue
+            except (KeyboardInterrupt, Exception):
+                # Exit if something else has happened
+                return
             with self.write_lock:
                 self.input_fd = input_fd
             # ------------------------------
@@ -869,7 +872,7 @@ class RepRapGuiModule(object):
             if self.input_fd is None:
                 raise CommunicationError("Pipe is not open")
             fd = self.input_fd
-        # self.logger.debug("GCode > '%s'" % cmd)
+        # self.logger.debug("GCode > %s" % repr(cmd))
         try:
             os.write(fd, "%s\n" % cmd)
         except OSError as e:
@@ -907,7 +910,7 @@ class RepRapGuiModule(object):
         except OSError:
             self.input_fd = None
             return True # Exit to reconnect...
-        # self.logger.debug("GCode < %s" % data_in)
+        # self.logger.debug("GCode < %s" % repr(data_in))
         if self.resp_sync.is_set() and self.write_count == 0:
             self.sync_resp = data_in.replace("ok", "")
             self.resp_sync.clear()
