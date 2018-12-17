@@ -301,6 +301,8 @@ class ToolHead:
             gcode.absolutecoord = True
             gcode.run_script_from_command(self.idle_position)
             gcode.absolutecoord = orig
+    def get_estimated_print_time(self):
+        return self.mcu.estimated_print_time(self.reactor.monotonic())
     # Print time tracking
     def update_move_time(self, movetime):
         self.print_time += movetime
@@ -395,30 +397,12 @@ class ToolHead:
         self.commanded_pos[:] = newpos
         self.kin.set_position(newpos, homing_axes)
     def layer_changed(self, layer, height):
-        # change_time = self.print_time # self.get_print_time()
-        change_time = self.get_print_time()
+        change_time = self.get_estimated_print_time()
         for cb in self.layer_change_cb:
             cb(change_time, layer, height)
     def move(self, newpos, speed, check=True):
         # Calculate layer time
         commanded_pos = self.commanded_pos
-        '''
-        self.z_hop_detect_cntr += 1
-        if newpos[2] - commanded_pos[2] > 0:
-            if self.z_hop_detect is None:
-                self.z_hop_detect_cntr = 0
-                self.z_hop_detect = { 'pos' : newpos[2], 'time': self.print_time }
-                self.logger.info("LAYER CHANGE > z_hop Z=%s" % newpos[2])
-        elif newpos[2] - commanded_pos[2] < 0:
-            self.z_hop_detect = None
-            self.logger.info("LAYER CHANGE < z_hop Z=%s" % newpos[2])
-        if self.z_hop_detect_cntr >= 2 and self.z_hop_detect is not None:
-            change_time = self.z_hop_detect['time']
-            for cb in self.layer_change_cb:
-                cb(change_time)
-            self.z_hop_detect = None
-            self.logger.info("LAYER CHANGE: layer changed Z=%s" % newpos[2])
-        '''
         speed = min(speed, self.max_velocity)
         move = Move(self, commanded_pos, newpos, speed)
         if not move.move_d:

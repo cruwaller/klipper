@@ -70,7 +70,6 @@ class ReactorFileHandlerThread(ReactorFileHandler):
                     break
                 elif (event & select.POLLIN or event & select.POLLPRI) \
                         and fd == self.fd and not self._pause_event.is_set():
-                    # logging.info("REACTOR POLL %s" % self)
                     if self.callback(self.reactor.monotonic(), self):
                         break # Stop thread if requested
         self._poll.unregister(self)

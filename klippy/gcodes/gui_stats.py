@@ -24,7 +24,8 @@ class GuiStats:
         self.sw_version = printer.get_start_arg('software_version', 'Unknown')
         # Print statistics
         self.layer_stats = []
-        self.warmup_time = .1
+        self.warmup_time = None
+        self.print_time = self.last_time = .0
         self.first_layer_start = None
         self.firstLayerHeight = .0
         # register callbacks
@@ -57,48 +58,33 @@ class GuiStats:
             self.curr_state = "S"
         elif status == 'start':
             self.curr_state = "P"
+            self.last_time = self.toolhead.get_estimated_print_time()
         elif status == 'error' or status == "stop":
             self.curr_state = "I"
         elif status == 'done':
             toolhead = self.toolhead
-            toolhead.wait_moves()
-            self.layer_changed(toolhead.get_print_time())
+            toolhead.wait_moves() # TODO: remove?
+            #self.layer_changed(toolhead.get_estimated_print_time(), "done", "done")
             self.curr_state = "I"
         elif status == 'loaded':
             self.layer_stats = []
-            self.warmup_time = .1
+            self.warmup_time = None
+            self.print_time = .0
 
     def layer_changed(self, change_time, layer, height):
+        # 1st call is "heating ready"
         self.logger.info("Layer changed cb: time %s, layer %s, h=%s" % (
             change_time, layer, height))
         try:
             start_time = self.layer_stats[-1]['end time']
         except IndexError:
             # 1st layer change
-            self.warmup_time = change_time # finalize warmup time
-            start_time = 0
+            start_time = change_time
+            self.warmup_time = self.print_time # warmup ready
         self.layer_stats.append(
             {'start time': start_time,
              'layer time': (change_time - start_time),
              'end time': change_time})
-        '''
-        if len(self.layer_stats) == 0 and self.first_layer_start is None:
-            # First layer started
-            self.logger.info(" ====== 1st LAYER ===== %s " % (change_time,))
-            self.first_layer_start = change_time
-        else:
-            # last end is start time
-            if self.first_layer_start is not None:
-                start_time = self.first_layer_start
-                self.first_layer_start = None
-            else:
-                start_time = self.layer_stats[-1]['end time']
-            self.logger.info(" ====== LAYER CHANGED ===== %s - %s" % (start_time, change_time))
-            self.layer_stats.append(
-                {'start time': start_time,
-                 'layer time': (change_time - start_time),
-                 'end time': change_time} )
-        '''
 
     # ================================================================================
     # Commands
@@ -335,20 +321,27 @@ class GuiStats:
 
         elif _type == 3:
             lstat = self.layer_stats
-            printing_time = toolhead.get_print_time()
+            current_time = toolhead.get_estimated_print_time()
+            printing_time = self.print_time
+            if self.curr_state == "P":
+                # Update time while printing
+                printing_time += current_time - self.last_time
+                self.last_time = current_time
+                self.print_time = printing_time
             curr_layer = len(lstat)
             try:
-                first_layer_time = lstat[0]['layer time']
+                layer_time_curr = current_time - lstat[-1]['end time']
             except IndexError:
-                first_layer_time = 0. # printing_time
+                layer_time_curr = printing_time
             try:
-                layer_time_curr = printing_time - lstat[-1]['end time']
+                first_layer_time = lstat[1]['layer time']
             except IndexError:
-                layer_time_curr = 0. # printing_time
+                first_layer_time = layer_time_curr
 
-            if curr_layer == 0:
+            warmup_time = self.warmup_time
+            if warmup_time is None:
                 # Update warmup time
-                self.warmup_time += printing_time - self.warmup_time
+                warmup_time = printing_time
 
             # Print time estimations
             progress = self.sd.get_progress()
@@ -385,7 +378,7 @@ class GuiStats:
             self.logger.debug(
                 "TYPE3: layer %s, time: %s, 1st time: %s, warmup: %.2f, progress: %.2f, "
                 "file_time: %.2f, printing_time: %f" % (
-                curr_layer, layer_time_curr, first_layer_time, self.warmup_time, progress,
+                curr_layer, layer_time_curr, first_layer_time, warmup_time, progress,
                 remaining_time_file, printing_time))
             #'''
 
@@ -402,7 +395,7 @@ class GuiStats:
                 "firstLayerDuration" : first_layer_time,
                 "SKIP_ firstLayerHeight"   : float("%.1f" % self.firstLayerHeight),
                 "printDuration"      : printing_time,
-                "warmUpDuration"     : float("%.1f" % self.warmup_time),
+                "warmUpDuration"     : float("%.1f" % warmup_time),
 
                 "timesLeft": {
                     "file"     : float("%.1f" % remaining_time_file),
