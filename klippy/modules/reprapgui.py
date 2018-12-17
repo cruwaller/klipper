@@ -264,6 +264,12 @@ class LoginHandler(BaseHandler):
         if incorrect and int(incorrect) > 20:
             self.write('<center>blocked</center>')
             return
+        # Skip login if user or passwd is not set
+        if not len(self.parent.user) or not len(self.parent.passwd):
+            self.set_secure_cookie("user", "John Doe")
+            self.set_secure_cookie("incorrect", "0")
+            self.redirect(self.reverse_url("main"))
+            return
         self.render(os.path.join(self.path, 'login.html'))
 
     @tornado.gen.coroutine
@@ -421,7 +427,7 @@ class rrHandler(tornado.web.RequestHandler):
                     self.parent.append_gcode_resp(resp)
                     self.logger.info("ATX OFF: %s" % resp)
             elif "T-1" in gcode:
-                # Skip...
+                # ignore
                 pass
             else:
                 try:
