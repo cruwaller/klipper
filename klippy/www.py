@@ -5,7 +5,7 @@ import tornado.web
 import time, sys, os, errno, threading, json, re, logging
 import argparse, ConfigParser
 import Queue
-from multiprocessing import Queue as QueueMulti
+#from multiprocessing import Queue as QueueMulti
 
 # Local modules
 import queuelogger, reactor
@@ -29,7 +29,6 @@ RepRap Web Gui - Status info:
 : 'I'    // Idle
 '''
 
-_PARENT = None
 KLIPPER_CFG_NAME = 'klipper_config.cfg'
 KLIPPER_LOG_NAME = "klippy.log"
 
@@ -307,14 +306,20 @@ class MainHandler(BaseHandler):
 
 class LoginHandler(BaseHandler):
     path = parent = None
-    def initialize(self, path):
+    def initialize(self, path, parent):
         self.path = path
-        self.parent = _PARENT
+        self.parent = parent
     @tornado.gen.coroutine
     def get(self):
         incorrect = self.get_secure_cookie("incorrect")
         if incorrect and int(incorrect) > 20:
             self.write('<center>blocked</center>')
+            return
+        # Skip login if user or passwd is not set
+        if not len(self.parent.user) or not len(self.parent.passwd):
+            self.set_secure_cookie("user", "John Doe")
+            self.set_secure_cookie("incorrect", "0")
+            self.redirect(self.reverse_url("main"))
             return
         self.render(os.path.join(self.path, 'login.html'))
 
@@ -349,8 +354,8 @@ class LogoutHandler(BaseHandler):
 class rrHandler(tornado.web.RequestHandler):
     parent = sd_path = logger = None
 
-    def initialize(self, sd_path):
-        self.parent = _PARENT
+    def initialize(self, sd_path, parent):
+        self.parent = parent
         self.sd_path = self.parent.sd_path
         self.logger = self.parent.logger
 
@@ -667,10 +672,9 @@ def create_dir(_dir):
             raise Exception("cannot create directory {}".format(_dir))
 
 
-class CommError(Exception):
+class CommunicationError(Exception):
     pass
 
-_TORNADO_THREAD = None
 
 class RepRapGuiModule(object):
     warmup_time = .1
@@ -679,9 +683,6 @@ class RepRapGuiModule(object):
     last_used_file = None
     htmlroot = None
     def __init__(self, config, args):
-        global _TORNADO_THREAD
-        global _PARENT
-        _PARENT = self
         self.logger = config.get_logger("DuetWebControl")
         self.logger_tornado = self.logger.getChild("tornado")
         if args.very_verbose:
@@ -696,8 +697,8 @@ class RepRapGuiModule(object):
         if not os.path.exists(os.path.join(htmlroot, 'reprap.htm')):
             raise ConfigWrapper.error("DuetWebControl files not found '%s'" % htmlroot)
         self.logger.debug("html root: %s" % (htmlroot,))
-        self.user = config.get('user')
-        self.passwd = config.get('password')
+        self.user = config.get('user', default="")
+        self.passwd = config.get('password', default="")
         # Camera information
         self.feed_interval = config.getfloat('feedrate', minval=.0, default=.1)
         self.camera = None
@@ -727,54 +728,48 @@ class RepRapGuiModule(object):
         self.partial_input = ""
         self.printer_start_args = {}
         self.input_fd = None
-        self.gcode_resps = [] # TODO: Multi Queue?
+        self.gcode_resps = []
         # self.lock = threading.Lock()
         self.write_lock = threading.Lock()
-        self.write_queue_sync = QueueMulti(maxsize=8)
-        self.write_queue_async = QueueMulti(maxsize=8)
-        self.serial = None
+        self.resp_event = threading.Event()
+        self.resp_sync = threading.Event()
         # ------------------------------
-        # Start tornado webserver
-        if _TORNADO_THREAD is None or not _TORNADO_THREAD.isAlive():
-            application = tornado.web.Application(
-                [
-                    tornado.web.url(r"/", MainHandler,
-                                    {"path": htmlroot}, name="main"),
-                    tornado.web.url(r'/login', LoginHandler,
-                                    {"path": htmlroot}, name="login"),
-                    tornado.web.url(r'/logout', LogoutHandler, name="logout"),
-                    tornado.web.url(r"/(.*\.xml)", tornado.web.StaticFileHandler,
-                                    {"path": htmlroot}),
-                    tornado.web.url(r"/fonts/(.*)", tornado.web.StaticFileHandler,
-                                    {"path": os.path.join(htmlroot, "fonts")}),
-                    tornado.web.url(r"/js/(.*)", tornado.web.StaticFileHandler,
-                                    {"path": os.path.join(htmlroot, "js")}),
-                    tornado.web.url(r"/css/(.*)", tornado.web.StaticFileHandler,
-                                    {"path": os.path.join(htmlroot, "css")}),
-                    tornado.web.url(r"/(rr_.*)", rrHandler, {"sd_path": sdcard_dirname}),
-                    tornado.web.url(r"/jpeg", JpegHandler, {"camera": self.camera}),
-                    tornado.web.url(r"/video", JpegStreamHandler,
-                                    { "camera": self.camera,
-                                      "interval": self.feed_interval}),
-                ],
-                cookie_secret="16d35553-3331-4569-b419-8748d22aa599",
-                log_function=self.Tornado_LoggerCb,
-                max_buffer_size=104857600*20,
-                login_url = "/login",
-                xsrf_cookies = False)
-
-            # Put tornado to background thread
-            _TORNADO_THREAD = threading.Thread(
-                target=self.Tornado_execute, args=(config, application))
-            _TORNADO_THREAD.daemon = True
-            _TORNADO_THREAD.start()
+        # Configure tornado webserver
+        application = tornado.web.Application(
+            [
+                tornado.web.url(r"/", MainHandler,
+                                {"path": htmlroot}, name="main"),
+                tornado.web.url(r'/login', LoginHandler,
+                                {"path": htmlroot, "parent": self}, name="login"),
+                tornado.web.url(r'/logout', LogoutHandler, name="logout"),
+                tornado.web.url(r"/(.*\.xml)", tornado.web.StaticFileHandler,
+                                {"path": htmlroot}),
+                tornado.web.url(r"/fonts/(.*)", tornado.web.StaticFileHandler,
+                                {"path": os.path.join(htmlroot, "fonts")}),
+                tornado.web.url(r"/js/(.*)", tornado.web.StaticFileHandler,
+                                {"path": os.path.join(htmlroot, "js")}),
+                tornado.web.url(r"/css/(.*)", tornado.web.StaticFileHandler,
+                                {"path": os.path.join(htmlroot, "css")}),
+                tornado.web.url(r"/(rr_.*)", rrHandler,
+                                {"sd_path": sdcard_dirname, "parent": self}),
+                tornado.web.url(r"/jpeg", JpegHandler, {"camera": self.camera}),
+                tornado.web.url(r"/video", JpegStreamHandler,
+                                { "camera": self.camera,
+                                  "interval": self.feed_interval}),
+            ],
+            cookie_secret="16d35553-3331-4569-b419-8748d22aa599",
+            log_function=self.Tornado_LoggerCb,
+            max_buffer_size=104857600*20,
+            login_url = "/login",
+            xsrf_cookies = False)
         # ------------------------------
         # Start communication thread
         _comm_thread = threading.Thread(target=self.open_pipe)
         _comm_thread.daemon = True
         _comm_thread.start()
         # ------------------------------
-        self.logger.info("RepRep Web GUI loaded")
+        # Start Tornado server
+        self.Tornado_execute(config, application)
 
     # ================================================================================
     def is_printing(self):
@@ -803,13 +798,15 @@ class RepRapGuiModule(object):
         else:
             self.logger.debug("HTTP port %s" % (http_port,))
 
-        http_server = tornado.httpserver.HTTPServer(application,
-                                                    ssl_options=ssl_options)
+        http_server = tornado.httpserver.HTTPServer(
+            application, ssl_options=ssl_options)
         http_server.listen(port)
         try:
             tornado.ioloop.IOLoop.current().start()
         except Exception as err:
             self.logger.error("IOLoop caused a failure! %s" % err)
+        except KeyboardInterrupt:
+            pass
 
     # ================================================================================
     def open_pipe(self):
@@ -820,35 +817,44 @@ class RepRapGuiModule(object):
             except IOError:
                 time.sleep(0.5)
                 continue
-            self.input_fd = input_fd = comm_path.fileno()
+            input_fd = comm_path.fileno()
             self.partial_input = ""
             fd_handle = self.reactor.register_fd_thread(input_fd, self.input_handler)
             fd_handle.start()
-            self.logger.debug("Klipper communication pipe ok...")
+            self.logger.debug("Klipper communication ok...")
             try:
-                self.logger.info("Version: %s" % self.write_sync("M115"))
+                self.logger.info("Version: %s" % self.write_sync("M115", fd=input_fd))
                 # ------------------------------
                 # Disable auto temperature reporting
-                self.write_sync("AUTO_TEMP_REPORT AUTO=0")
+                self.write_sync("AUTO_TEMP_REPORT AUTO=0", fd=input_fd)
                 # ------------------------------
                 # Get start arguments from printer
-                self.printer_start_args = \
-                    json.loads(self.write_sync("GUISTATS_GET_ARGS").replace("ok", ""))
+                resp = self.write_sync("GUISTATS_GET_ARGS", fd=input_fd)
+                self.printer_start_args = json.loads(resp.replace("ok", ""))
                 self.logger.info("Printer start args: %s" % self.printer_start_args)
             except ValueError as e:
-                self.logger.error("Communication failure: '%s' - restart..." % e)
+                fd_handle.stop()
+                self.logger.error("Unable to parse json: '%s' - restart..." % e)
                 time.sleep(1.0) # 1sec delay
                 continue
+            except CommunicationError as err:
+                fd_handle.stop()
+                self.logger.error("Communication failure: '%s' - restart..." % err)
+                time.sleep(1.0) # 1sec delay
+                continue
+            with self.write_lock:
+                self.input_fd = input_fd
             # ------------------------------
             # Poll the pipe alive
             while fd_handle.is_running():
                 time.sleep(0.5)
+            self.logger.error("Connection lost, restart...")
             # reset params
+            self.input_fd = None
             self.curr_state = 'C'
             self.write_count = 0
             self.partial_input = ""
             self.printer_start_args = {}
-            self.input_fd = None
 
     class sentinel:
         pass
@@ -858,50 +864,54 @@ class RepRapGuiModule(object):
         return self.printer_start_args[name]
 
     # ================================================================================
-    def write(self, cmd):
-        if self.input_fd is None:
-            return
+    def write(self, cmd, fd=None):
+        if fd is None:
+            if self.input_fd is None:
+                raise CommunicationError("Pipe is not open")
+            fd = self.input_fd
         # self.logger.debug("GCode > '%s'" % cmd)
         try:
-            os.write(self.input_fd, "%s\n" % cmd)
+            os.write(fd, "%s\n" % cmd)
         except OSError as e:
             self.logger.error("write failed! %s" % e)
-    def write_async(self, cmd):
+    def write_async(self, cmd, fd=None):
         with self.write_lock:
-            self.write(cmd)
+            try:
+                self.write(cmd, fd)
+            except ValueError:
+                pass
     write_count = 0
-    def write_async_with_resp(self, cmd):
+    def write_async_with_resp(self, cmd, fd=None):
         with self.write_lock:
-            self.write(cmd)
-            self.write_count = 1
+            try:
+                self.write(cmd, fd)
+                self.write_count = 1
+            except ValueError:
+                pass
     sync_resp = None
-    def write_sync(self, cmd):
-        if self.input_fd is None:
-            raise ValueError("Pipe is not open")
+    def write_sync(self, cmd, fd=None):
         with self.write_lock:
             self.sync_resp = None
-            self.input_state = 3
-            self.write(cmd)
-            timeout = 0.
-            while self.sync_resp is None:
-                time.sleep(0.05)
-                timeout += 0.05
-                if timeout > 5.:
-                    self.input_state = 0
-                    raise ValueError("Read timeout")
-            self.input_state = 0
-            resp = self.sync_resp
-        return resp
+            self.resp_event.clear()
+            self.resp_sync.set()
+            self.write(cmd, fd)
+            self.resp_event.wait(timeout=5.)
+            if self.sync_resp is None:
+                raise CommunicationError("Read timeout")
+        return self.sync_resp
 
     # Callback method for input fd poller thread
-    input_state = 0
     def input_handler(self, eventtime, handler):
         try:
             data_in = self.read(handler.fileno())
         except OSError:
+            self.input_fd = None
             return True # Exit to reconnect...
-        if self.input_state == 3:
+        # self.logger.debug("GCode < %s" % data_in)
+        if self.resp_sync.is_set() and self.write_count == 0:
             self.sync_resp = data_in.replace("ok", "")
+            self.resp_sync.clear()
+            self.resp_event.set()
         else:
             self.append_gcode_resp(data_in)
         return False
@@ -920,9 +930,8 @@ class RepRapGuiModule(object):
             self.logger.warning("Not valid resp '%s' received!", msg)
             return
         msg = msg.strip()
-        # self.logger.debug("Gcode < '%s'" % msg)
         if self.write_count > 0 and len(msg):
-            # self.logger.debug("append_gcode_resp(%s) cnt %s" % (msg,self.write_count))
+            # self.logger.debug("GCode resp to GUI: '%s'" % (msg,))
             self.gcode_resps.append(msg)
             self.write_count -= 1
 
@@ -930,7 +939,7 @@ class RepRapGuiModule(object):
     def web_getconfig(self):
         try:
             resp = json.loads(self.write_sync("GUISTATS_GET_CONFIG"))
-        except ValueError:
+        except (ValueError, CommunicationError):
             resp = {'seq': 0, "err": 1}
         return resp
 
@@ -938,14 +947,14 @@ class RepRapGuiModule(object):
         try:
             resp = json.loads(self.write_sync("GUISTATS_GET_STATUS TYPE=%d" % _type))
             self.curr_state = resp['status']
-        except ValueError:
+        except (ValueError, CommunicationError):
             resp = {'seq': 0,  "status": self.curr_state, "err": 1}
         return resp
 
     def web_getsd(self):
         try:
             resp = json.loads(self.write_sync("GUISTATS_GET_SD_INFO"))
-        except ValueError:
+        except (ValueError, CommunicationError):
             resp = {}
         return resp
 
@@ -1064,8 +1073,3 @@ if __name__ == "__main__":
         raise Exception("Unable to open config file %s" % (config_file,))
     config = ConfigWrapper(fileconfig, 'reprapgui_process', logger)
     gui = RepRapGuiModule(config, args)
-    try:
-        while 1:
-            time.sleep(10)
-    except KeyboardInterrupt:
-        pass
