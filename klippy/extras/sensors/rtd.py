@@ -39,12 +39,11 @@ VAL_ADC_MAX = 32768.0 # 2^15
 
 class MAX31865(SensorBase):
     def __init__(self, config, params):
-        chip_type = "MAX31865"
         self.rtd_nominal_r = config.getint('rtd_nominal_r', 100)
         self.reference_r = config.getfloat('rtd_reference_r', 430., above=0.)
         self.num_wires  = config.getint('rtd_num_of_wires', 2)
         self.use_50Hz_filter = config.getboolean('rtd_use_50Hz_filter', False)
-        SensorBase.__init__(self, config, sample_count = 1, chip_type=chip_type)
+        SensorBase.__init__(self, config, sample_count=1, chip_type="MAX31865")
     def calc_temp(self, adc, fault=0):
         if fault & 0x80:
             raise self.error("Max31865 RTD input is disconnected")

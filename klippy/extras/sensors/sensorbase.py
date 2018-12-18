@@ -26,10 +26,6 @@ class SensorBase(object):
                  sample_count = SAMPLE_COUNT_DEFAULT,
                  report_time  = REPORT_TIME_DEFAULT,
                  chip_type    = None):
-        if chip_type:
-            self.logger = config.get_printer().logger.getChild(chip_type)
-        else:
-            self.logger = config.get_printer().logger.getChild("sensor")
         self.oid = None
         self.sample_time = sample_time
         self.sample_count = sample_count
@@ -44,7 +40,7 @@ class SensorBase(object):
         self.max_sample_value = max(adc_range)
         self._report_clock = 0
         ppins = config.get_printer().lookup_object('pins')
-        if chip_type is not None:
+        if chip_type in VALID_SPI_SENSORS:
             pin_params = ppins.lookup_pin('digital_out', sensor_pin)
             self.mcu = mcu = pin_params['chip']
             pin = pin_params['pin']

@@ -64,7 +64,6 @@ MAX31856_MULT = 0.0078125
 
 class MAX31856(SensorBase):
     def __init__(self, config, params):
-        self.chip_type = chip_type = "MAX31856"
         types = {
             "B" : 0b0000,
             "E" : 0b0001,
@@ -85,7 +84,7 @@ class MAX31856(SensorBase):
             "16" : MAX31856_CR1_AVGSEL16
         }
         self.average_count = config.getchoice('tc_averaging_count', averages, "1")
-        SensorBase.__init__(self, config, sample_count = 1, chip_type=chip_type)
+        SensorBase.__init__(self, config, sample_count=1, chip_type="MAX31856")
     def calc_temp(self, adc, fault=0):
         if fault & MAX31856_FAULT_CJRANGE:
             raise self.error("MAX31856: Cold Junction Range Fault")
@@ -141,8 +140,7 @@ MAX31855_MULT = 0.25
 
 class MAX31855(SensorBase):
     def __init__(self, config, params):
-        self.chip_type = "MAX31855"
-        SensorBase.__init__(self, config, sample_count = 1, chip_type=self.chip_type)
+        SensorBase.__init__(self, config, sample_count=1, chip_type="MAX31855")
     def calc_temp(self, adc, fault=0):
         if adc & 0x1:
             raise self.error("MAX31855 : Open Circuit")
@@ -172,8 +170,7 @@ MAX6675_MULT = 0.25
 
 class MAX6675(SensorBase):
     def __init__(self, config, params):
-        self.chip_type = "MAX6675"
-        SensorBase.__init__(self, config, sample_count=1, chip_type=self.chip_type)
+        SensorBase.__init__(self, config, sample_count=1, chip_type="MAX6675")
     def calc_temp(self, adc, fault=0):
         if adc & 0x02:
             raise self.error("MAX6675 : Device ID error")
