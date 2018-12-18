@@ -41,9 +41,9 @@ class MAX31865(SensorBase):
     def __init__(self, config, params):
         self.rtd_nominal_r = config.getint('rtd_nominal_r', 100)
         self.reference_r = config.getfloat('rtd_reference_r', 430., above=0.)
-        self.num_wires  = config.getint('rtd_num_of_wires', 2)
-        self.use_50Hz_filter = config.getboolean('rtd_use_50Hz_filter', False)
-        SensorBase.__init__(self, config, sample_count=1, chip_type="MAX31865")
+        SensorBase.__init__(self, config, sample_count=1,
+                            chip_type="MAX31865",
+                            config_cmd=self.build_spi_init(config))
     def calc_temp(self, adc, fault=0):
         if fault & 0x80:
             raise self.error("Max31865 RTD input is disconnected")
@@ -76,13 +76,13 @@ class MAX31865(SensorBase):
         adc = int( ( ( R_rtd * VAL_ADC_MAX ) / self.reference_r) + 0.5 )
         adc = adc << 1 # Add fault bit
         return adc
-    def get_configs(self):
+    def build_spi_init(self, config):
         value = (MAX31865_CONFIG_BIAS |
                  MAX31865_CONFIG_MODEAUTO |
                  MAX31865_CONFIG_FAULTCLEAR)
-        if self.use_50Hz_filter:
+        if config.getboolean('rtd_use_50Hz_filter', False):
             value |= MAX31865_CONFIG_FILT50HZ
-        if self.num_wires == 3:
+        if config.getint('rtd_num_of_wires', 2) == 3:
             value |= MAX31865_CONFIG_3WIRE
         cmd = 0x80 + MAX31865_CONFIG_REG
         return [cmd, value]

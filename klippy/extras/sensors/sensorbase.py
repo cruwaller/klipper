@@ -20,12 +20,11 @@ class error(Exception):
 
 class SensorBase(object):
     error = error
-    def __init__(self,
-                 config,
+    def __init__(self, config,
                  sample_time  = SAMPLE_TIME_DEFAULT,
                  sample_count = SAMPLE_COUNT_DEFAULT,
                  report_time  = REPORT_TIME_DEFAULT,
-                 chip_type    = None):
+                 chip_type=None, config_cmd=None):
         self.oid = None
         self.sample_time = sample_time
         self.sample_count = sample_count
@@ -53,9 +52,10 @@ class SensorBase(object):
                 " mode=%u rate=%u shutdown_msg=" % (
                     spi_oid, 0, pin, pin_params['invert'],
                     spi_mode, spi_speed))
-            config_cmd = "".join("%02x" % b for b in self.get_configs())
-            mcu.add_config_cmd("spi_send oid=%u data=%s" % (
-                spi_oid, config_cmd), is_init=False)
+            if config_cmd is not None:
+                config_cmd = "".join("%02x" % b for b in config_cmd)
+                mcu.add_config_cmd("spi_send oid=%u data=%s" % (
+                    spi_oid, config_cmd), is_init=False)
             # Reader chip configuration
             self.oid = oid = mcu.create_oid()
             mcu.add_config_cmd(
@@ -102,7 +102,5 @@ class SensorBase(object):
         raise NotImplementedError("calc_temp must to be implemented in parent class")
     def calc_adc(self, min_temp):
         raise NotImplementedError("calc_adc must to be implemented in parent class")
-    def get_configs(self):
-        raise NotImplementedError("get_configs must to be implemented in parent class")
     def __default_callback(self, arg1, arg2):
         raise NotImplementedError("Temp comtrol callback is not set!")

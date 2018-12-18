@@ -64,27 +64,9 @@ MAX31856_MULT = 0.0078125
 
 class MAX31856(SensorBase):
     def __init__(self, config, params):
-        types = {
-            "B" : 0b0000,
-            "E" : 0b0001,
-            "J" : 0b0010,
-            "K" : 0b0011,
-            "N" : 0b0100,
-            "R" : 0b0101,
-            "S" : 0b0110,
-            "T" : 0b0111,
-        }
-        self.tc_type = config.getchoice('tc_type', types, default="K")
-        self.use_50Hz_filter = config.getboolean('tc_use_50Hz_filter', False)
-        averages = {
-            "1"  : MAX31856_CR1_AVGSEL1,
-            "2"  : MAX31856_CR1_AVGSEL2,
-            "4"  : MAX31856_CR1_AVGSEL4,
-            "8"  : MAX31856_CR1_AVGSEL8,
-            "16" : MAX31856_CR1_AVGSEL16
-        }
-        self.average_count = config.getchoice('tc_averaging_count', averages, "1")
-        SensorBase.__init__(self, config, sample_count=1, chip_type="MAX31856")
+        SensorBase.__init__(
+            self, config, sample_count=1,
+            chip_type="MAX31856", config_cmd=self.build_spi_init(config))
     def calc_temp(self, adc, fault=0):
         if fault & MAX31856_FAULT_CJRANGE:
             raise self.error("MAX31856: Cold Junction Range Fault")
@@ -112,16 +94,34 @@ class MAX31856(SensorBase):
         adc = int( ( temp / MAX31856_MULT ) + 0.5 ) # convert to ADC value
         adc = adc << MAX31856_SCALE
         return adc
-    def get_configs(self):
+    def build_spi_init(self, config):
         cmds = []
         value = MAX31856_CR0_AUTOCONVERT
-        if self.use_50Hz_filter:
+        if config.getboolean('tc_use_50Hz_filter', False):
             value |= MAX31856_CR0_FILT50HZ
         cmds.append(0x80 + MAX31856_CR0_REG)
         cmds.append(value)
 
-        value  = self.tc_type
-        value |= self.average_count
+        types = {
+            "B" : 0b0000,
+            "E" : 0b0001,
+            "J" : 0b0010,
+            "K" : 0b0011,
+            "N" : 0b0100,
+            "R" : 0b0101,
+            "S" : 0b0110,
+            "T" : 0b0111,
+        }
+        value = config.getchoice('tc_type', types, default="K")
+
+        averages = {
+            "1"  : MAX31856_CR1_AVGSEL1,
+            "2"  : MAX31856_CR1_AVGSEL2,
+            "4"  : MAX31856_CR1_AVGSEL4,
+            "8"  : MAX31856_CR1_AVGSEL8,
+            "16" : MAX31856_CR1_AVGSEL16
+        }
+        value |= config.getchoice('tc_averaging_count', averages, "1")
         cmds.append(0x80 + MAX31856_CR1_REG)
         cmds.append(value)
 
@@ -158,8 +158,6 @@ class MAX31855(SensorBase):
         adc = int( ( temp / MAX31855_MULT ) + 0.5 ) # convert to ADC value
         adc = adc << MAX31855_SCALE
         return adc
-    def get_configs(self):
-        return []
 
 
 ######################################################################
@@ -186,5 +184,3 @@ class MAX6675(SensorBase):
         adc = int( ( temp / MAX6675_MULT ) + 0.5 ) # convert to ADC value
         adc = adc << MAX6675_SCALE
         return adc
-    def get_configs(self):
-        return []
