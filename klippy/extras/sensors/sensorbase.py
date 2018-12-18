@@ -42,8 +42,8 @@ class SensorBase(object):
             pin = pin_params['pin']
             # SPI bus configuration
             spi_oid = mcu.create_oid()
-            spi_mode = config.getint('spi_mode', minval=0, maxval=3)
-            spi_speed = config.getint('spi_speed', minval=0)
+            spi_mode = config.getint('spi_mode', 3, minval=0, maxval=3)
+            spi_speed = config.getint('spi_speed', 4000000, minval=1)
             mcu.add_config_cmd(
                 "config_spi oid=%u bus=%u pin=%s inverted=%u"
                 " mode=%u rate=%u shutdown_msg=" % (
