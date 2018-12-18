@@ -36,7 +36,7 @@ class SensorBase(object):
         self.report_time = report_time
         self.min_temp = config.getfloat('min_temp', minval=0., default=0.)
         self.max_temp = config.getfloat('max_temp', above=self.min_temp)
-        self._callback = None
+        self._callback = self.__default_callback
         sensor_pin = config.get('sensor_pin')
         adc_range = [self.calc_adc(self.min_temp),
                      self.calc_adc(self.max_temp)]
@@ -73,6 +73,8 @@ class SensorBase(object):
             self.mcu.setup_minmax(
                 sample_time, sample_count,
                 minval=min(adc_range), maxval=max(adc_range))
+            self.mcu.setup_callback(
+                self.report_time, self._handle_adc_result)
     def get_mcu(self):
         if self.oid is not None:
             return self.mcu
@@ -80,10 +82,7 @@ class SensorBase(object):
     def get_min_max_temp(self):
         return self.min_temp, self.max_temp
     def setup_callback(self, cb):
-        if self.oid is not None:
-            self._callback = cb
-        else:
-            self.mcu.setup_callback(self.report_time, cb)
+        self._callback = cb
     def get_report_delta(self):
         return self.report_time
     def build_config(self):
@@ -95,21 +94,19 @@ class SensorBase(object):
                 self.oid, clock, self._report_clock,
                 self.min_sample_value, self.max_sample_value))
     def _handle_thermocouple_result(self, params):
-        #self.logger.debug("value: %s [0x%08X], fault: %s" % (
-        #    params['value'], int(params['value']), params['fault']))
-        last_value      = params['value']
+        temp = self.calc_temp(params['value'], params['fault'])
         next_clock      = self.mcu.clock32_to_clock64(params['next_clock'])
         last_read_clock = next_clock - self._report_clock
         last_read_time  = self.mcu.clock_to_print_time(last_read_clock)
-        self.check_faults(params['fault'])
-        if self._callback is not None:
-            self._callback(last_read_time, last_value) # TODO: call calc_temp(last_value)
+        self._callback(last_read_time, temp)
+    def _handle_adc_result(self, last_read_time, adc_val):
+        self._callback(last_read_time, self.calc_temp(adc_val))
     # ============ VIRTUAL ===============
-    def check_faults(self, fault):
-        pass
-    def calc_temp(self, read_value):
+    def calc_temp(self, read_value, fault=0):
         raise NotImplementedError("calc_temp must to be implemented in parent class")
     def calc_adc(self, min_temp):
         raise NotImplementedError("calc_adc must to be implemented in parent class")
     def get_configs(self):
         raise NotImplementedError("get_configs must to be implemented in parent class")
+    def __default_callback(self, arg1, arg2):
+        raise NotImplementedError("Temp comtrol callback is not set!")

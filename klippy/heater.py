@@ -252,8 +252,7 @@ class PrinterHeater:
                           self.last_temp, self.last_temp_time, self.target_temp)
         self.mcu_pwm.set_pwm(pwm_time, value)
     temp_debug = 0.
-    def temperature_callback(self, read_time, read_value):
-        temp = self.sensor.calc_temp(read_value)
+    def temperature_callback(self, read_time, temp):
         '''
         # >>>>> DEBUG DEBUG DEBUG >>>>>
         if self.target_temp:

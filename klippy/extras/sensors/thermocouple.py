@@ -6,6 +6,10 @@
 import math
 from sensorbase import SensorBase
 
+######################################################################
+# MAX31856 thermocouple
+######################################################################
+
 MAX31856_CR0_REG           = 0x00
 MAX31856_CR0_AUTOCONVERT   = 0x80
 MAX31856_CR0_1SHOT         = 0x40
@@ -55,111 +59,6 @@ MAX31856_FAULT_TCLOW       = 0x04  # Thermocouple Low
 MAX31856_FAULT_OVUV        = 0x02  # Under Over Voltage
 MAX31856_FAULT_OPEN        = 0x01
 
-
-class Thermocouple(SensorBase):
-    def __init__(self, config, params):
-        self.chip_type = chip_type = config.get('sensor_type')
-        types = {
-            "B" : 0b0000,
-            "E" : 0b0001,
-            "J" : 0b0010,
-            "K" : 0b0011,
-            "N" : 0b0100,
-            "R" : 0b0101,
-            "S" : 0b0110,
-            "T" : 0b0111,
-        }
-        self.tc_type = config.getchoice('tc_type', types, default="K")
-        self.use_50Hz_filter = config.getboolean('tc_use_50Hz_filter', False)
-        averages = {
-            "1"  : MAX31856_CR1_AVGSEL1,
-            "2"  : MAX31856_CR1_AVGSEL2,
-            "4"  : MAX31856_CR1_AVGSEL4,
-            "8"  : MAX31856_CR1_AVGSEL8,
-            "16" : MAX31856_CR1_AVGSEL16
-        }
-        self.average_count = config.getchoice('tc_averaging_count', averages, "1")
-        if chip_type == "MAX31856":
-            self.val_a = 0.0078125
-            self.scale = 5
-        elif chip_type == "MAX6675":
-            self.val_a = 0.25
-            self.scale = 3
-        else:
-            self.val_a = 0.25
-            self.scale = 18
-        SensorBase.__init__(self, config, sample_count = 1, chip_type=chip_type)
-    def _check_faults_simple(self, val):
-        if self.chip_type == "MAX6675":
-            if val & 0x02:
-                raise self.error("MAX6675 : Device ID error")
-            if val & 0x04:
-                raise self.error("MAX6675 : Thermocouple Open Fault")
-        elif not self.chip_type == "MAX31856":
-            if val & 0x1:
-                raise self.error("MAX31855 : Open Circuit")
-            if val & 0x2:
-                raise self.error("MAX31855 : Short to GND")
-            if val & 0x4:
-                raise self.error("MAX31855 : Short to Vcc")
-    def check_faults(self, fault):
-        if self.chip_type == "MAX31856":
-            if fault & MAX31856_FAULT_CJRANGE:
-                raise self.error("Max31856: Cold Junction Range Fault")
-            if fault & MAX31856_FAULT_TCRANGE:
-                raise self.error("Max31856: Thermocouple Range Fault")
-            if fault & MAX31856_FAULT_CJHIGH:
-                raise self.error("Max31856: Cold Junction High Fault")
-            if fault & MAX31856_FAULT_CJLOW:
-                raise self.error("Max31856: Cold Junction Low Fault")
-            if fault & MAX31856_FAULT_TCHIGH:
-                raise self.error("Max31856: Thermocouple High Fault")
-            if fault & MAX31856_FAULT_TCLOW:
-                raise self.error("Max31856: Thermocouple Low Fault")
-            if fault & MAX31856_FAULT_OVUV:
-                raise self.error("Max31856: Over/Under Voltage Fault")
-            if fault & MAX31856_FAULT_OPEN:
-                raise self.error("Max31856: Thermocouple Open Fault")
-    def calc_temp(self, adc):
-        self._check_faults_simple(adc)
-        adc = adc >> self.scale
-        # Fix sign bit:
-        if self.chip_type == "MAX31856":
-            if adc & 0x40000:
-                adc = ((adc & 0x3FFFF) + 1) * -1
-        else:
-            if adc & 0x2000:
-                adc = ((adc & 0x1FFF) + 1) * -1
-        temp = self.val_a * adc
-        return temp
-    def calc_adc(self, temp):
-        adc = int ( ( temp / self.val_a ) + 0.5 ) # convert to ADC value
-        adc = adc << self.scale
-        return adc
-    def get_configs(self):
-        cmds = []
-        if self.chip_type == "MAX31856":
-            value = MAX31856_CR0_AUTOCONVERT
-            if self.use_50Hz_filter:
-                value |= MAX31856_CR0_FILT50HZ
-            cmds.append(0x80 + MAX31856_CR0_REG)
-            cmds.append(value)
-
-            value  = self.tc_type
-            value |= self.average_count
-            cmds.append(0x80 + MAX31856_CR1_REG)
-            cmds.append(value)
-
-            value = (MAX31856_MASK_VOLTAGE_UNDER_OVER_FAULT |
-                     MAX31856_MASK_THERMOCOUPLE_OPEN_FAULT)
-            cmds.append(0x80 + MAX31856_MASK_REG)
-            cmds.append(value)
-        return cmds
-
-
-######################################################################
-# MAX31856 thermocouple
-######################################################################
 MAX31856_SCALE = 5
 MAX31856_MULT = 0.0078125
 
@@ -187,7 +86,7 @@ class MAX31856(SensorBase):
         }
         self.average_count = config.getchoice('tc_averaging_count', averages, "1")
         SensorBase.__init__(self, config, sample_count = 1, chip_type=chip_type)
-    def check_faults(self, fault):
+    def calc_temp(self, adc, fault=0):
         if fault & MAX31856_FAULT_CJRANGE:
             raise self.error("MAX31856: Cold Junction Range Fault")
         if fault & MAX31856_FAULT_TCRANGE:
@@ -204,7 +103,6 @@ class MAX31856(SensorBase):
             raise self.error("MAX31856: Over/Under Voltage Fault")
         if fault & MAX31856_FAULT_OPEN:
             raise self.error("MAX31856: Thermocouple Open Fault")
-    def calc_temp(self, adc):
         adc = adc >> MAX31856_SCALE
         # Fix sign bit:
         if adc & 0x40000:
@@ -245,9 +143,7 @@ class MAX31855(SensorBase):
     def __init__(self, config, params):
         self.chip_type = "MAX31855"
         SensorBase.__init__(self, config, sample_count = 1, chip_type=self.chip_type)
-    def check_faults(self, fault):
-        pass
-    def calc_temp(self, adc):
+    def calc_temp(self, adc, fault=0):
         if adc & 0x1:
             raise self.error("MAX31855 : Open Circuit")
         if adc & 0x2:
@@ -278,9 +174,7 @@ class MAX6675(SensorBase):
     def __init__(self, config, params):
         self.chip_type = "MAX6675"
         SensorBase.__init__(self, config, sample_count=1, chip_type=self.chip_type)
-    def check_faults(self, fault):
-        pass
-    def calc_temp(self, adc):
+    def calc_temp(self, adc, fault=0):
         if adc & 0x02:
             raise self.error("MAX6675 : Device ID error")
         if adc & 0x04:

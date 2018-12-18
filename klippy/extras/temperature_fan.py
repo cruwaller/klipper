@@ -56,8 +56,7 @@ class TemperatureFan:
         self.next_speed_time = speed_time + 0.75 * MAX_FAN_TIME
         self.last_speed_value = value
         self.fan.set_speed(speed_time, value)
-    def temperature_callback(self, read_time, read_value):
-        temp = self.sensor.calc_temp(read_value)
+    def temperature_callback(self, read_time, temp):
         self.last_temp = temp
         if self.control is not None:
             self.control.temperature_callback(read_time, temp)

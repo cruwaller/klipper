@@ -45,7 +45,7 @@ class MAX31865(SensorBase):
         self.num_wires  = config.getint('rtd_num_of_wires', 2)
         self.use_50Hz_filter = config.getboolean('rtd_use_50Hz_filter', False)
         SensorBase.__init__(self, config, sample_count = 1, chip_type=chip_type)
-    def check_faults(self, fault):
+    def calc_temp(self, adc, fault=0):
         if fault & 0x80:
             raise self.error("Max31865 RTD input is disconnected")
         if fault & 0x40:
@@ -60,7 +60,6 @@ class MAX31865(SensorBase):
             raise self.error("Max31865 Overvoltage or undervoltage fault")
         if fault & 0x03:
             raise self.error("Max31865 Unspecified error")
-    def calc_temp(self, adc):
         adc = adc >> 1 # remove fault bit
         R_rtd = (self.reference_r * adc) / VAL_ADC_MAX
         temp = (

@@ -5,7 +5,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 from thermistor import Thermistor, CustomThermistor
 from linear import Linear, CustomLinear
-from thermocouple import MAX31856, MAX31855, MAX6675, Thermocouple
+from thermocouple import MAX31856, MAX31855, MAX6675
 from rtd import MAX31865
 
 Sensors = {

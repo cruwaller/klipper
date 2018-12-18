@@ -39,7 +39,7 @@ class Linear(SensorBase):
                 "adc_temperature needs two volt and temperature measurements")
         self.adc_samples[-1] = 1.
         SensorBase.__init__(self, config)
-    def calc_temp(self, read_value):
+    def calc_temp(self, read_value, fault=0):
         pos = bisect.bisect(self.adc_samples, read_value)
         gain, offset = self.slope_samples[pos]
         temp = read_value * gain + offset

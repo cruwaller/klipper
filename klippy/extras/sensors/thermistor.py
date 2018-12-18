@@ -51,7 +51,7 @@ class Thermistor(SensorBase):
         self.c3 = 0.
         self.c2 = 1. / beta
         self.c1 = inv_t1 - self.c2 * ln_r1
-    def calc_temp(self, read_value):
+    def calc_temp(self, read_value, fault=0):
         adc = max(.00001, min(.99999, read_value))
         r = self.pullup * adc / (1.0 - adc)
         ln_r = math.log(r)
