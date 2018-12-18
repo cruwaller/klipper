@@ -15,16 +15,13 @@ VALID_SPI_SENSORS = {
     'MAX6675'  : 8,
 }
 
-class error(Exception):
-    pass
-
 class SensorBase(object):
-    error = error
     def __init__(self, config,
                  sample_time  = SAMPLE_TIME_DEFAULT,
                  sample_count = SAMPLE_COUNT_DEFAULT,
                  report_time  = REPORT_TIME_DEFAULT,
                  chip_type=None, config_cmd=None):
+        self.printer = config.get_printer()
         self.oid = None
         self.sample_time = sample_time
         self.sample_count = sample_count
@@ -38,7 +35,7 @@ class SensorBase(object):
         self.min_sample_value = min(adc_range)
         self.max_sample_value = max(adc_range)
         self._report_clock = 0
-        ppins = config.get_printer().lookup_object('pins')
+        ppins = self.printer.lookup_object('pins')
         if chip_type in VALID_SPI_SENSORS:
             pin_params = ppins.lookup_pin('digital_out', sensor_pin)
             self.mcu = mcu = pin_params['chip']
@@ -71,6 +68,8 @@ class SensorBase(object):
                 minval=min(adc_range), maxval=max(adc_range))
             self.mcu.setup_callback(
                 self.report_time, self._handle_adc_result)
+    def fault(self, msg):
+        self.printer.invoke_async_shutdown(msg)
     def get_mcu(self):
         if self.oid is not None:
             return self.mcu

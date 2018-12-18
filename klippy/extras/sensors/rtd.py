@@ -46,19 +46,19 @@ class MAX31865(SensorBase):
                             config_cmd=self.build_spi_init(config))
     def calc_temp(self, adc, fault=0):
         if fault & 0x80:
-            raise self.error("Max31865 RTD input is disconnected")
+            self.fault("MAX31865 RTD input is disconnected")
         if fault & 0x40:
-            raise self.error("Max31865 RTD input is shorted")
+            self.fault("MAX31865 RTD input is shorted")
         if fault & 0x20:
-            raise self.error("Max31865 VREF- is greater than 0.85 * VBIAS, FORCE- open")
+            self.fault("MAX31865 VREF- is greater than 0.85 * VBIAS, FORCE- open")
         if fault & 0x10:
-            raise self.error("Max31865 VREF- is less than 0.85 * VBIAS, FORCE- open")
+            self.fault("MAX31865 VREF- is less than 0.85 * VBIAS, FORCE- open")
         if fault & 0x08:
-            raise self.error("Max31865 VRTD- is less than 0.85 * VBIAS, FORCE- open")
+            self.fault("MAX31865 VRTD- is less than 0.85 * VBIAS, FORCE- open")
         if fault & 0x04:
-            raise self.error("Max31865 Overvoltage or undervoltage fault")
+            self.fault("MAX31865 Overvoltage or undervoltage fault")
         if fault & 0x03:
-            raise self.error("Max31865 Unspecified error")
+            self.fault("MAX31865 Unspecified error")
         adc = adc >> 1 # remove fault bit
         R_rtd = (self.reference_r * adc) / VAL_ADC_MAX
         temp = (

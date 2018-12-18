@@ -69,21 +69,21 @@ class MAX31856(SensorBase):
             chip_type="MAX31856", config_cmd=self.build_spi_init(config))
     def calc_temp(self, adc, fault=0):
         if fault & MAX31856_FAULT_CJRANGE:
-            raise self.error("MAX31856: Cold Junction Range Fault")
+            self.fault("MAX31856: Cold Junction Range Fault")
         if fault & MAX31856_FAULT_TCRANGE:
-            raise self.error("MAX31856: Thermocouple Range Fault")
+            self.fault("MAX31856: Thermocouple Range Fault")
         if fault & MAX31856_FAULT_CJHIGH:
-            raise self.error("MAX31856: Cold Junction High Fault")
+            self.fault("MAX31856: Cold Junction High Fault")
         if fault & MAX31856_FAULT_CJLOW:
-            raise self.error("MAX31856: Cold Junction Low Fault")
+            self.fault("MAX31856: Cold Junction Low Fault")
         if fault & MAX31856_FAULT_TCHIGH:
-            raise self.error("MAX31856: Thermocouple High Fault")
+            self.fault("MAX31856: Thermocouple High Fault")
         if fault & MAX31856_FAULT_TCLOW:
-            raise self.error("MAX31856: Thermocouple Low Fault")
+            self.fault("MAX31856: Thermocouple Low Fault")
         if fault & MAX31856_FAULT_OVUV:
-            raise self.error("MAX31856: Over/Under Voltage Fault")
+            self.fault("MAX31856: Over/Under Voltage Fault")
         if fault & MAX31856_FAULT_OPEN:
-            raise self.error("MAX31856: Thermocouple Open Fault")
+            self.fault("MAX31856: Thermocouple Open Fault")
         adc = adc >> MAX31856_SCALE
         # Fix sign bit:
         if adc & 0x40000:
@@ -143,11 +143,11 @@ class MAX31855(SensorBase):
         SensorBase.__init__(self, config, sample_count=1, chip_type="MAX31855")
     def calc_temp(self, adc, fault=0):
         if adc & 0x1:
-            raise self.error("MAX31855 : Open Circuit")
+            self.fault("MAX31855 : Open Circuit")
         if adc & 0x2:
-            raise self.error("MAX31855 : Short to GND")
+            self.fault("MAX31855 : Short to GND")
         if adc & 0x4:
-            raise self.error("MAX31855 : Short to Vcc")
+            self.fault("MAX31855 : Short to Vcc")
         adc = adc >> MAX31855_SCALE
         # Fix sign bit:
         if adc & 0x2000:
@@ -171,9 +171,9 @@ class MAX6675(SensorBase):
         SensorBase.__init__(self, config, sample_count=1, chip_type="MAX6675")
     def calc_temp(self, adc, fault=0):
         if adc & 0x02:
-            raise self.error("MAX6675 : Device ID error")
+            self.fault("MAX6675 : Device ID error")
         if adc & 0x04:
-            raise self.error("MAX6675 : Thermocouple Open Fault")
+            self.fault("MAX6675 : Thermocouple Open Fault")
         adc = adc >> MAX6675_SCALE
         # Fix sign bit:
         if adc & 0x2000:
