@@ -5,8 +5,8 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 from thermistor import Thermistor, CustomThermistor
 from linear import Linear, CustomLinear
-from thermocouple import Thermocouple
-from rtd import RTD
+from thermocouple import MAX31856, MAX31855, MAX6675, Thermocouple
+from rtd import MAX31865
 
 Sensors = {
     "EPCOS 100K B57560G104F": {
@@ -45,15 +45,11 @@ Sensors = {
         'class': CustomLinear},
 
     # Thermocouples readers (SPI)
-    "MAX6675": {
-        'class': Thermocouple, 'simple': True},
-    "MAX31855": {
-        'class': Thermocouple, 'simple': True},
-    "MAX31856": {
-        'class': Thermocouple, 'simple': False},
+    "MAX6675":  {'class': MAX6675},
+    "MAX31855": {'class': MAX31855},
+    "MAX31856": {'class': MAX31856},
     # RTD readers (SPI)
-    "MAX31865": {
-        'class': RTD},
+    "MAX31865": {'class': MAX31865},
 }
 
 def load_sensor(config):

@@ -6,6 +6,9 @@
 import math
 from sensorbase import SensorBase
 
+######################################################################
+# MAX31865 (RTD sensor)
+######################################################################
 MAX31865_CONFIG_REG            = 0x00
 MAX31865_RTDMSB_REG            = 0x01
 MAX31865_RTDLSB_REG            = 0x02
@@ -34,9 +37,9 @@ VAL_B = 0.0000005775
 VAL_C = -0.00000000000418301
 VAL_ADC_MAX = 32768.0 # 2^15
 
-class RTD(SensorBase):
+class MAX31865(SensorBase):
     def __init__(self, config, params):
-        chip_type = config.get('sensor_type')
+        chip_type = "MAX31865"
         self.rtd_nominal_r = config.getint('rtd_nominal_r', 100)
         self.reference_r = config.getfloat('rtd_reference_r', 430., above=0.)
         self.num_wires  = config.getint('rtd_num_of_wires', 2)
@@ -72,7 +75,7 @@ class RTD(SensorBase):
         R_rtd = -1 * ( R_rtd - ( self.rtd_nominal_r * self.rtd_nominal_r * VAL_A * VAL_A ) )
         R_rtd = R_rtd / ( 4 * self.rtd_nominal_r * VAL_B )
         R_rtd = ( -1 * R_rtd ) + self.rtd_nominal_r
-        adc = int ( ( ( R_rtd * VAL_ADC_MAX ) / self.reference_r) + 0.5 )
+        adc = int( ( ( R_rtd * VAL_ADC_MAX ) / self.reference_r) + 0.5 )
         adc = adc << 1 # Add fault bit
         return adc
     def get_configs(self):
