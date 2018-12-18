@@ -178,11 +178,6 @@ class CoreXYKinematics:
                 if self.limits[i][0] > self.limits[i][1]:
                     ret[i] = 0
         return ret
-    def update_velocities(self):
-        max_halt_velocity = self.toolhead.get_max_axis_halt()
-        max_velocity, max_accel = self.toolhead.get_max_velocity()
-        self.rails[0].set_max_jerk(max_halt_velocity, max_accel, max_velocity)
-        self.rails[1].set_max_jerk(max_halt_velocity, max_accel, max_velocity)
 
 def load_kinematics(toolhead, config):
     return CoreXYKinematics(toolhead, config)

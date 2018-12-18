@@ -218,11 +218,6 @@ class DeltaKinematics:
         if self.need_home is True:
             ret = [0, 0, 0]
         return ret
-    def update_velocities(self):
-        max_halt_velocity = self.toolhead.get_max_axis_halt()
-        self.max_velocity, self.max_accel = self.toolhead.get_max_velocity()
-        for rail in self.rails:
-            rail.set_max_jerk(max_halt_velocity, self.max_accel)
 
 def load_kinematics(toolhead, config):
     return DeltaKinematics(toolhead, config)

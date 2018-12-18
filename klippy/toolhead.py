@@ -534,7 +534,6 @@ class ToolHead:
         self.max_accel = max_accel
         self.max_accel_to_decel = min(max_accel_to_decel, max_accel)
         self.junction_deviation = junction_deviation
-        # self.get_kinematics().update_velocities() # needed?
         msg = ("max_velocity: %.6f\n"
                "max_accel: %.6f\n"
                "max_accel_to_decel: %.6f\n"
