@@ -175,9 +175,13 @@ class GCodeParser:
         return False, "gcodein=%d" % (self.bytes_read,)
     def get_status(self, eventtime):
         busy = self.is_processing_data
+        try:
+            extrude_factor = self.extruder.extrude_factor
+        except AttributeError:
+            extrude_factor = 0.
         return {
             'speed_factor': self.speed_factor * 60.,
-            'extrude_factor': self.extrude_factor,
+            'extrude_factor': extrude_factor,
             'busy': busy,
             'last_xpos': self.last_position[0],
             'last_ypos': self.last_position[1],
