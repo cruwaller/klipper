@@ -153,7 +153,7 @@ class Printer:
         self.state_message = message_startup
         self.is_shutdown = False
         self.run_result = None
-        self.state_cb = []
+        self.state_cb = [gc.printer_state]
         self._extruders = {}
     class sentinel:
         pass

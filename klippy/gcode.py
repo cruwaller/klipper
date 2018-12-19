@@ -47,7 +47,8 @@ class InputGcode:
         if len(lines) > 1:
             self.respond_info("%s" % "\n".join(lines[:-1]))
         self.respond('!! Error: %s' % (lines[-1].strip(),))
-
+    def respond_state(self, state):
+        self.respond_info("Klipper state: %s" % (state,))
 
 # Parse and handle G-Code commands
 class GCodeParser:
@@ -184,10 +185,14 @@ class GCodeParser:
             self.dump_debug()
             if self.is_fileinput:
                 self.printer.request_exit('error_exit')
+            # params['#input'].respond_state("Shutdown")
             return
         elif state == 'connect':
             pass
         if state != 'ready':
+            if state == 'disconnected':
+                # params['#input'].respond_state("Disconnect")
+                pass
             return
         self.is_printer_ready = True
         self.gcode_handlers = self.ready_gcode_handlers
@@ -199,6 +204,7 @@ class GCodeParser:
         self.extruder = self.printer.extruder_get(0)
         if self.extruder is not None:
             self.toolhead.set_extruder(self.extruder)
+        # params['#input'].respond_state("Ready")
     def reset_last_position(self):
         self.last_position = self.position_with_transform()
     def dump_debug(self):
@@ -768,10 +774,12 @@ class GCodeParser:
     cmd_STATUS_when_not_ready = True
     cmd_STATUS_help = "Report the printer status"
     def cmd_STATUS(self, params):
+        if self.is_printer_ready:
+            params['#input'].respond_state("Ready")
+            return
         msg = self.printer.get_state_message()
-        if not self.is_printer_ready:
-            raise error(msg)
-        params['#input'].respond_info(msg)
+        params['#input'].respond_state("Not ready")
+        params['#input'].respond_error(msg)
     cmd_HELP_when_not_ready = True
     def cmd_HELP(self, params):
         cmdhelp = []
