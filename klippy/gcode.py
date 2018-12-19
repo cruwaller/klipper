@@ -4,7 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import os, re, logging, collections, Queue
-import homing #, kinematics.extruder
+import homing
 
 class error(Exception):
     pass
@@ -19,7 +19,10 @@ class InputGcode:
         if self.fd_func is not None:
             self.fd_func(msg)
         elif self.fd is not None:
-            os.write(self.fd, msg)
+            try:
+                os.write(self.fd, msg)
+            except os.error:
+                logging.exception("Write g-code")
     # Response handling
     def ack(self, msg=None):
         if not self.need_ack:
@@ -268,7 +271,8 @@ class GCodeParser:
         # Read input, separate by newline, and add to queue
         try:
             data = os.read(fd_r, 4096)
-        except OSError:
+        except os.error:
+            logging.exception("Read g-code")
             return False
         # self.logger.debug("GCode FD: %s" % repr(data))
         self.bytes_read += len(data)
