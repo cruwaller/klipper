@@ -146,12 +146,9 @@ class Homing:
         for rail in rails:
             cp = rail.get_commanded_position()
             rail.set_commanded_position(cp + rail.get_homed_offset())
-            self.logger.debug("Rail '%s': cp=%s, offset=%s" % (rail.name, cp, rail.get_homed_offset()))
         adjustpos = self.toolhead.get_kinematics().calc_position()
-        self.logger.debug("movepos=%s, adjustpos=%s" % (movepos, adjustpos))
         for axis in homing_axes:
             movepos[axis] = adjustpos[axis]
-        self.logger.debug("Final position=%s" % (movepos,))
         self.toolhead.set_position(movepos)
     def home_axes(self, axes):
         self.changed_axes = axes
