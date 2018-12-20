@@ -7,7 +7,6 @@ import logging
 import probe, mathutil
 
 class ZTilt:
-    sender = None
     def __init__(self, config):
         self.printer = config.get_printer()
         z_positions = config.get('z_positions').split('\n')
@@ -41,7 +40,6 @@ class ZTilt:
         self.z_steppers = z_steppers
     cmd_Z_TILT_ADJUST_help = "Adjust the Z tilt"
     def cmd_Z_TILT_ADJUST(self, params):
-        self.sender = params["#input"]
         self.probe_helper.start_probe(params)
     def probe_finalize(self, offsets, positions):
         # Setup for coordinate descent analysis
@@ -88,7 +86,7 @@ class ZTilt:
         msg = "Making the following Z adjustments:\n%s\nz_adjust = %.6f" % (
             "\n".join(stepstrs), z_adjust)
         logging.info(msg)
-        self.sender.respond_info(msg)
+        self.gcode.respond_info(msg)
         # Move each z stepper (sorted from lowest to highest) until they match
         positions.sort()
         first_stepper_offset, first_stepper = positions[0]
@@ -106,7 +104,6 @@ class ZTilt:
         curpos[2] -= z_adjust
         toolhead.set_position(curpos)
         self.gcode.reset_last_position()
-        self.sender = None
 
 def load_config(config):
     return ZTilt(config)

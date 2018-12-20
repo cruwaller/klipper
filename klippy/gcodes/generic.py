@@ -33,7 +33,7 @@ class GenericGcode(object):
         self.toolhead.motor_heater_off()
 
     def cmd_M118(self, params):
-        params['#input'].respond(params['#original'].replace(params['#command'], ""))
+        self.gcode.respond(params['#original'].replace(params['#command'], ""))
 
     cmd_M302_help = "Cold Extrude. Args [P<bool>] [S<temp>]"
     def cmd_M302(self, params):
@@ -57,14 +57,14 @@ class GenericGcode(object):
                 status, temp = h.get_min_extrude_status()
                 resp.append("Heater '%s' cold extrude: %s, min temp %.2fC"
                             % (h.name, status, temp))
-        params['#input'].respond("\n".join(resp))
+        self.gcode.respond("\n".join(resp))
     def cmd_M301(self, params):
         # M301: Set PID parameters
-        params['#input'].respond("Obsolete, use SET_PID_PARAMS")
+        self.gcode.respond("Obsolete, use SET_PID_PARAMS")
 
     def cmd_M304(self, params):
         # M304: Set PID parameters - Bed
-        params['#input'].respond("Obsolete, use SET_PID_PARAMS")
+        self.gcode.respond("Obsolete, use SET_PID_PARAMS")
 
     cmd_M851_help = "Set axis offset. Args [X<offset] [Y<offset>] [Z<offset>]"
     def cmd_M851(self, params):
@@ -74,11 +74,11 @@ class GenericGcode(object):
                     for a, p in self.axis2pos.items() if a in params }
         for p, offset in offsets.items():
             steppers[p].set_homing_offset(offset)
-        params['#input'].respond("Current offsets: X=%.2f Y=%.2f Z=%.2f" %
+        self.gcode.respond("Current offsets: X=%.2f Y=%.2f Z=%.2f" %
                           (steppers[0].homing_offset,
                            steppers[1].homing_offset,
                            steppers[2].homing_offset))
 
     def cmd_M900(self, params):
         # Pressure Advance configuration
-        params['#input'].respond("Obsolete, use SET_PRESSURE_ADVANCE")
+        self.gcode.respond_error("Obsolete, use SET_PRESSURE_ADVANCE")

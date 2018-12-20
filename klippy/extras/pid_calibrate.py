@@ -3,8 +3,8 @@
 # Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import math
-import extruder, heater
+import math, logging
+import heater
 
 class PIDCalibrate:
     def __init__(self, config):
@@ -34,25 +34,25 @@ class PIDCalibrate:
             raise self.gcode.error("Error: extruder index is missing!")
         except (AttributeError, self.printer.config_error):
             raise self.gcode.error("Error: Heater not found! Check heater name and try again")
-        self.__start(params, tgt_heater, target, write_file=write_file, count=count)
-    def __start(self, params, tgt_heater, target, write_file=False, count=12):
-        heater_name = tgt_heater.get_name()
+        self.__start(tgt_heater, target, write_file=write_file, count=count)
+    def __start(self, heater, target, write_file=False, count=12):
+        heater_name = heater.get_name()
         print_time = self.printer.lookup_object('toolhead').get_last_move_time()
-        calibrate = ControlAutoTune(tgt_heater, self.logger, count)
-        old_control = tgt_heater.set_control(calibrate)
+        calibrate = ControlAutoTune(heater, target, self.logger, count)
+        old_control = heater.set_control(calibrate)
         try:
-            tgt_heater.set_temp(print_time, target, auto_tune=True)
-        except tgt_heater.error as e:
-            tgt_heater.set_control(old_control)
+            heater.set_temp(print_time, target, auto_tune=True)
+        except heater.error as e:
+            heater.set_control(old_control)
             raise self.gcode.error(str(e))
-        self.gcode.bg_temp(tgt_heater)
-        tgt_heater.set_control(old_control)
+        self.gcode.bg_temp(heater)
+        heater.set_control(old_control)
         if write_file:
             calibrate.write_file('/tmp/heattest.txt')
         # Log and report results
         Kp, Ki, Kd = calibrate.calc_final_pid()
         self.logger.info("Autotune: final: Kp=%f Ki=%f Kd=%f", Kp, Ki, Kd)
-        params['#input'].respond_info(
+        self.gcode.respond_info(
             "PID parameters: pid_Kp=%.3f pid_Ki=%.3f pid_Kd=%.3f\n"
             "The SAVE_CONFIG command will update the printer config file\n"
             "with these parameters and restart the printer." % (Kp, Ki, Kd))
@@ -69,7 +69,7 @@ class PIDCalibrate:
         if heater_index == -1:
             tgt_heater = self.printer.lookup_object('heater bed', None)
         else:
-            e = self.printer.extruder_get(heater_index)
+            e = self.printer.extruder_get(heater_index, default=None)
             if e is not None:
                 tgt_heater = e.get_heater()
         if tgt_heater is None:
@@ -77,17 +77,18 @@ class PIDCalibrate:
         temp = self.gcode.get_float('S', params)
         count = self.gcode.get_int('C', params, 12)
         write = self.gcode.get_int('W', params, 0)
-        self.__start(params, tgt_heater, temp, write_file=write, count=count)
+        self.__start(tgt_heater, temp, write_file=write, count=count)
 
 
 TUNE_PID_DELTA = 5.0
 
 class ControlAutoTune:
-    def __init__(self, tgt_heater, logger, count, time_per_round=20.):
-        self.heater = tgt_heater
+    def __init__(self, heater, target, logger, count, time_per_round=20.):
+        self.heater = heater
         self.logger = logger
         self.count = count
-        self.heater_max_power = tgt_heater.get_max_power()
+        self.heater_max_power = heater.get_max_power()
+        self.calibrate_temp = target
         # Heating control
         self.heating = False
         self.peak = 0.
@@ -112,8 +113,8 @@ class ControlAutoTune:
         if self.heating and temp >= target_temp:
             self.heating = False
             self.check_peaks()
-        elif (not self.heating
-              and temp <= target_temp - TUNE_PID_DELTA):
+            self.heater.alter_target(self.calibrate_temp - TUNE_PID_DELTA)
+        elif not self.heating and temp <= target_temp:
             self.heating = True
             self.check_peaks()
             self.heater.alter_target(self.calibrate_temp)
@@ -128,7 +129,7 @@ class ControlAutoTune:
             if temp > self.peak:
                 self.peak = temp
                 self.peak_time = read_time
-    def check_busy(self, eventtime, last_temp, target_temp):
+    def check_busy(self, eventtime, smoothed_temp, target_temp):
         if self.heating or len(self.peaks) < self.count:
             return True
         return False

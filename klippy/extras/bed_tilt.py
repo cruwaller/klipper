@@ -39,7 +39,6 @@ class BedTilt:
 
 # Helper script to calibrate the bed tilt
 class BedTiltCalibrate:
-    sender = None
     def __init__(self, config, bedtilt):
         self.printer = config.get_printer()
         self.bedtilt = bedtilt
@@ -51,7 +50,6 @@ class BedTiltCalibrate:
             desc=self.cmd_BED_TILT_CALIBRATE_help)
     cmd_BED_TILT_CALIBRATE_help = "Bed tilt calibration script"
     def cmd_BED_TILT_CALIBRATE(self, params):
-        self.sender = params["#input"]
         self.probe_helper.start_probe(params)
     def probe_finalize(self, offsets, positions):
         # Setup for coordinate descent analysis
@@ -88,7 +86,7 @@ class BedTiltCalibrate:
         msg = "x_adjust: %.6f y_adjust: %.6f z_adjust: %.6f" % (
             x_adjust, y_adjust, z_adjust)
         self.printer.set_rollover_info("bed_tilt", "bed_tilt: %s" % (msg,))
-        self.sender.respond_info(
+        self.gcode.respond_info(
             "%s\nThe above parameters have been applied to the current\n"
             "session. The SAVE_CONFIG command will update the printer\n"
             "config file and restart the printer." % (msg,))

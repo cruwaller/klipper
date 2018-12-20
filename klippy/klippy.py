@@ -13,8 +13,6 @@ import hostcpu, gcodes
 sys.path.append(os.path.abspath(
     os.path.join(os.path.dirname(__file__), "extras")))
 
-status_delay = 1.0
-
 message_ready = "Printer is ready"
 
 message_startup = """
@@ -265,13 +263,12 @@ def arg_dictionary(option, opt_str, value, parser):
     parser.values.dictionary[key] = fname
 
 def main():
-    global status_delay
     usage = "%prog [options] <config file>"
     opts = optparse.OptionParser(usage)
     opts.add_option("-i", "--debuginput", dest="debuginput",
                     help="read commands from file instead of from tty port")
     opts.add_option("-I", "--input-tty", dest="inputtty", default='/tmp/printer',
-                    help="Default input tty name (default is /tmp/printer)")
+                    help="input tty name (default is /tmp/printer)")
     opts.add_option("-l", "--logfile", dest="logfile",
                     help="write log to file instead of stderr")
     opts.add_option("-v", action="store_true", dest="verbose",
@@ -281,8 +278,6 @@ def main():
     opts.add_option("-d", "--dictionary", dest="dictionary", type="string",
                     action="callback", callback=arg_dictionary,
                     help="file to read for mcu protocol dictionary")
-    opts.add_option("-s", "--status", dest="status_delay", type="int",
-                    help="Status report interval")
     options, args = opts.parse_args()
     if len(args) != 1:
         opts.error("Incorrect number of arguments")
@@ -290,11 +285,7 @@ def main():
         'config_file': os.path.abspath(os.path.normpath(os.path.expanduser(args[0]))),
         'start_reason': 'startup'}
 
-    if options.status_delay:
-        status_delay = options.status_delay
-
-    bglogger = None
-    input_fd = {}
+    input_fd = bglogger = None
 
     debuglevel = logging.INFO
     if options.verbose:
@@ -302,14 +293,10 @@ def main():
     if options.debuginput:
         start_args['debuginput'] = options.debuginput
         debuginput = open(options.debuginput, 'rb')
-        input_fd['default'] = {'fd': debuginput.fileno(), 'prio': 0 }
+        input_fd = debuginput.fileno()
     else:
-        # Default input tty
         start_args['inputtty'] = options.inputtty
-        input_fd['default'] = {'fd': util.create_pty(options.inputtty), 'prio': 0}
-        # Reprap gui specific input
-        if options.inputtty != '/tmp/reprapgui':
-            input_fd['reprapgui'] = {'fd': util.create_pty('/tmp/reprapgui'), 'prio': 15}
+        input_fd = util.create_pty(options.inputtty)
     if options.debugoutput:
         start_args['debugoutput'] = options.debugoutput
         start_args.update(options.dictionary)
@@ -321,12 +308,12 @@ def main():
     logging.getLogger().setLevel(debuglevel)
     logging.info("Starting Klippy...")
     start_args['software_version'] = util.get_git_version()
-    versions = "\n".join([
-        "Args: %s" % (sys.argv,),
-        "Git version: %s" % (repr(start_args['software_version']),),
-        "CPU: %s" % (util.get_cpu_info(),),
-        "Python: %s" % (repr(sys.version),)])
     if bglogger is not None:
+        versions = "\n".join([
+            "Args: %s" % (sys.argv,),
+            "Git version: %s" % (repr(start_args['software_version']),),
+            "CPU: %s" % (util.get_cpu_info(),),
+            "Python: %s" % (repr(sys.version),)])
         logging.info(versions)
 
     # Start Printer() class

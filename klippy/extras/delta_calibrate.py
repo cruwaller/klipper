@@ -129,7 +129,6 @@ def measurements_to_distances(measured_params, delta_params):
 ######################################################################
 
 class DeltaCalibrate:
-    sender = None
     def __init__(self, config):
         self.printer = config.get_printer()
         if config.getsection('printer').get('kinematics') != 'delta':
@@ -252,7 +251,7 @@ class DeltaCalibrate:
             new_dist = math.sqrt((x1-x2)**2 + (y1-y2)**2 + (z1-z2)**2)
             logging.info("distance orig: %.6f new: %.6f goal: %.6f",
                          orig_dist, new_dist, dist)
-        self.sender.respond_info(
+        self.gcode.respond_info(
             "stepper_a: position_endstop: %.6f angle: %.6f arm: %.6f\n"
             "stepper_b: position_endstop: %.6f angle: %.6f arm: %.6f\n"
             "stepper_c: position_endstop: %.6f angle: %.6f arm: %.6f\n"
@@ -266,12 +265,10 @@ class DeltaCalibrate:
                 new_params['endstop_c'], new_params['angle_c'],
                 new_params['arm_c'],
                 new_params['radius']))
-        self.sender = None
         # Store results for SAVE_CONFIG
         self.save_state(probe_positions, distances, new_params)
     cmd_DELTA_CALIBRATE_help = "Delta calibration script"
     def cmd_DELTA_CALIBRATE(self, params):
-        self.sender = params["#input"]
         self.probe_helper.start_probe(params)
     def do_extended_calibration(self):
         # Extract distance positions

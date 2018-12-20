@@ -104,15 +104,14 @@ class VirtualSD:
             cb('stop')
     def cmd_M20(self, params):
         # List SD card
-        in_gco = params['#input']
         files = self.get_file_list()
-        in_gco.respond("Begin file list")
+        self.gcode.respond("Begin file list")
         for fname, fsize in files:
-            in_gco.respond("%s %d" % (fname, fsize))
-            in_gco.respond("End file list")
+            self.gcode.respond("%s %d" % (fname, fsize))
+        self.gcode.respond("End file list")
     def cmd_M21(self, params):
         # Initialize SD card
-        params['#input'].respond("SD card ok")
+        self.gcode.respond("SD card ok")
     def cmd_M23(self, params):
         # Select SD file
         is_abs_path = bool(self.gcode.get_int(
@@ -143,8 +142,8 @@ class VirtualSD:
         except IOError:
             self.logger.exception("virtual_sdcard file open")
             raise self.gcode.error("Unable to open file")
-        params['#input'].respond("File opened:%s Size:%d" % (filename, fsize))
-        params['#input'].respond("File selected")
+        self.gcode.respond("File opened:%s Size:%d" % (filename, fsize))
+        self.gcode.respond("File selected")
         self.current_file = f
         self.file_position = 0
         self.file_size = fsize
@@ -165,7 +164,6 @@ class VirtualSD:
         self.must_pause_work = False
         self.work_timer = self.reactor.register_timer(
             self.work_handler, self.reactor.NOW)
-        self.last_gco_sender = params['#input']
     def cmd_M25(self, params):
         # Pause SD print
         if self.work_timer is not None:
@@ -186,9 +184,9 @@ class VirtualSD:
     def cmd_M27(self, params):
         # Report SD print status
         if self.current_file is None or self.work_timer is None:
-            params['#input'].respond("Not SD printing.")
+            self.gcode.respond("Not SD printing.")
             return
-        params['#input'].respond("SD printing byte %d/%d" % (
+        self.gcode.respond("SD printing byte %d/%d" % (
             self.file_position, self.file_size))
     def cmd_M32(self, params):
         # Select and start gcode file
@@ -228,7 +226,7 @@ class VirtualSD:
             self.current_file.seek(self.file_position)
         except:
             self.logger.exception("virtual_sdcard seek")
-            self.last_gco_sender.respond_error("Unable to seek file")
+            self.gcode.respond_error("Unable to seek file")
             self.work_timer = None
             self.gcode.simulate_print = False
             return self.reactor.NEVER
@@ -241,7 +239,7 @@ class VirtualSD:
                     data = self.current_file.read(8192)
                 except:
                     self.logger.exception("virtual_sdcard read")
-                    self.last_gco_sender.respond_error("Error on virtual sdcard read")
+                    self.gcode.respond_error("Error on virtual sdcard read")
                     for cb in self.done_cb:
                         cb('error')
                     break
@@ -250,7 +248,7 @@ class VirtualSD:
                     self.current_file.close()
                     self.current_file = None
                     self.logger.info("Finished SD card print")
-                    self.last_gco_sender.respond("Done printing file")
+                    self.gcode.respond("Done printing file")
                     for cb in self.done_cb:
                         cb('done')
                     break
@@ -268,7 +266,7 @@ class VirtualSD:
                     continue
             except self.gcode.error as e:
                 self.logger.error("GCode error: %s" % e)
-                self.last_gco_sender.respond_error("VSD GCode error: %s" % e)
+                self.gcode.respond_error("VSD GCode error: %s" % e)
                 for cb in self.done_cb:
                     cb('error')
                 break

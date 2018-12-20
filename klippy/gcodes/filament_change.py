@@ -89,7 +89,7 @@ class GCodeFilamentPause(object):
         # Store original SD resume for continue
         self.resume_print_original = gcode.get_command_handler('M24')
         gcode.register_command('M24', self.cmd_FILAMENT_CHANGE_READY)
-        params['#input'].respond_info("Please load new filament and resume")
+        self.gcode.respond_info("Please load new filament and resume")
 
     def cmd_FILAMENT_CHANGE_READY(self, params):
         gcode = self.gcode
@@ -112,7 +112,7 @@ class GCodeFilamentPause(object):
         # Restore original SD resume
         gcode.register_command('M24', self.resume_print_original)
         gcode.run_script_from_command("M24")
-        params['#input'].respond_info("Filament change over")
+        self.gcode.respond_info("Filament change over")
 
 def load_config(config):
     GCodeFilamentPause(config)

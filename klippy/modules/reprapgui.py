@@ -557,7 +557,7 @@ class rrHandler(tornado.web.RequestHandler):
             #self.logger.debug("rr_fileinfo: {} , name: {}".format(self.request.uri, name))
             is_printing = False
             if name is None:
-                sd = self.printer.lookup_object('virtual_sdcard')
+                sd = self.printer.lookup_object('virtual_sdcard') # TODO: Check this!
                 try:
                     is_printing = (sd.current_file is not None and
                                    sd.work_timer is not None)
@@ -716,6 +716,7 @@ class RepRapGuiModule(object):
         self.gcode = printer.lookup_object('gcode')
         self.gui_stats = printer.lookup_object('gui_stats')
         self.gcode_resps = []
+        self.lock = threading.Lock()
         # Read config
         htmlroot = os.path.normpath(os.path.join(os.path.dirname(__file__)))
         htmlroot = os.path.join(htmlroot, "DuetWebControl")
@@ -776,9 +777,12 @@ class RepRapGuiModule(object):
             _TORNADO_THREAD.start()
 
         # ------------------------------
+        fd_r, self.pipe_write = os.pipe() # Change to PTY ?
+        self.gcode.register_fd(fd_r)
+
+        self.gcode.write_resp = self.gcode_resp_handler
         # Disable auto temperature reporting
         self.printer_write_no_update("AUTO_TEMP_REPORT AUTO=0")
-
         # ------------------------------
         self.logger.info("RepRep Web GUI loaded")
 
@@ -806,18 +810,21 @@ class RepRapGuiModule(object):
         http_server.listen(port)
         tornado.ioloop.IOLoop.current().start()
 
-    def printer_write_no_update(self, cmd):
-        self.logger.debug("GCode send: %s" % (cmd,))
-        self.gcode.push_command_to_queue(cmd, None, prio=True)
-
-    ok_rcvd = False
-    def printer_write(self, cmd):
-        self.logger.debug("GCode send: %s" % (cmd,))
-        self.ok_rcvd = False
-        self.resp = ""
-        self.gcode.push_command_to_queue(cmd, self.gcode_resp_handler, prio=True)
-
     resp = ""
+    ok_rcvd = False
+    store_resp = False
+    def _write(self, cmd):
+        # self.logger.debug("GCode send: %s" % (cmd,))
+        with self.lock:
+            self.ok_rcvd = False
+            self.resp = ""
+            os.write(self.pipe_write, "%s\n" % cmd)
+    def printer_write_no_update(self, cmd):
+        self.store_resp = False
+        self._write(cmd)
+    def printer_write(self, cmd):
+        self.store_resp = True
+        self._write(cmd)
     def gcode_resp_handler(self, msg):
         if not self.ok_rcvd:
             self.resp += msg
@@ -825,9 +832,9 @@ class RepRapGuiModule(object):
                 return
             resp = self.resp.strip()
             self.logger.debug("GCode resps: %s" % (resp,))
-            self.gcode_resps.append(resp)
+            if self.store_resp:
+                self.append_gcode_resp(resp)
             self.ok_rcvd = True
-
     def append_gcode_resp(self, msg):
         self.gcode_resps.append(msg)
 

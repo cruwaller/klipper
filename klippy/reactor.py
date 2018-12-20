@@ -23,7 +23,7 @@ class ReactorCallback:
         return self.reactor.NEVER
 
 class ReactorFileHandler:
-    def __init__(self, fd, callback, args):
+    def __init__(self, fd, callback, args={}):
         self.fd = fd
         self.fd_w = fd
         self.callback = callback
@@ -99,7 +99,6 @@ class SelectReactor:
     NOW = 0.
     NEVER = 9999999999999999.
     def __init__(self):
-        self.logger = logging.getLogger("reactor")
         # Main code
         self._process = False
         self.monotonic = chelper.get_ffi()[1].get_monotonic
@@ -158,7 +157,7 @@ class SelectReactor:
             os.write(self._pipe_fds[1], '.')
         except os.error:
             pass
-    def _got_pipe_signal(self, eventtime, handler=None):
+    def _got_pipe_signal(self, eventtime):
         try:
             os.read(self._pipe_fds[0], 4096)
         except os.error:
@@ -209,16 +208,15 @@ class SelectReactor:
         # This greenlet was reactivated - prepare for main processing loop
         self._g_dispatch = g_old
     # File descriptors
-    def register_fd(self, fd, callback, args={}):
-        handler = ReactorFileHandler(fd, callback, args)
+    def register_fd(self, fd, callback):
+        handler = ReactorFileHandler(fd, callback)
         self._fds.append(handler)
         return handler
     def unregister_fd(self, handler):
         self._fds.pop(self._fds.index(handler))
     def register_fd_thread(self, fd, func, args={}):
         return ReactorFileHandlerThread(self, fd, func, args)
-    @staticmethod
-    def unregister_fd_thread(handle):
+    def unregister_fd_thread(self, handle):
         handle.stop()
     # Main loop
     def _dispatch_loop(self):
@@ -229,7 +227,7 @@ class SelectReactor:
             res, w, e = select.select(self._fds, [], [], timeout)
             eventtime = self.monotonic()
             for fd in res:
-                fd.callback(eventtime, fd)
+                fd.callback(eventtime)
                 if g_dispatch is not self._g_dispatch:
                     self._end_greenlet(g_dispatch)
                     eventtime = self.monotonic()
@@ -250,10 +248,10 @@ class PollReactor(SelectReactor):
         self._poll = select.poll()
         self._fds = {}
     # File descriptors
-    def register_fd(self, fd, callback, args={}):
-        handler = ReactorFileHandler(fd, callback, args)
+    def register_fd(self, fd, callback):
+        handler = ReactorFileHandler(fd, callback)
         fds = self._fds.copy()
-        fds[fd] = handler # callback
+        fds[fd] = callback
         self._fds = fds
         self._poll.register(handler, select.POLLIN | select.POLLHUP)
         return handler
@@ -271,9 +269,7 @@ class PollReactor(SelectReactor):
             res = self._poll.poll(int(math.ceil(timeout * 1000.)))
             eventtime = self.monotonic()
             for fd, event in res:
-                # self._fds[fd](eventtime, fd)
-                handler = self._fds[fd]
-                handler.callback(eventtime, handler)
+                self._fds[fd](eventtime)
                 if g_dispatch is not self._g_dispatch:
                     self._end_greenlet(g_dispatch)
                     eventtime = self.monotonic()
@@ -286,10 +282,10 @@ class EPollReactor(SelectReactor):
         self._epoll = select.epoll()
         self._fds = {}
     # File descriptors
-    def register_fd(self, fd, callback, args={}):
-        handler = ReactorFileHandler(fd, callback, args)
+    def register_fd(self, fd, callback):
+        handler = ReactorFileHandler(fd, callback)
         fds = self._fds.copy()
-        fds[fd] = handler # callback
+        fds[fd] = callback
         self._fds = fds
         self._epoll.register(fd, select.EPOLLIN | select.EPOLLHUP)
         return handler
@@ -307,9 +303,7 @@ class EPollReactor(SelectReactor):
             res = self._epoll.poll(timeout)
             eventtime = self.monotonic()
             for fd, event in res:
-                # self._fds[fd](eventtime, fd)
-                handler = self._fds[fd]
-                handler.callback(eventtime, handler)
+                self._fds[fd](eventtime)
                 if g_dispatch is not self._g_dispatch:
                     self._end_greenlet(g_dispatch)
                     eventtime = self.monotonic()

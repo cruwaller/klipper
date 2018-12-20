@@ -32,7 +32,7 @@ class Command(object):
     def execute(self, params):
         self.logger.debug("command %s executed" % self.command)
         msg = os.popen(self.command).read()
-        params['#input'].respond_info(msg)
+        self.gcode.respond_info(msg)
 
 def load_config(config):
     return HostCmd(config)

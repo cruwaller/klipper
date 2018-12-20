@@ -134,7 +134,7 @@ class PrinterHeater:
         self.protect_state = None
         self.reactor.update_timer(self.protection_timer,
                                   self.reactor.NOW)
-        params['#input'].respond_info(
+        self.gcode.respond_info(
             "Idle hysteresis %.2fC, Cooling hysteresis %.2fC\n"
             "Heating: period %.2fs, hysteresis %.2fC\n"
             "Runaway: period %.2fs, hysteresis %.2fC" % (
@@ -432,7 +432,7 @@ class ControlPID:
         self.prev_temp_time = 0.
         self.prev_temp_deriv = 0.
         self.prev_temp_integ = 0.
-        params['#input'].respond_info(
+        self.gcode.respond_info(
             "PID params: P=%.2f I=%.2f D=%.2f TIME=%.2f MAX=%.2f" %
             (self.Kp*PID_PARAM_BASE, self.Ki*PID_PARAM_BASE, self.Kd*PID_PARAM_BASE,
              self.min_deriv_time, self.imax))

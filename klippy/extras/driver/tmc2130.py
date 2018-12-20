@@ -116,7 +116,7 @@ class TMC2130(SpiDriver):
                 desc=getattr(self, 'cmd_' + cmd + '_help', None))
     cmd_DRV_STATUS_help = "args: DRIVER=driver_name"
     def cmd_DRV_STATUS(self, params):
-        params['#input'].respond(self.status())
+        self.gcode.respond(self.status())
     cmd_DRV_CURRENT_help = "args: DRIVER=driver_name [CURRENT=amps]"
     def cmd_DRV_CURRENT(self, params):
         current = self.gcode.get_float('CURRENT', params,
@@ -132,11 +132,11 @@ class TMC2130(SpiDriver):
         self.__calc_rms_current(current, hold, delay)
         msg = "Current is %.3fA, hold current %.3fA, hold delay %s" % (
             self.current, (self.hold_multip * self.current), self.hold_delay)
-        params['#input'].respond(msg)
+        self.gcode.respond(msg)
     cmd_DRV_SG_help = "args: DRIVER=driver_name [SG=val]"
     def cmd_DRV_STALLGUARD(self, params):
         sg = self.gcode.get_float('SG', params, default=None)
-        params['#input'].respond(self.set_stallguard(sg))
+        self.gcode.respond(self.set_stallguard(sg))
 
     #**************************************************************************
     # PUBLIC METHODS

@@ -82,7 +82,7 @@ class GCodeRetract(object):
             self.return_speed = self.gcode.get_int(
                 'T', params, default=self.retract_speed)
         self._calc_commands()
-        params['#input'].respond_info("FW Retract: speed %s length %s z_hop %s" %
+        self.gcode.respond_info("FW Retract: speed %s length %s z_hop %s" %
             (self.retract_speed, self.retract_dist, self.z_hop))
 
     cmd_M208_help = "Set fw retraction return. Args: [F<feedrate>] [S<length>]"
@@ -93,7 +93,7 @@ class GCodeRetract(object):
         self.return_speed = self.gcode.get_int(
             'F', params, default=self.retract_speed)
         self._calc_commands()
-        params['#input'].respond_info("FW Retract recover: speed %s addition %s" %
+        self.gcode.respond_info("FW Retract recover: speed %s addition %s" %
             (self.return_speed, self.return_extra))
 
 def load_config(config):

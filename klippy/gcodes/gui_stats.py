@@ -90,22 +90,22 @@ class GuiStats:
     # Commands
     def cmd_GUISTATS_GET_ARGS(self, params):
         dump = json.dumps(self.printer.get_start_args())
-        params["#input"].respond(dump)
+        self.gcode.respond(dump)
 
     def cmd_GUISTATS_GET_CONFIG(self, params):
         dump = json.dumps(self.get_config_stats())
-        params["#input"].respond(dump)
+        self.gcode.respond(dump)
 
     def cmd_GUISTATS_GET_STATUS(self, params):
         _type = self.gcode.get_int("TYPE", params,
             default=1, minval=1, maxval=3)
         stats = self.get_status_stats(_type)
         dump = json.dumps(stats)
-        params["#input"].respond(dump)
+        self.gcode.respond(dump)
 
     def cmd_GUISTATS_GET_SD_INFO(self, params):
         dump = json.dumps(self.sd.get_status(0, True))
-        params["#input"].respond(dump)
+        self.gcode.respond(dump)
 
     # ================================================================================
     # Statistics

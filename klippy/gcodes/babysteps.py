@@ -33,7 +33,7 @@ class BabySteps(object):
             else:
                 last_position[self.z_axis_pos] -= self.babysteps
             self.babysteps = 0.0
-        params["#input"].respond("Baby stepping offset is %.3fmm" % (
+        self.gcode.respond("Baby stepping offset is %.3fmm" % (
             self.babysteps,))
         gcode.base_position = base_position
         gcode.last_position = last_position

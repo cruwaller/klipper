@@ -548,7 +548,7 @@ class ToolHead:
                    max_velocity, max_accel, self.max_accel_to_decel,
                    square_corner_velocity, self.junction_deviation))
         self.printer.set_rollover_info("toolhead", "toolhead: %s" % (msg,))
-        params['#input'].respond_info(msg)
+        gcode.respond_info(msg)
     def cmd_M204(self, params):
         gcode = self.printer.lookup_object('gcode')
         if 'P' in params and 'T' in params and 'S' not in params:
