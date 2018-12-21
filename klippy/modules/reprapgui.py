@@ -414,6 +414,7 @@ class rrHandler(tornado.web.RequestHandler):
             gcode = gcode.replace("0:/", "").replace("0%3A%2F", "")
 
             if "M80" in gcode:
+                # ATX ON
                 atx_on = self.parent.atx_on
                 if atx_on is not None:
                     resp = os.popen(atx_on).read()
@@ -661,32 +662,46 @@ class rrHandler(tornado.web.RequestHandler):
             elif body_len != size or not size:
                 self.logger.error("upload size error: %s != %s" % (body_len, size))
             else:
-                path = self.get_argument('name').replace("0:/", "").replace("0%3A%2F", "")
-                if KLIPPER_CFG_NAME in path:
-                    path = os.path.abspath(
+                target_path = self.get_argument('name').replace("0:/", ""). \
+                    replace("0%3A%2F", "")
+                if KLIPPER_CFG_NAME in target_path:
+                    cfgname = os.path.abspath(
                         self.printer.get_start_arg('config_file'))
-                elif KLIPPER_LOG_NAME in path:
-                    path = None
+                    datestr = time.strftime("-%Y%m%d_%H%M%S")
+                    backup_name = cfgname + datestr
+                    temp_name = cfgname + "_autosave"
+                    if cfgname.endswith(".cfg"):
+                        backup_name = cfgname[:-4] + datestr + ".cfg"
+                        temp_name = cfgname[:-4] + "_autosave.cfg"
+                    try:
+                        f = open(temp_name, 'wb')
+                        f.write(self.request.body)
+                        f.close()
+                        os.rename(cfgname, backup_name)
+                        os.rename(temp_name, cfgname)
+                        respdata['err'] = 0
+                    except IOError as err:
+                        self.logger.error("Upload, cfg: %s" % err)
+                elif KLIPPER_LOG_NAME in target_path:
                     respdata['err'] = 0
                 else:
-                    path = os.path.abspath(os.path.join(self.sd_path, path))
-                if path is not None:
+                    target_path = os.path.abspath(os.path.join(self.sd_path, target_path))
+                    # Create a dir first
                     try:
-                        os.makedirs(os.path.dirname(path))
-                    except OSError as e:
-                        if e.errno != errno.EEXIST:
-                            pass
+                        os.makedirs(os.path.dirname(target_path))
+                    except OSError:
+                        pass
+                    # Try to save content
                     try:
-                        # Write request content to file
-                        with open(path, 'w') as output_file:
+                        with open(target_path, 'w') as output_file:
                             output_file.write(self.request.body)
                             respdata['err'] = 0
-                    except IOError:
-                        pass
-
+                    except IOError as err:
+                        self.logger.error("Upload, g-code: %s" % err)
+        else:
+            self.logger.error("Unknown req path: %s" % self.request.path)
         # Send response back to client
-        respstr = json.dumps(respdata)
-        self.write(respstr)
+        self.write(json.dumps(respdata))
 
 
 def create_dir(_dir):

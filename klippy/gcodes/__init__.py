@@ -15,6 +15,4 @@ def load_gcodes(config):
     # Load all default gcode files
     babysteps.BabySteps(config)
     generic.GenericGcode(config)
-    if config.has_section("reprapgui") or \
-            config.has_section("reprapgui_process"):
-        gui_stats.GuiStats(config)
+    gui_stats.GuiStats(config)

@@ -308,12 +308,12 @@ def main():
     logging.getLogger().setLevel(debuglevel)
     logging.info("Starting Klippy...")
     start_args['software_version'] = util.get_git_version()
+    versions = "\n".join([
+        "Args: %s" % (sys.argv,),
+        "Git version: %s" % (repr(start_args['software_version']),),
+        "CPU: %s" % (util.get_cpu_info(),),
+        "Python: %s" % (repr(sys.version),)])
     if bglogger is not None:
-        versions = "\n".join([
-            "Args: %s" % (sys.argv,),
-            "Git version: %s" % (repr(start_args['software_version']),),
-            "CPU: %s" % (util.get_cpu_info(),),
-            "Python: %s" % (repr(sys.version),)])
         logging.info(versions)
 
     # Start Printer() class
