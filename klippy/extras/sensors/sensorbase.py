@@ -17,6 +17,8 @@ VALID_SPI_SENSORS = {
 }
 
 class SensorBase(object):
+    min_temp = max_temp = .0
+    min_sample_value = max_sample_value = 0
     def __init__(self, config,
                  sample_time  = SAMPLE_TIME_DEFAULT,
                  sample_count = SAMPLE_COUNT_DEFAULT,
@@ -27,14 +29,7 @@ class SensorBase(object):
         self.sample_time = sample_time
         self.sample_count = sample_count
         self.report_time = report_time
-        self.min_temp = config.getfloat('min_temp', minval=0., default=0.)
-        self.max_temp = config.getfloat('max_temp', above=self.min_temp)
         self._callback = self.__default_callback
-        sensor_pin = config.get('sensor_pin')
-        adc_range = [self.calc_adc(self.min_temp),
-                     self.calc_adc(self.max_temp)]
-        self.min_sample_value = min(adc_range)
-        self.max_sample_value = max(adc_range)
         self._report_clock = 0
         if chip_type in VALID_SPI_SENSORS:
             # SPI configuration
@@ -53,24 +48,42 @@ class SensorBase(object):
             mcu.register_config_callback(self._build_config_cb)
         else:
             ppins = self.printer.lookup_object('pins')
-            self.mcu = ppins.setup_pin('adc', sensor_pin)
-            self.mcu.setup_minmax(
-                sample_time, sample_count,
-                minval=min(adc_range), maxval=max(adc_range))
+            self.mcu = ppins.setup_pin('adc', config.get('sensor_pin'))
             self.mcu.setup_callback(
                 self.report_time, self._handle_adc_result)
+        min_temp = config.getfloat('min_temp', minval=0., default=0.)
+        max_temp = config.getfloat('max_temp', above=self.min_temp)
+        self.__setup_minmax(min_temp, max_temp)
     def fault(self, msg):
         self.printer.invoke_async_shutdown(msg)
     def get_mcu(self):
         if self.oid is not None:
             return self.mcu
         return self.mcu.get_mcu()
+    def setup_minmax(self, min_temp, max_temp):
+        # Set heaters min and max temperatures
+        if min_temp < self.min_temp:
+            raise self.printer.config_error("Min temp below sensor's lowest")
+        if max_temp > self.max_temp:
+            raise self.printer.config_error("Max temp over sensor's lowest")
+        self.__setup_minmax(min_temp, max_temp)
+    def __setup_minmax(self, min_temp, max_temp):
+        self.min_temp = min_temp
+        self.max_temp = max_temp
+        adc_range = [self.calc_adc(min_temp), self.calc_adc(max_temp)]
+        self.min_sample_value = min(adc_range)
+        self.max_sample_value = max(adc_range)
+        if hasattr(self.mcu, "setup_minmax"):
+            self.mcu.setup_minmax(
+                self.sample_time, self.sample_count,
+                minval=min(adc_range), maxval=max(adc_range))
     def get_min_max_temp(self):
         return self.min_temp, self.max_temp
     def setup_callback(self, cb):
         self._callback = cb
     def get_report_delta(self):
         return self.report_time
+    # ============ INTERNAL ===============
     def _build_config_cb(self):
         clock = self.mcu.get_query_slot(self.oid)
         self._report_clock = self.mcu.seconds_to_clock(self.report_time)
@@ -90,7 +103,7 @@ class SensorBase(object):
     # ============ VIRTUAL ===============
     def calc_temp(self, read_value, fault=0):
         raise NotImplementedError("calc_temp must to be implemented in parent class")
-    def calc_adc(self, min_temp):
+    def calc_adc(self, temp):
         raise NotImplementedError("calc_adc must to be implemented in parent class")
     def __default_callback(self, arg1, arg2):
         raise NotImplementedError("Temp comtrol callback is not set!")
