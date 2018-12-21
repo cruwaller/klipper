@@ -4,7 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math, logging
-import heater
+from heater import PID_PARAM_BASE
 
 class PIDCalibrate:
     def __init__(self, config):
@@ -13,9 +13,9 @@ class PIDCalibrate:
         self.gcode.register_command(
             'PID_CALIBRATE', self.cmd_PID_CALIBRATE,
             desc=self.cmd_PID_CALIBRATE_help)
-        self.gcode.register_command('M303', self.cmd_M303)
         self.logger = self.printer.logger.getChild('PIDCalibrate')
-    cmd_PID_CALIBRATE_help = "Run PID calibration test. args: HEATER, TARGET"
+    cmd_PID_CALIBRATE_help = "Run PID calibration test. " \
+                             "args: HEATER=name TARGET=temp [COUNT=]"
     def cmd_PID_CALIBRATE(self, params):
         heater_name = self.gcode.get_str('HEATER', params).lower()
         target = self.gcode.get_float('TARGET', params)
@@ -23,19 +23,17 @@ class PIDCalibrate:
         write_file = self.gcode.get_int('WRITE_FILE', params, 0)
         try:
             if 'extruder' in heater_name:
-                tgt_heater = self.printer.extruder_get(
+                heater = self.printer.extruder_get(
                     int(heater_name[8:])).get_heater()
             elif 'heater_bed' == heater_name:
-                tgt_heater = self.printer.lookup_object('heater bed')
+                heater = self.printer.lookup_object('heater bed')
             else:
-                tgt_heater = self.printer.lookup_object(
+                heater = self.printer.lookup_object(
                     'heater %s' % heater_name)
         except ValueError:
             raise self.gcode.error("Error: extruder index is missing!")
         except (AttributeError, self.printer.config_error):
             raise self.gcode.error("Error: Heater not found! Check heater name and try again")
-        self.__start(tgt_heater, target, write_file=write_file, count=count)
-    def __start(self, heater, target, write_file=False, count=12):
         heater_name = heater.get_name()
         print_time = self.printer.lookup_object('toolhead').get_last_move_time()
         calibrate = ControlAutoTune(heater, target, self.logger, count)
@@ -62,31 +60,14 @@ class PIDCalibrate:
         configfile.set(heater_name, 'pid_Kp', "%.3f" % (Kp,))
         configfile.set(heater_name, 'pid_Ki', "%.3f" % (Ki,))
         configfile.set(heater_name, 'pid_Kd', "%.3f" % (Kd,))
-    def cmd_M303(self, params):
-        # Run PID tuning (M303 E<-1 or 0...> S<temp> C<count> W<write_file>)
-        tgt_heater = None
-        heater_index = self.gcode.get_int('E', params, 0)
-        if heater_index == -1:
-            tgt_heater = self.printer.lookup_object('heater bed', None)
-        else:
-            e = self.printer.extruder_get(heater_index, default=None)
-            if e is not None:
-                tgt_heater = e.get_heater()
-        if tgt_heater is None:
-            raise self.gcode.error("Heater is not configured")
-        temp = self.gcode.get_float('S', params)
-        count = self.gcode.get_int('C', params, 12)
-        write = self.gcode.get_int('W', params, 0)
-        self.__start(tgt_heater, temp, write_file=write, count=count)
-
 
 TUNE_PID_DELTA = 5.0
 
 class ControlAutoTune:
-    def __init__(self, heater, target, logger, count, time_per_round=20.):
-        self.heater = heater
+    def __init__(self, heater, target, logger, count=12):
         self.logger = logger
         self.count = count
+        self.heater = heater
         self.heater_max_power = heater.get_max_power()
         self.calibrate_temp = target
         # Heating control
@@ -153,7 +134,7 @@ class ControlAutoTune:
         # Use Ziegler-Nichols method to generate PID parameters
         Ti = 0.5 * Tu
         Td = 0.125 * Tu
-        Kp = 0.6 * Ku * heater.PID_PARAM_BASE
+        Kp = 0.6 * Ku * PID_PARAM_BASE
         Ki = Kp / Ti
         Kd = Kp * Td
         self.logger.info("Autotune: raw=%f/%f Ku=%f Tu=%f  Kp=%f Ki=%f Kd=%f",
