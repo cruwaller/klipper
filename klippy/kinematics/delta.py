@@ -13,7 +13,8 @@ class DeltaKinematics:
     name = "delta"
     def __init__(self, toolhead, config):
         self.toolhead = toolhead
-        self.logger = config.get_printer().logger.getChild(self.name)
+        self.printer = config.get_printer()
+        self.logger = self.printer.logger.getChild(self.name)
         # Setup tower rails
         stepper_configs = [config.getsection('stepper_' + a) for a in 'abc']
         rail_a = stepper.PrinterRail(
@@ -121,7 +122,7 @@ class DeltaKinematics:
         for rail in self.rails:
             rail.motor_enable(print_time, 1)
         self.need_motor_enable = False
-        self.toolhead.motor_on(print_time)
+        self.printer.send_event('motor_state', 'on')
     def check_move(self, move):
         end_pos = move.end_pos
         end_xy2 = end_pos[0]**2 + end_pos[1]**2

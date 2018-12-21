@@ -304,19 +304,15 @@ class ToolHead:
         self.logger.info("max_accel: %s" % (self.max_accel,))
         self.logger.info("max_accel_to_decel: %s" % (self.max_accel_to_decel,))
         self.logger.info("junction_deviation: %s" % (self.junction_deviation,))
-        self.motor_cbs = []
         self.layer_change_cb = []
     def register_cb(self, cb_type, cb):
         if cb_type == "motor":
-            if cb not in self.motor_cbs:
-                self.motor_cbs.append(cb)
+            pass
         elif cb_type == "layer":
             # Arguments to cb are (change_time)
             if cb not in self.layer_change_cb:
                 self.layer_change_cb.append(cb)
     def deregister_cb(self, cb_type, cb):
-        if cb in self.motor_cbs:
-            self.motor_cbs.remove(cb)
         if cb in self.layer_change_cb:
             self.layer_change_cb.remove(cb)
     def move_to_idle_pos(self, *args):
@@ -451,11 +447,7 @@ class ToolHead:
             ext.motor_off(last_move_time)
         self.dwell(STALL_TIME)
         self.logger.debug('; Max time of %f', last_move_time)
-        for cb in self.motor_cbs:
-            cb('off', last_move_time)
-    def motor_on(self, print_time):
-        for cb in self.motor_cbs:
-            cb('on', print_time)
+        self.printer.send_event('motor_state', 'off')
     def wait_moves(self):
         self._flush_lookahead()
         if self.mcu.is_fileoutput():

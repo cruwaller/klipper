@@ -122,7 +122,7 @@ class CartKinematics:
                 rail.motor_enable(print_time, 1)
             need_motor_enable |= not rail.is_motor_enabled()
         self.need_motor_enable = need_motor_enable
-        self.toolhead.motor_on(print_time)
+        self.printer.send_event('motor_state', 'on')
     def _check_endstops(self, move):
         end_pos = move.end_pos
         for i in (0, 1, 2):

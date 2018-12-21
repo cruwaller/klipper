@@ -167,7 +167,7 @@ class PrinterExtruder:
     def move(self, print_time, move):
         if self.need_motor_enable:
             self.stepper.motor_enable(print_time, 1)
-            self.toolhead.motor_on(print_time)
+            self.printer.send_event('motor_state', 'on')
             self.need_motor_enable = False
         axis_d = move.axes_d[3]
         axis_r = axis_d / move.move_d

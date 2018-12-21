@@ -3,23 +3,21 @@ import fan
 PIN_MIN_TIME = 0.100
 
 class MotorFan:
+    _power = .0
     def __init__(self, config):
         self.printer = config.get_printer()
         self.fan = fan.PrinterFan(config, default_shutdown_speed=1.)
         self.mcu = self.fan.mcu_fan.get_mcu()
         self.fan_speed = config.getfloat("fan_speed", 1., minval=0., maxval=1.)
-    def printer_state(self, state):
-        if state == 'ready':
-            self.toolhead = self.printer.lookup_object('toolhead')
-            self.logger = self.fan.logger = \
-                          self.toolhead.logger.getChild(
-                              self.fan.name.replace(" ", "_"))
-            self.toolhead.register_cb('motor', self.callback)
-            self.reactor = self.printer.get_reactor()
-            self.set_timer = self.reactor.register_timer(
-                self.reactor_callback)
-    def callback(self, event, eventtime):
-        if event == 'off':
+        self.reactor = self.printer.get_reactor()
+        self.set_timer = self.reactor.register_timer(
+            self.reactor_callback)
+        self.logger = self.fan.logger = \
+            self.printer.logger.getChild(
+                self.fan.name.replace(" ", "_"))
+        self.printer.register_event_handler('motor_state', self.event_handler)
+    def event_handler(self, state):
+        if state == 'off':
             self._power = 0.
         else:
             self._power = self.fan_speed
