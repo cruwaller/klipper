@@ -40,7 +40,7 @@ cc-option=$(shell if test -z "`$(1) $(2) -S -o /dev/null -xc /dev/null 2>&1`" \
 CFLAGS := -I$(OUT) -Isrc -I$(OUT)board-generic/ -std=gnu11 -O2 -MD -g \
     -Wall -Wold-style-definition $(call cc-option,$(CC),-Wtype-limits,) \
     -ffunction-sections -fdata-sections
-CFLAGS += -flto -fwhole-program -fno-use-linker-plugin -Wextra
+CFLAGS += -flto -fwhole-program -fno-use-linker-plugin # -Wextra
 
 CFLAGS_klipper.elf = $(CFLAGS) -Wl,--gc-sections
 

@@ -3,6 +3,7 @@
 # Copyright (C) 2018  Petri Honkala <cruwaller@gmail.com>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+import extras.bus as bus
 
 SAMPLE_TIME_DEFAULT    = 0.001
 SAMPLE_COUNT_DEFAULT   = 8
@@ -35,33 +36,23 @@ class SensorBase(object):
         self.min_sample_value = min(adc_range)
         self.max_sample_value = max(adc_range)
         self._report_clock = 0
-        ppins = self.printer.lookup_object('pins')
         if chip_type in VALID_SPI_SENSORS:
-            pin_params = ppins.lookup_pin(sensor_pin)
-            self.mcu = mcu = pin_params['chip']
-            pin = pin_params['pin']
-            # SPI bus configuration
-            spi_oid = mcu.create_oid()
-            spi_mode = config.getint('spi_mode', 3, minval=0, maxval=3)
-            spi_speed = config.getint('spi_speed', 4000000, minval=1)
-            mcu.add_config_cmd(
-                "config_spi oid=%u bus=%u pin=%s inverted=%u"
-                " mode=%u rate=%u shutdown_msg=" % (
-                    spi_oid, 0, pin, pin_params['invert'],
-                    spi_mode, spi_speed))
+            # SPI configuration
+            spi = bus.MCU_SPI_from_config(
+                config, 1, pin_option="sensor_pin", default_speed=4000000)
             if config_cmd is not None:
-                config_cmd = "".join("%02x" % b for b in config_cmd)
-                mcu.add_config_cmd("spi_send oid=%u data=%s" % (
-                    spi_oid, config_cmd), is_init=False)
+                spi.spi_send(config_cmd)
+            self.mcu = mcu = spi.get_mcu()
             # Reader chip configuration
             self.oid = oid = mcu.create_oid()
             mcu.add_config_cmd(
                 "config_thermocouple oid=%u spi_oid=%u chip_type=%u" % (
-                    oid, spi_oid, VALID_SPI_SENSORS[chip_type]))
+                    oid, spi.get_oid(), VALID_SPI_SENSORS[chip_type]))
             mcu.register_msg(self._handle_thermocouple_result,
                 "thermocouple_result", oid)
             mcu.register_config_callback(self._build_config_cb)
         else:
+            ppins = self.printer.lookup_object('pins')
             self.mcu = ppins.setup_pin('adc', sensor_pin)
             self.mcu.setup_minmax(
                 sample_time, sample_count,

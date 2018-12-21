@@ -30,7 +30,6 @@ struct digital_out_s {
 static uint_fast8_t
 digital_end_event(struct timer *timer)
 {
-    (void)timer;
     shutdown("Missed scheduling of next pin event");
 }
 
@@ -142,9 +141,6 @@ static uint_fast8_t
 soft_pwm_toggle_event(struct timer *timer)
 {
     struct soft_pwm_s *s = container_of(timer, struct soft_pwm_s, timer);
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-    //printf("SoftPWM toggle event @ %u [val %u]\n", s->timer.waketime, !!(s->flags & SPF_ON));
-#endif
     gpio_out_toggle_noirq(s->pin);
     s->flags ^= SPF_ON;
     uint32_t waketime = s->timer.waketime;
@@ -166,9 +162,6 @@ static uint_fast8_t
 soft_pwm_load_event(struct timer *timer)
 {
     struct soft_pwm_s *s = container_of(timer, struct soft_pwm_s, timer);
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-    //printf("SoftPWM load event\n");
-#endif
     if (!(s->flags & SPF_HAVE_NEXT))
         shutdown("Missed scheduling of next pwm event");
     uint8_t flags = s->flags >> 4;

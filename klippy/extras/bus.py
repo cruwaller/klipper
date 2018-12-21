@@ -6,7 +6,7 @@
 
 # Helper code for working with devices conntect to an MCU via an SPI bus
 class MCU_SPI:
-    def __init__(self, mcu, bus, pin, mode, speed, shutdown_seq):
+    def __init__(self, mcu, bus, pin, mode, speed, shutdown_seq, inverted=0):
         self.mcu = mcu
         shutdown_msg = "".join(["%02x" % (x,) for x in shutdown_seq])
         self.oid = self.mcu.create_oid()
@@ -17,9 +17,9 @@ class MCU_SPI:
                     self.oid, bus, mode, speed, shutdown_msg))
         else:
             self.mcu.add_config_cmd(
-                "config_spi oid=%d bus=%d pin=%s mode=%d rate=%d"
+                "config_spi oid=%d bus=%d pin=%s inverted=%u mode=%d rate=%d"
                 " shutdown_msg=%s" % (
-                    self.oid, bus, pin, mode, speed, shutdown_msg))
+                    self.oid, bus, pin, inverted, mode, speed, shutdown_msg))
         self.cmd_queue = self.mcu.alloc_command_queue()
         self.mcu.register_config_callback(self.build_config)
         self.spi_send_cmd = self.spi_transfer_cmd = None
@@ -49,17 +49,20 @@ class MCU_SPI:
 
 # Helper to setup an spi bus from settings in a config section
 def MCU_SPI_from_config(config, mode, pin_option="cs_pin",
-                        default_speed=100000, shutdown_seq=()):
+                        default_speed=100000, shutdown_seq=(),
+                        can_invert=False):
     # Determine pin from config
     ppins = config.get_printer().lookup_object("pins")
     cs_pin = config.get(pin_option)
-    cs_pin_params = ppins.lookup_pin(cs_pin)
+    cs_pin_params = ppins.lookup_pin(cs_pin, can_invert=can_invert)
     pin = cs_pin_params['pin']
     if pin == 'None':
         pin = None
     # Load bus parameters
+    mode = config.getint('spi_mode', mode, minval=0, maxval=3)
     speed = config.getint('spi_speed', default_speed, minval=100000)
     bus = config.getint('spi_bus', 0, minval=0)
     # Create MCU_SPI object
     mcu = cs_pin_params['chip']
-    return MCU_SPI(mcu, bus, pin, mode, speed, shutdown_seq)
+    invert = cs_pin_params['invert']
+    return MCU_SPI(mcu, bus, pin, mode, speed, shutdown_seq, invert)

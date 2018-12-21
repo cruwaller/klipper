@@ -116,7 +116,7 @@ usb_write_packet(uint32_t ep, const void *data, uint_fast8_t len)
     LPC_USB->USBTxPLen = len;
     if (!len)
         LPC_USB->USBTxData = 0;
-    uint32_t i;
+    int i;
     for (i = 0; i<DIV_ROUND_UP(len, 4); i++) {
         uint32_t d;
         memcpy(&d, data, sizeof(d));

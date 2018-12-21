@@ -36,8 +36,6 @@ choice
         bool "atmega328p"
     config MACH_atmega328
         bool "atmega328"
-    config MACH_atmega328p
-        bool "atmega328p"
     config MACH_atmega168
         bool "atmega168"
     config MACH_atmega168p

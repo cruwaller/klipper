@@ -65,10 +65,10 @@ struct move_freed {
     struct move_freed *next;
 };
 
-static struct move_freed *move_free_list = NULL;
-static void *move_list = NULL;
-static uint16_t move_count = 0;
-static uint8_t move_item_size = 0;
+static struct move_freed *move_free_list;
+static void *move_list;
+static uint16_t move_count;
+static uint8_t move_item_size;
 
 // Is the config and move queue finalized?
 static int
@@ -104,7 +104,7 @@ move_alloc(void)
 void
 move_request_size(int size)
 {
-    if (size > (int)UINT8_MAX || is_finalized())
+    if (size > UINT8_MAX || is_finalized())
         shutdown("Invalid move request size");
     if (size > move_item_size)
         move_item_size = size;
@@ -116,8 +116,8 @@ move_reset(void)
     if (!move_count)
         return;
     // Add everything in move_list to the free list.
-    int32_t i;
-    for (i=0; i<(move_count-1); i++) {
+    uint32_t i;
+    for (i=0; i<move_count-1; i++) {
         struct move_freed *mf = move_list + i*move_item_size;
         mf->next = move_list + (i + 1)*move_item_size;
     }
@@ -146,8 +146,8 @@ struct oid_s {
     void *type, *data;
 };
 
-static struct oid_s *oids = NULL;
-static uint8_t oid_count = 0;
+static struct oid_s *oids;
+static uint8_t oid_count;
 
 void *
 oid_lookup(uint8_t oid, void *type)
@@ -204,12 +204,11 @@ DECL_COMMAND(command_allocate_oids, "allocate_oids count=%c");
  * Config CRC
  ****************************************************************/
 
-static uint32_t config_crc = 0;
+static uint32_t config_crc;
 
 void
 command_get_config(uint32_t *args)
 {
-    (void)args;
     sendf("config is_config=%c crc=%u move_count=%hu is_shutdown=%c"
           , is_finalized(), config_crc, move_count, sched_is_shutdown());
 }
@@ -228,7 +227,6 @@ DECL_COMMAND(command_finalize_config, "finalize_config crc=%u");
 void
 config_reset(uint32_t *args)
 {
-    (void)args;
     if (! sched_is_shutdown())
         shutdown("config_reset only available when shutdown");
     irq_disable();
@@ -252,7 +250,6 @@ config_reset(uint32_t *args)
 void
 command_get_clock(uint32_t *args)
 {
-    (void)args;
     sendf("clock clock=%u", timer_read_time());
 }
 DECL_COMMAND_FLAGS(command_get_clock, HF_IN_SHUTDOWN, "get_clock");
@@ -262,7 +259,6 @@ static uint32_t stats_send_time, stats_send_time_high;
 void
 command_get_uptime(uint32_t *args)
 {
-    (void)args;
     uint32_t cur = timer_read_time();
     uint32_t high = stats_send_time_high + (cur < stats_send_time);
     sendf("uptime high=%u clock=%u", high, cur);
@@ -309,7 +305,6 @@ stats_update(uint32_t start, uint32_t cur)
 void
 command_emergency_stop(uint32_t *args)
 {
-    (void)args;
     shutdown("Command request");
 }
 DECL_COMMAND_FLAGS(command_emergency_stop, HF_IN_SHUTDOWN, "emergency_stop");
@@ -317,7 +312,6 @@ DECL_COMMAND_FLAGS(command_emergency_stop, HF_IN_SHUTDOWN, "emergency_stop");
 void
 command_clear_shutdown(uint32_t *args)
 {
-    (void)args;
     sched_clear_shutdown();
 }
 DECL_COMMAND_FLAGS(command_clear_shutdown, HF_IN_SHUTDOWN, "clear_shutdown");

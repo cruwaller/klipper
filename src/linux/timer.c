@@ -216,7 +216,6 @@ irq_save(void)
 void
 irq_restore(irqstatus_t flag)
 {
-    (void)flag;
 }
 
 void

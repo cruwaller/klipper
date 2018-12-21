@@ -468,8 +468,6 @@ def main():
                     help="enable debug messages")
     opts.add_option("-x", action="store_true", dest="esp_build",
                     help="header for ESP build")
-    if options.esp_build:
-        FILEHEADER = FILEHEADER_ESP
 
     options, args = opts.parse_args()
     if len(args) != 2:
@@ -477,6 +475,10 @@ def main():
     incmdfile, outcfile = args
     if options.verbose:
         logging.basicConfig(level=logging.DEBUG)
+
+    if options.esp_build:
+        global FILEHEADER
+        FILEHEADER = FILEHEADER_ESP
 
     # Parse request file
     ctr_dispatch = { k: v for h in Handlers for k, v in h.ctr_dispatch.items() }

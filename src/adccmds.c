@@ -17,9 +17,9 @@
 
 struct analog_in {
     struct timer timer;
-    struct gpio_adc pin;
     uint32_t rest_time, sample_time, next_begin_time;
     uint16_t value, min_value, max_value;
+    struct gpio_adc pin;
     uint8_t state, sample_count;
 };
 

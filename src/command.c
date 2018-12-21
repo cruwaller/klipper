@@ -135,7 +135,7 @@ command_encodef(uint8_t *buf, const struct command_encoder *ce, va_list args)
         case PT_progmem_buffer:
         case PT_buffer: {
             v = va_arg(args, int);
-            if ((int)v > maxend-p)
+            if (v > maxend-p)
                 v = maxend-p;
             *p++ = v;
             uint8_t *s = va_arg(args, uint8_t*);

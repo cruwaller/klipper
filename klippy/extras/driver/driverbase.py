@@ -3,6 +3,7 @@
 # Copyright (C) 2018  Petri Honkala <cruwaller@gmail.com>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+import extras.bus as bus
 
 class DriverBase(object):
     __inv_step_dist = __step_dist = microsteps = None
@@ -47,25 +48,14 @@ class DriverBase(object):
 class SpiDriver(DriverBase):
     def __init__(self, config, has_step_dir_pins=True, has_endstop=False):
         DriverBase.__init__(self, config, has_step_dir_pins, has_endstop)
-        printer = config.get_printer()
         # ========== SPI config ==========
-        cs_pin = config.get('ss_pin')
-        spi_mode = config.getint('spi_mode', 3, minval=0, maxval=3)
-        spi_speed = config.getint('spi_speed', 2000000)
-        spi_bus = config.getint('spi_bus', 0)
-        # setup SPI pins and configure mcu
-        ppins = printer.lookup_object('pins')
-        cs_pin_params = ppins.lookup_pin(cs_pin)
-        self.mcu = mcu = cs_pin_params['chip']
-        self._oid = oid = mcu.create_oid()
-        mcu.add_config_cmd(
-            "config_spi oid=%d bus=%d pin=%s inverted=%u"
-            " mode=%u rate=%u shutdown_msg=" % (
-                oid, spi_bus, cs_pin_params['pin'],
-                cs_pin_params['invert'], spi_mode, spi_speed))
+        spi = bus.MCU_SPI_from_config(
+            config, 3, pin_option="ss_pin", default_speed=2000000)
+        self.mcu = mcu = spi.get_mcu()
+        self._oid = spi.get_oid()
+        mcu.register_config_callback(self._build_config_cb)
         self._transfer = (lambda *args: 0)
         self.transfer_cmd = None
-        mcu.register_config_callback(self._build_config_cb)
     # ============ SETUP ===============
     def printer_state(self, state):
         if state == 'shutdown':

@@ -34,7 +34,7 @@ union u32_u {
 // Return true if time1 is before time2.  Always use this function to
 // compare times as regular C comparisons can fail if the counter
 // rolls over.
-__always_inline uint8_t
+uint8_t __always_inline
 timer_is_before(uint32_t time1, uint32_t time2)
 {
     // This asm is equivalent to:
@@ -138,7 +138,6 @@ timer_read_time(void)
 static uint_fast8_t
 timer_event(struct timer *t)
 {
-    (void)t;
     union u32_u *nextwake = (void*)&wrap_timer.waketime;
     if (TIFR1 & (1<<TOV1)) {
         // Hardware timer has overflowed - update overflow counter

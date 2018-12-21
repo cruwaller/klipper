@@ -322,7 +322,7 @@ usb_do_xfer(void *data, uint_fast8_t size, uint_fast8_t flags)
             ret = usb_send_ep0_progmem(data, xs);
         else
             ret = usb_send_ep0(data, xs);
-        if ((uint_fast8_t)ret == xs) {
+        if (ret == xs) {
             // Success
             data += xs;
             size -= xs;
