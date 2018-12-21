@@ -19,8 +19,12 @@ Klipper supports the following standard G-Code commands:
 - Get extruder temperature: `M105`
 - Set extruder temperature: `M104 [T<index>] [S<temperature>]`
 - Set extruder temperature and wait: `M109 [T<index>] S<temperature>`
+  - Note: M109 always waits for temperature to settle at requested
+    value
 - Set bed temperature: `M140 [S<temperature>]`
 - Set bed temperature and wait: `M190 S<temperature>`
+  - Note: M190 always waits for temperature to settle at requested
+    value
 - Set fan speed: `M106 S<value>`
 - Turn fan off: `M107`
 - Emergency stop: `M112`
@@ -35,6 +39,12 @@ Klipper's goal is to support the G-Code commands produced by common
 their standard configurations. It is not a goal to support every
 possible G-Code command. Instead, Klipper prefers human readable
 ["extended G-Code commands"](#extended-g-code-commands).
+
+If one requires a less common G-Code command then it may be possible
+to implement it with a custom Klipper gcode_macro (see
+[example-extras.cfg](../config/example-extras.cfg) for details). For
+example, one might use this to implement: `G10`, `G11`, `G12`, `G29`,
+`G30`, `G31`, `M42`, `M80`, `M81`, etc.
 
 ## G-Code SD card commands
 
@@ -197,7 +207,7 @@ section is enabled:
   will be cleared.
 - `BED_MESH_CLEAR`: This command clears the mesh and removes all
   z adjustment.  It is recommended to put this in your end-gcode.
-  `BED_MESH_PROFILE LOAD=<name> SAVE=<name> REMOVE=<name>`: This
+- `BED_MESH_PROFILE LOAD=<name> SAVE=<name> REMOVE=<name>`: This
   command provides profile management for mesh state.  LOAD will
   restore the mesh state from the profile matching the supplied name.
   SAVE will save the current mesh state to a profile matching the
@@ -228,6 +238,17 @@ The following command is available when the "tmc2130" config section
 is enabled:
 - `DUMP_TMC STEPPER=<name>`: This command will read the TMC2130 driver
   registers and report their values.
+
+## Endstop adjustments by stepper phase
+
+The following commands are available when an "endstop_phase" config
+section is enabled:
+- `ENDSTOP_PHASE_CALIBRATE [STEPPER=<config_name>]`: If no STEPPER
+  parameter is provided then this command will reports statistics on
+  endstop stepper phases during past homing operations. When a STEPPER
+  parameter is provided it arranges for the given endstop phase
+  setting to be written to the config file (in conjunction with the
+  SAVE_CONFIG command).
 
 ## Force movement
 

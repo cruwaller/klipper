@@ -92,9 +92,10 @@ Klipper supports many standard 3d printer features:
 * Support for standard fans, nozzle fans, and temperature controlled
   fans. No need to keep fans running when the printer is idle.
 
-* Support for run-time configuration of TMC2130, TMC2208, and TMC2224
-  stepper motor drivers. There is also support for current control of
-  traditional stepper drivers via AD5206 and MCP4451 digipots.
+* Support for run-time configuration of TMC2130, TMC2208, TMC2224, and
+  TMC2660 stepper motor drivers. There is also support for current
+  control of traditional stepper drivers via AD5206 and MCP4451
+  digipots.
 
 * Support for common LCD displays attached directly to the printer. A
   default menu is also available.
@@ -131,12 +132,12 @@ represent total number of steps per second on the micro-controller.
 | 16Mhz AVR                   | 151K              | 100K              |
 | 20Mhz AVR                   | 189K              | 125K              |
 | Arduino Zero (ARM SAMD21)   | 234K              | 217K              |
-| STM32F103                   | 340K              | 300K              |
-| Arduino Due (ARM SAM3X8E)   | 382K              | 337K              |
-| Smoothieboard (ARM LPC1768) | 385K              | 385K              |
-| Smoothieboard (ARM LPC1769) | 462K              | 462K              |
-| SAM4E8E ARM                 | 475K              | 475K              |
-| Beaglebone PRU              | 689K              | 689K              |
+| STM32F103                   | 333K              | 300K              |
+| Arduino Due (ARM SAM3X8E)   | 410K              | 397K              |
+| Smoothieboard (ARM LPC1768) | 487K              | 487K              |
+| Smoothieboard (ARM LPC1769) | 584K              | 584K              |
+| SAM4E8E ARM                 | 638K              | 638K              |
+| Beaglebone PRU              | 680K              | 680K              |
 
 On AVR platforms, the highest achievable step rate is with just one
 stepper stepping. On the STM32F103, Arduino Zero, and Due, the highest
