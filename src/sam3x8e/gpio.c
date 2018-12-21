@@ -212,12 +212,8 @@ gpio_adc_read(struct gpio_adc g)
 void
 gpio_adc_cancel_sample(struct gpio_adc g)
 {
-#if 0
     irqstatus_t flag = irq_save();
     if ((ADC->ADC_CHSR & 0xffff) == g.bit)
         gpio_adc_read(g);
     irq_restore(flag);
-#else
-    ADC->ADC_CHDR = g.bit;
-#endif
 }

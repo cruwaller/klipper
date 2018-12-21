@@ -20,14 +20,14 @@ else
   GCC_PATH=$(CROSS_PREFIX)
 endif
 # Common command definitions
-CC  = $(GCC_PATH)gcc
-AS  = $(GCC_PATH)as
-LD  = $(GCC_PATH)ld
-OBJCOPY = $(GCC_PATH)objcopy
-OBJDUMP = $(GCC_PATH)objdump
-STRIP   = $(GCC_PATH)strip
-CPP = cpp # $(GCC_PATH)cpp
-PYTHON  = python2
+CC=$(GCC_PATH)gcc
+AS=$(GCC_PATH)as
+LD=$(GCC_PATH)ld
+OBJCOPY=$(GCC_PATH)objcopy
+OBJDUMP=$(GCC_PATH)objdump
+STRIP=$(GCC_PATH)strip
+CPP=cpp
+PYTHON=python2
 
 # Source files
 src-y =
