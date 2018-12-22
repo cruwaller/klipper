@@ -109,6 +109,7 @@ $(OUT)compile_time_request.o: $(ctr-y) ./scripts/buildcommands.py
 $(OUT)klipper.elf: $(OUT)autoconf.h $(objects-y) $(OUT)compile_time_request.o
 	@echo "  Linking $@"
 	$(Q)$(CC) $^ $(CFLAGS_klipper.elf) -o $@
+	$(Q)scripts/check-gcc.sh $@ $(OUT)compile_time_request.o
 
 ################ Kconfig rules
 
