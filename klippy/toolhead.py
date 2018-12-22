@@ -304,17 +304,6 @@ class ToolHead:
         self.logger.info("max_accel: %s" % (self.max_accel,))
         self.logger.info("max_accel_to_decel: %s" % (self.max_accel_to_decel,))
         self.logger.info("junction_deviation: %s" % (self.junction_deviation,))
-        self.layer_change_cb = []
-    def register_cb(self, cb_type, cb):
-        if cb_type == "motor":
-            pass
-        elif cb_type == "layer":
-            # Arguments to cb are (change_time)
-            if cb not in self.layer_change_cb:
-                self.layer_change_cb.append(cb)
-    def deregister_cb(self, cb_type, cb):
-        if cb in self.layer_change_cb:
-            self.layer_change_cb.remove(cb)
     def move_to_idle_pos(self, *args):
         if self.idle_position:
             gcode = self.printer.lookup_object('gcode')
@@ -410,10 +399,6 @@ class ToolHead:
         self._flush_lookahead()
         self.commanded_pos[:] = newpos
         self.kin.set_position(newpos, homing_axes)
-    def layer_changed(self, layer, height):
-        change_time = self.get_estimated_print_time()
-        for cb in self.layer_change_cb:
-            cb(change_time, layer, height)
     def move(self, newpos, speed, check=True):
         speed = min(speed, self.max_velocity)
         move = Move(self, self.commanded_pos, newpos, speed)

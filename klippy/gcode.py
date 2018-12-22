@@ -478,7 +478,9 @@ class GCodeParser:
             # Detect layer change from gcode comment
             try:
                 layer = self.layer_r.search(original).groups()
-                self.toolhead.layer_changed(layer[0], layer[1])
+                self.printer.send_event('layer_changed',
+                                        self.toolhead.get_estimated_print_time(),
+                                        layer[0], layer[1])
             except AttributeError:
                 pass
             return

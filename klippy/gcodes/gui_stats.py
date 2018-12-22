@@ -12,7 +12,6 @@ class GuiStats:
         # required modules
         self.gcode = gcode = printer.lookup_object('gcode')
         self.toolhead = printer.lookup_object('toolhead')
-        self.toolhead.register_cb('layer', self.layer_changed)
         self.babysteps = printer.try_load_module(config, 'babysteps')
         self.sd = printer.try_load_module(config, "virtual_sdcard")
         # variables
@@ -31,7 +30,6 @@ class GuiStats:
         # register callbacks
         self.printer.register_event_handler('sd_status', self.sd_status)
         self.printer.register_event_handler('layer_changed', self.layer_changed)
-        #self.sd.register_done_cb(self.sd_status)
         # register control commands
         for cmd in ["GUISTATS_GET_ARGS",
                     "GUISTATS_GET_CONFIG", "GUISTATS_GET_STATUS",
