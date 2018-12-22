@@ -74,6 +74,10 @@ class Printer:
         return self.start_args[name]
     def get_start_args(self):
         return self.start_args
+    def get_logger(self, name=None):
+        if name is not None:
+            return self.logger.getChild(name.replace(" ", "_"))
+        return self.logger
     def get_reactor(self):
         return self.reactor
     def get_state_message(self):

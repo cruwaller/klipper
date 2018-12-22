@@ -62,10 +62,18 @@ class SensorBase(object):
         return self.mcu.get_mcu()
     def setup_minmax(self, min_temp, max_temp):
         # Set heaters min and max temperatures
+        if min_temp is None:
+            min_temp = self.min_temp
         if min_temp < self.min_temp:
-            raise self.printer.config_error("Min temp below sensor's lowest")
+            raise self.printer.config_error(
+                "Requsted min temp %s below sensor's lowest %s" % (
+                    min_temp, self.min_temp))
+        if max_temp is None:
+            max_temp = self.max_temp
         if max_temp > self.max_temp:
-            raise self.printer.config_error("Max temp over sensor's lowest")
+            raise self.printer.config_error(
+                "Requested max temp %s over sensor's maximum %s" % (
+                    max_temp, self.max_temp))
         self.__setup_minmax(min_temp, max_temp)
     def __setup_minmax(self, min_temp, max_temp):
         self.min_temp = min_temp

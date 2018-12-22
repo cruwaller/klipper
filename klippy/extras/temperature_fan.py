@@ -6,6 +6,7 @@
 import fan
 import extras.sensors as sensors
 
+KELVIN_TO_CELCIUS = -273.15
 MAX_FAN_TIME = 5.0
 AMBIENT_TEMP = 25.
 PID_PARAM_BASE = 255.
@@ -17,10 +18,12 @@ class TemperatureFan:
         else:
             self.name = config.get_name().split()[1]
         self.printer = config.get_printer()
-        self.logger = self.printer.logger.getChild(self.name)
-        sensor_name = config.get('sensor')
+        self.logger = self.printer.get_logger(self.name)
+        min_temp = config.getfloat('min_temp', minval=KELVIN_TO_CELCIUS, default=None)
+        max_temp = config.getfloat('max_temp', above=min_temp, default=None)
         self.sensor = sensors.load_sensor(
-            config.getsection('sensor %s' % sensor_name))
+            config.getsection('sensor %s' % config.get('sensor')))
+        self.sensor.setup_minmax(min_temp, max_temp)
         self.min_temp, self.max_temp = self.sensor.get_min_max_temp()
         self.sensor.setup_callback(self.temperature_callback)
         self.speed_delay = self.sensor.get_report_delta()

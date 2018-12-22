@@ -30,9 +30,5 @@ class Chamber:
             fan.name, fan.last_temp, fan.last_speed_value)
 
 
-
-
-# M141 S65
-
 def load_config(config):
     return Chamber(config)

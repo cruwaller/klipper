@@ -10,6 +10,7 @@ import extras.sensors as sensors
 # Heater
 ######################################################################
 
+KELVIN_TO_CELCIUS = -273.15
 MAX_HEAT_TIME = 5.0
 AMBIENT_TEMP = 25.
 PID_PARAM_BASE = 255.
@@ -34,18 +35,23 @@ class PrinterHeater:
             self.index = int(name[7:])
         except ValueError:
             self.index = -1  # Mark to bed
-        self.logger = printer.logger.getChild(name.replace(" ", "_"))
+        self.logger = printer.get_logger(name)
         sensor_name = config.get('sensor')
-        self.logger.debug("Add heater '{}', index {}, sensor {}".
-                          format(name, self.index, sensor_name))
+        self.logger.debug("Name: '%s', index: %s, sensor: '%s'" % (
+            name, self.index, sensor_name))
         # Setup sensor
-        sensor = sensors.load_sensor(
+        self.sensor = sensor = sensors.load_sensor(
             config.getsection('sensor %s' % sensor_name))
-        self.sensor = sensor
-        self.min_temp, self.max_temp = self.sensor.get_min_max_temp()
-        self.mcu_sensor = self.sensor.get_mcu()
-        self.sensor.setup_callback(self.temperature_callback)
-        self.pwm_delay = self.sensor.get_report_delta()
+        min_temp = config.getfloat('min_temp', minval=KELVIN_TO_CELCIUS,
+                                   default=None)
+        max_temp = config.getfloat('max_temp', above=min_temp,
+                                   default=None)
+        sensor.setup_minmax(min_temp, max_temp)
+        self.min_temp, self.max_temp = sensor.get_min_max_temp()
+        self.logger.debug("Temperature range: min %.2f, max %.2f" % (
+            self.min_temp, self.max_temp))
+        sensor.setup_callback(self.temperature_callback)
+        self.pwm_delay = sensor.get_report_delta()
         # Setup temperature checks
         self.min_extrude_temp = 170.  # Set by the extruder
         self.min_extrude_temp_disabled = False
@@ -143,7 +149,7 @@ class PrinterHeater:
                 self.protection_period, self.protect_hyst_runaway))
     def printer_state(self, state):
         if state == 'ready':
-            if not self.mcu_sensor.is_shutdown():
+            if not self.sensor.get_mcu().is_shutdown():
                 # Start checking
                 self.protect_state = None
                 self.reactor.update_timer(self.protection_timer,
@@ -266,7 +272,7 @@ class PrinterHeater:
         # >>>>> DEBUG DEBUG DEBUG >>>>>
         if self.target_temp:
             if self.last_pwm_value:
-                self.temp_debug += .5
+                self.temp_debug += 1.5
             else:
                 self.temp_debug -= .5
             temp = self.temp_debug
@@ -294,8 +300,6 @@ class PrinterHeater:
                 self.heating_start_time = read_time
             elif temp >= self.target_temp:
                 self.heating_end_time = read_time
-                #self.logger.debug("Heating ready: took %s seconds" % (
-                #    self.get_heating_time()))
         #self.logger.debug("read_time=%.3f read_value=%f temperature=%f",
         #                  read_time, read_value, temp)
     # External commands
@@ -319,7 +323,7 @@ class PrinterHeater:
         if degrees:
             self.heating_end_time = self.heating_start_time = None
     def get_temp(self, eventtime):
-        print_time = self.mcu_sensor.estimated_print_time(eventtime) - 5.
+        print_time = self.sensor.get_mcu().estimated_print_time(eventtime) - 5.
         with self.lock:
             if self.last_temp_time < print_time:
                 return 0., self.target_temp
@@ -401,6 +405,7 @@ class ControlPID:
         self.Kp = config.getfloat('pid_Kp') / PID_PARAM_BASE
         self.Ki = config.getfloat('pid_Ki') / PID_PARAM_BASE
         self.Kd = config.getfloat('pid_Kd') / PID_PARAM_BASE
+        self.logger.debug("PID: Kp %s, Ki %s, Kd %s", self.Kp, self.Ki, self.Kd)
         #self.min_deriv_time = config.getfloat('pid_deriv_time', 2., above=0.)
         self.min_deriv_time = heater.get_smooth_time()
         self.imax = config.getfloat('pid_integral_max', self.heater_max_power,
