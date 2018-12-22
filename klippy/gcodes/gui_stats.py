@@ -29,7 +29,9 @@ class GuiStats:
         self.first_layer_start = None
         self.firstLayerHeight = .0
         # register callbacks
-        self.sd.register_done_cb(self.sd_print_done)
+        self.printer.register_event_handler('sd_status', self.sd_status)
+        self.printer.register_event_handler('layer_changed', self.layer_changed)
+        #self.sd.register_done_cb(self.sd_status)
         # register control commands
         for cmd in ["GUISTATS_GET_ARGS",
                     "GUISTATS_GET_CONFIG", "GUISTATS_GET_STATUS",
@@ -37,6 +39,7 @@ class GuiStats:
             gcode.register_command(
                 cmd, getattr(self, 'cmd_' + cmd), when_not_ready=True)
         printer.add_object("gui_stats", self)
+        self.logger.info("GUI STATS LOADED!")
 
     def get_current_state(self):
         return self.curr_state
@@ -53,7 +56,7 @@ class GuiStats:
         elif state == "shutdown" or state == "halt":
             self.curr_state = "H"
 
-    def sd_print_done(self, status, *args, **kwargs):
+    def sd_status(self, status):
         if status == 'pause':
             self.curr_state = "S"
         elif status == 'start':
@@ -64,16 +67,15 @@ class GuiStats:
         elif status == 'done':
             toolhead = self.toolhead
             toolhead.wait_moves() # TODO: remove?
-            #self.layer_changed(toolhead.get_estimated_print_time(), "done", "done")
             self.curr_state = "I"
         elif status == 'loaded':
             self.layer_stats = []
             self.warmup_time = None
             self.print_time = .0
 
-    def layer_changed(self, change_time, layer, height):
+    def layer_changed(self, change_time, layer, height, *args):
         # 1st call is "heating ready"
-        self.logger.info("Layer changed cb: time %s, layer %s, h=%s" % (
+        self.logger.debug("Layer changed cb: time %s, layer %s, h=%s" % (
             change_time, layer, height))
         try:
             start_time = self.layer_stats[-1]['end time']
@@ -85,6 +87,9 @@ class GuiStats:
             {'start time': start_time,
              'layer time': (change_time - start_time),
              'end time': change_time})
+
+    def event_cb(self, state, *args):
+        self.logger.debug("Event %s received" % state)
 
     # ================================================================================
     # Commands
@@ -158,7 +163,6 @@ class GuiStats:
             "minFeedrates"        : [0.00] * (len(max_feedrates) + len(_extrs)),
             "maxFeedrates"        : max_feedrates
             }
-        self.logger.debug("CONFIG: %s" % config)
         return config
 
     def get_status_stats(self, _type=1):

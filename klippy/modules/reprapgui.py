@@ -841,15 +841,21 @@ class RepRapGuiModule(object):
         self.store_resp = True
         self._write(cmd)
     def gcode_resp_handler(self, msg):
-        if not self.ok_rcvd:
-            self.resp += msg
-            if "ok" not in self.resp:
-                return
-            resp = self.resp.strip()
-            self.logger.debug("GCode resps: %s" % (resp,))
-            if self.store_resp:
+        self.resp += msg
+        if "ok" not in self.resp:
+            return
+        resp = self.resp
+        self.logger.debug("GCode resps: %s" % (repr(resp),))
+        if "Klipper state" in resp:
+            self.append_gcode_resp(resp)
+        elif not self.ok_rcvd or "Error:" in resp or "Warning:" in resp:
+            if len(resp) > 2:
+                resp = resp.replace("ok", "")
+            resp = resp.strip()
+            if self.store_resp or "Error:" in resp or "Warning:" in resp:
                 self.append_gcode_resp(resp)
             self.ok_rcvd = True
+        self.resp = ""
     def append_gcode_resp(self, msg):
         self.gcode_resps.append(msg)
 

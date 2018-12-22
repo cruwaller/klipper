@@ -901,8 +901,8 @@ class RepRapGuiModule(object):
     def write_async_with_resp(self, cmd, fd=None):
         with self.write_lock:
             try:
-                self.write(cmd, fd)
                 self.write_count = 1
+                self.write(cmd, fd)
             except ValueError:
                 pass
     sync_resp = None
@@ -924,8 +924,11 @@ class RepRapGuiModule(object):
         except OSError:
             self.input_fd = None
             return True # Exit to reconnect...
-        # self.logger.debug("GCode < %s" % repr(data_in))
-        if self.resp_sync.is_set() and self.write_count == 0:
+        if "standby" not in data_in or 'Move out' in data_in or \
+                'VSD' in data_in:
+            self.logger.debug("GCode < %s" % repr(data_in))
+        if (self.resp_sync.is_set() and self.write_count == 0) or \
+                "axesHomed" in data_in:
             self.sync_resp = data_in.replace("ok", "")
             self.resp_sync.clear()
             self.resp_event.set()
@@ -946,9 +949,15 @@ class RepRapGuiModule(object):
         if type(msg) is not str:
             self.logger.warning("Not valid resp '%s' received!", msg)
             return
+        if not len(msg):
+            return
+        if len(msg) > 2:
+            msg = msg.replace("ok", "")
         msg = msg.strip()
-        if self.write_count > 0 and len(msg):
-            # self.logger.debug("GCode resp to GUI: '%s'" % (msg,))
+        # self.logger.debug("GCode resp to GUI: '%s'" % (msg,))
+        if "Error" in msg or "Warning" in msg or 'Klipper state: ' in msg:
+            self.gcode_resps.append(msg)
+        elif self.write_count > 0:
             self.gcode_resps.append(msg)
             self.write_count -= 1
 
