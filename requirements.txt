@@ -1,7 +1,4 @@
 virtualenv
 requests
-cffi>=1.6.0
-pyserial>=3.2.1
-greenlet>=0.4.10
 matplotlib
 tornado
