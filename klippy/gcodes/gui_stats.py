@@ -10,6 +10,7 @@ class GuiStats:
         self.printer = printer = config.get_printer()
         self.logger = printer.logger.getChild("gui_stats")
         # required modules
+        self.reactor = printer.get_reactor()
         self.gcode = gcode = printer.lookup_object('gcode')
         self.toolhead = printer.lookup_object('toolhead')
         self.babysteps = printer.try_load_module(config, 'babysteps')
@@ -21,6 +22,8 @@ class GuiStats:
             'name', default="Klipper printer")
         self.cpu_info = util.get_cpu_info()
         self.sw_version = printer.get_start_arg('software_version', 'Unknown')
+        self.auto_report = False
+        self.auto_report_timer = None
         # Print statistics
         self.layer_stats = []
         self.warmup_time = None
@@ -33,7 +36,8 @@ class GuiStats:
         # register control commands
         for cmd in ["GUISTATS_GET_ARGS",
                     "GUISTATS_GET_CONFIG", "GUISTATS_GET_STATUS",
-                    "GUISTATS_GET_SD_INFO"]:
+                    "GUISTATS_GET_SD_INFO",
+                    "GUISTATS_AUTO_REPORT"]:
             gcode.register_command(
                 cmd, getattr(self, 'cmd_' + cmd), when_not_ready=True)
         printer.add_object("gui_stats", self)
@@ -43,12 +47,58 @@ class GuiStats:
         return self.curr_state
 
     # ================================================================================
+    # Commands
+    def cmd_GUISTATS_GET_ARGS(self, params):
+        dump = json.dumps(self.printer.get_start_args())
+        self.gcode.respond(dump)
+
+    def cmd_GUISTATS_GET_CONFIG(self, params):
+        dump = json.dumps(self.get_config_stats())
+        self.gcode.respond(dump)
+
+    def cmd_GUISTATS_GET_STATUS(self, params):
+        _type = self.gcode.get_int("TYPE", params,
+            default=1, minval=1, maxval=3)
+        stats = self.get_status_stats(_type)
+        dump = json.dumps(stats)
+        self.gcode.respond(dump)
+
+    def cmd_GUISTATS_GET_SD_INFO(self, params):
+        dump = json.dumps(self.sd.get_status(0, True))
+        self.gcode.respond(dump)
+
+    def cmd_GUISTATS_AUTO_REPORT(self, params):
+        self.auto_report = self.gcode.get_int("ENABLE", params,
+            default=self.auto_report, minval=0, maxval=1)
+        if self.auto_report and self.auto_report_timer is None:
+            self.auto_report_timer = self.reactor.register_timer(
+                self._auto_temp_report_cb, self.reactor.NOW)
+        elif not self.auto_report and self.auto_report_timer is not None:
+            self.reactor.unregister_timer(self.auto_report_timer)
+            self.auto_report_timer = None
+        self.gcode.respond("Auto reporting %s ok" %
+                           ['diabled', 'enabled'][self.auto_report])
+
+    # ================================================================================
     # Callbacks
+    def _auto_temp_report_cb(self, eventtime):
+        #self.logger.debug("AUTO Report @ %s" % eventtime)
+        stats = self.get_status_stats(3)
+        dump = json.dumps(stats)
+        self.gcode.respond('GUISTATS_REPORT='+dump)
+        return eventtime + .250
+
     def printer_state(self, state):
         if state == "connect":
             self.curr_state = "B"
         elif state == "ready":
             self.curr_state = "I"
+            if self.auto_report and self.auto_report_timer is None:
+                self.auto_report_timer = self.reactor.register_timer(
+                    self._auto_temp_report_cb, self.reactor.NOW)
+            elif not self.auto_report and self.auto_report_timer is not None:
+                self.reactor.unregister_timer(self.auto_report_timer)
+                self.auto_report_timer = None
         elif state == "disconnect":
             self.curr_state = "C"
         elif state == "shutdown" or state == "halt":
@@ -85,30 +135,6 @@ class GuiStats:
             {'start time': start_time,
              'layer time': (change_time - start_time),
              'end time': change_time})
-
-    def event_cb(self, state, *args):
-        self.logger.debug("Event %s received" % state)
-
-    # ================================================================================
-    # Commands
-    def cmd_GUISTATS_GET_ARGS(self, params):
-        dump = json.dumps(self.printer.get_start_args())
-        self.gcode.respond(dump)
-
-    def cmd_GUISTATS_GET_CONFIG(self, params):
-        dump = json.dumps(self.get_config_stats())
-        self.gcode.respond(dump)
-
-    def cmd_GUISTATS_GET_STATUS(self, params):
-        _type = self.gcode.get_int("TYPE", params,
-            default=1, minval=1, maxval=3)
-        stats = self.get_status_stats(_type)
-        dump = json.dumps(stats)
-        self.gcode.respond(dump)
-
-    def cmd_GUISTATS_GET_SD_INFO(self, params):
-        dump = json.dumps(self.sd.get_status(0, True))
-        self.gcode.respond(dump)
 
     # ================================================================================
     # Statistics
@@ -174,8 +200,8 @@ class GuiStats:
         fans     = [ fan.last_fan_value * 100.0 for n, fan in
                      self.printer.lookup_objects("fan") ]
         heatbed  = self.printer.lookup_object('heater bed', None)
-        _heaters = [h for n,h in self.printer.lookup_objects("heater")]
-        total_htrs = len(_heaters)
+        _heaters = [h for n, h in self.printer.lookup_objects("heater")]
+        #total_htrs = len(_heaters) + 1
         _extrs   = self.printer.extruder_get()
 
         # _type == 1 is always included
@@ -209,26 +235,37 @@ class GuiStats:
         #    status_block['sensors']['probeValue'] = probeValue
         #    status_block['sensors']['probeSecondary'] = [probe_x, probe_y]
 
+        heatbed_add = 1 if heatbed is not None else 0
+        num_extruders = len(_extrs)
+        total_heaters = num_extruders + heatbed_add
+        htr_current = [.0] * total_heaters
+        # HS_off = 0, HS_standby = 1, HS_active = 2, HS_fault = 3, HS_tuning = 4
+        htr_state   = [3] * total_heaters
+        extr_states = {
+            "active"  : [],
+            "standby" : [[ .0 ]] * num_extruders
+        }
+        for name, extr in _extrs.items():
+            htr = extr.get_heater()
+            status = htr.get_status(0)
+            index = extr.get_index() + heatbed_add
+            htr_current[index] = float("%.2f" % status['temperature'])
+            htr_state[index] = states[(status['target'] > 0.0)]
+            extr_states['active'].append([float("%.2f" % htr.target_temp)])
+        # Tools target temps
+        status_block["temps"].update({'tools': extr_states})
+
         if heatbed is not None:
-            heatbed_status = heatbed.get_status(0)
+            status = heatbed.get_status(0)
+            htr_current[0] = float("%.2f" % status['temperature'])
+            htr_state[0] = states[(status['target'] > 0.0)]
+            # Heatbed target temp
             status_block["temps"].update( {
                 "bed": {
-                    "active"  : float("%.2f" % heatbed_status['target']),
+                    "active"  : float("%.2f" % status['target']),
                     "heater"  : 0,
                 },
             } )
-
-        htr_current = [0.0] * total_htrs
-        # HS_off = 0, HS_standby = 1, HS_active = 2, HS_fault = 3, HS_tuning = 4
-        htr_state   = [  3] * total_htrs
-        for htr in _heaters:
-            status = htr.get_status(0)
-            index = htr.index + 1
-            if htr == heatbed:
-                index = 0
-            htr_current[index] = float("%.2f" % status['temperature'])
-            # htr_state[index]   = states[True if htr.last_pwm_value > 0.0 else False]
-            htr_state[index] = states[(status['target'] > 0.0)]
 
         chamber = self.printer.lookup_object('chamber', default=None)
         if chamber is not None:
@@ -258,21 +295,9 @@ class GuiStats:
         status_block["temps"].update( {
             "current" : htr_current,
             "state"   : htr_state, # 0: off, 1: standby, 2: active, 3: fault (same for bed)
-            "heads": {
-                "state": htr_state[1:],
-            },
         } )
 
-        # Tools target temps
-        status_block["temps"].update( {
-            'tools': {
-                "active"  : [ [float("%.2f" % e.get_heater().target_temp)]
-                              for i, e in _extrs.items() ],
-                "standby" : [ [ .0 ] for i, e in _extrs.items() ],
-            },
-        } )
-
-        if _type == 2:
+        if _type >= 2:
             max_temp  = 0.0
             cold_temp = 0.0
             if hasattr(curr_extruder, "get_heater"):
@@ -324,7 +349,7 @@ class GuiStats:
                 tools.append(values)
             status_block["tools"] = tools
 
-        elif _type == 3:
+        elif _type >= 3:
             lstat = self.layer_stats
             current_time = toolhead.get_estimated_print_time()
             printing_time = self.print_time
@@ -408,4 +433,5 @@ class GuiStats:
                     "layer"    : float("%.1f" % remaining_time_layer),
                 }
             } )
+        # self.logger.debug("%s", json.dumps(status_block, indent=4))
         return status_block

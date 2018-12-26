@@ -640,7 +640,7 @@ class rrHandler(tornado.web.RequestHandler):
                 if KLIPPER_CFG_NAME in target_path:
                     path = self.parent.get_printer_start_arg('config_file', None)
                     if path is not None:
-                        path = os.path.abspath(path)
+                        cfgname = os.path.abspath(path)
                         datestr = time.strftime("-%Y%m%d_%H%M%S")
                         backup_name = cfgname + datestr
                         temp_name = cfgname + "_autosave"
@@ -846,6 +846,9 @@ class RepRapGuiModule(object):
                 resp = self.write_sync("GUISTATS_GET_ARGS", fd=input_fd)
                 self.printer_start_args = json.loads(resp.replace("ok", ""))
                 self.logger.info("Printer start args: %s" % self.printer_start_args)
+                # ------------------------------
+                # Enable auto status reporting
+                self.write_sync("GUISTATS_AUTO_REPORT ENABLE=1", fd=input_fd)
             except ValueError as e:
                 fd_handle.stop()
                 self.logger.error("Unable to parse json: '%s' - restart..." % e)
@@ -867,6 +870,7 @@ class RepRapGuiModule(object):
                 time.sleep(0.5)
             self.logger.error("Connection lost, restart...")
             # reset params
+            self.staus_report = 'NA'
             self.input_fd = None
             self.curr_state = 'C'
             self.write_count = 0
@@ -924,10 +928,15 @@ class RepRapGuiModule(object):
         except OSError:
             self.input_fd = None
             return True # Exit to reconnect...
-        if "standby" not in data_in or 'Move out' in data_in or \
-                'VSD' in data_in:
-            self.logger.debug("GCode < %s" % repr(data_in))
-        if (self.resp_sync.is_set() and self.write_count == 0) or \
+        # self.logger.debug("GCode < %s" % repr(data_in))
+        if 'GUISTATS_REPORT=' in data_in:
+            self.staus_report = data_in[16:].replace("ok", "")
+        elif 'Klipper state' in data_in:
+            self.logger.debug("Klipper state: %s" % data_in)
+            self.append_gcode_resp(data_in)
+            if 'Shutdown' in data_in or 'Disconnect' in data_in:
+                return True # Exit to reconnect...
+        elif (self.resp_sync.is_set() and self.write_count == 0) or \
                 "axesHomed" in data_in:
             self.sync_resp = data_in.replace("ok", "")
             self.resp_sync.clear()
@@ -945,6 +954,7 @@ class RepRapGuiModule(object):
         data = "\n".join(lines)
         return data.strip()
 
+    staus_report = 'NA'
     def append_gcode_resp(self, msg):
         if type(msg) is not str:
             self.logger.warning("Not valid resp '%s' received!", msg)
@@ -955,7 +965,7 @@ class RepRapGuiModule(object):
             msg = msg.replace("ok", "")
         msg = msg.strip()
         # self.logger.debug("GCode resp to GUI: '%s'" % (msg,))
-        if "Error" in msg or "Warning" in msg or 'Klipper state: ' in msg:
+        if "Error" in msg or "Warning" in msg or 'Klipper state' in msg:
             self.gcode_resps.append(msg)
         elif self.write_count > 0:
             self.gcode_resps.append(msg)
@@ -971,11 +981,17 @@ class RepRapGuiModule(object):
 
     def web_getstatus(self, _type=1):
         try:
-            resp = json.loads(self.write_sync("GUISTATS_GET_STATUS TYPE=%d" % _type))
+            resp = json.loads(self.staus_report)
             self.curr_state = resp['status']
-        except (ValueError, CommunicationError):
-            resp = {'seq': 0,  "status": self.curr_state, "err": 1}
-        return resp
+            return resp
+        except ValueError:
+            try:
+                resp = json.loads(self.write_sync("GUISTATS_GET_STATUS TYPE=%d" % _type))
+                self.curr_state = resp['status']
+                return resp
+            except (ValueError, CommunicationError):
+                pass
+        return {'seq': 0,  "status": self.curr_state, "err": 1}
 
     def web_getsd(self):
         try:

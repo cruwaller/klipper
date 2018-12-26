@@ -239,6 +239,7 @@ class GCodeParser:
         except os.error:
             logging.exception("Read g-code")
             return
+        # self.logger.debug("DATA: %s" % repr(data))
         self.input_log.append((eventtime, data))
         self.bytes_read += len(data)
         lines = data.split('\n')
@@ -328,7 +329,7 @@ class GCodeParser:
         if self.is_fileinput:
             return
         try:
-            self.write_resp(msg+"\n")
+            self.write_resp(msg+" ok\n")
         except os.error:
             logging.exception("Write g-code response")
     def respond_info(self, msg):
