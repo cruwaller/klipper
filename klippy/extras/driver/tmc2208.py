@@ -4,11 +4,12 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math, logging, collections
+import driverbase
 
-TMC_FREQUENCY=12000000.
-GCONF_PDN_DISABLE = 1<<6
-GCONF_MSTEP_REG_SELECT = 1<<7
-GCONF_MULTISTEP_FILT = 1<<8
+TMC_FREQUENCY = 12000000.
+GCONF_PDN_DISABLE = 1 << 6
+GCONF_MSTEP_REG_SELECT = 1 << 7
+GCONF_MULTISTEP_FILT = 1 << 8
 
 Registers = {
     "GCONF": 0x00, "GSTAT": 0x01, "IFCNT": 0x02, "SLAVECONF": 0x03,
@@ -91,8 +92,9 @@ def decode_tmc2208_read(reg, data):
 # TMC2208 printer object
 ######################################################################
 
-class TMC2208:
+class TMC2208(driverbase.DriverBase):
     def __init__(self, config):
+        driverbase.DriverBase.__init__(self, config)
         self.printer = config.get_printer()
         self.name = config.get_name().split()[1]
         # pin setup
@@ -167,6 +169,7 @@ class TMC2208:
             pwm_ofs | (pwm_grad << 8) | (pwm_freq << 16)
             | (pwm_autoscale << 18) | (pwm_autograd << 19)
             | (pwm_reg << 24) | (pwm_lim << 28))
+        self.logger.info("driver loaded")
     def current_bits(self, current, sense_resistor, vsense_on):
         sense_resistor += 0.020
         vsense = 0.32
@@ -236,6 +239,3 @@ class TMC2208:
             msg = "%-15s %08x" % (reg_name + ":", val)
             logging.info(msg)
             gcode.respond_info(msg)
-
-def load_config_prefix(config):
-    return TMC2208(config)

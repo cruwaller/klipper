@@ -3,19 +3,20 @@
 # Copyright (C) 2018  Florian Heilmann <Florian.Heilmann@gmx.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import bus
+import extras.bus as bus
+import driverbase
 
 CURRENT_MAX = 2.4
 CURRENT_MIN = 0.1
 
 REG_DRVCONF = 0xe << 16
-REG_SGCSCONF = 0xc  << 16
-REG_SMARTEN = 0xa  << 16
-REG_CHOPCONF = 0x8  << 16
-REG_DRVCTRL = 0x0  << 16
+REG_SGCSCONF = 0xc << 16
+REG_SMARTEN = 0xa << 16
+REG_CHOPCONF = 0x8 << 16
+REG_DRVCTRL = 0x0 << 16
 
 def get_bits(reg, field, value):
-    return ((value << reg[field][0]) & reg[field][1])
+    return (value << reg[field][0]) & reg[field][1]
 
 def read_field(bits, reg, field):
     return (bits & reg[field][1]) >> reg[field][0]
@@ -77,8 +78,9 @@ READRSP = {
     "SG"    : (0,  0x00001)
 }
 
-class TMC2660:
+class TMC2660(driverbase.DriverBase):
     def __init__(self, config):
+        driverbase.DriverBase.__init__(self, config)
         self.printer = config.get_printer()
         self.name = config.get_name().split()[1]
         self.spi = bus.MCU_SPI_from_config(config, 0, default_speed=2000000)
@@ -109,7 +111,8 @@ class TMC2660:
             self.driver_hend = config.getint('driver_HEND', default=7, minval=-3, maxval=12) + 3
             self.driver_hstrt = config.getint('driver_HSTRT', default=5, minval=0, maxval=15)
             self.driver_toff = config.getint('driver_TOFF', default=7, minval=0, maxval=15)
-            self.driver_hdec = config.getboolean('driver_HDEC', default=False) | ((self.driver_hstrt & 0x8) >> 1) # if chm is 1, HDEC1 is the MSB of HSTRT
+            # if chm is 1, HDEC1 is the MSB of HSTRT
+            self.driver_hdec = config.getboolean('driver_HDEC', default=False) | ((self.driver_hstrt & 0x8) >> 1)
         else:
             self.driver_hdec = config.getboolean('driver_HDEC', default=False)
             self.driver_hend = config.getint('driver_HEND', default=3, minval=-3, maxval=12) + 3
@@ -147,45 +150,45 @@ class TMC2660:
         self.driver_rdsel = 0  # Microsteps (used by endstop phase)
 
         # Build and send registers
-        self.reg_drvconf =  REG_DRVCONF | \
-                            get_bits(DRVCONF, "TST", 0) | \
-                            get_bits(DRVCONF, "SLPH", self.driver_slph) | \
-                            get_bits(DRVCONF, "SLPL", self.driver_slpl) | \
-                            get_bits(DRVCONF, "DISS2G", self.driver_diss2g) | \
-                            get_bits(DRVCONF, "TS2G", self.driver_ts2g) | \
-                            get_bits(DRVCONF, "SDOFF", self.driver_sdoff) | \
-                            get_bits(DRVCONF, "VSENSE", self.driver_vsense) | \
-                            get_bits(DRVCONF, "RDSEL", self.driver_rdsel)
+        self.reg_drvconf = REG_DRVCONF | \
+            get_bits(DRVCONF, "TST", 0) | \
+            get_bits(DRVCONF, "SLPH", self.driver_slph) | \
+            get_bits(DRVCONF, "SLPL", self.driver_slpl) | \
+            get_bits(DRVCONF, "DISS2G", self.driver_diss2g) | \
+            get_bits(DRVCONF, "TS2G", self.driver_ts2g) | \
+            get_bits(DRVCONF, "SDOFF", self.driver_sdoff) | \
+            get_bits(DRVCONF, "VSENSE", self.driver_vsense) | \
+            get_bits(DRVCONF, "RDSEL", self.driver_rdsel)
         self.add_config_cmd(self.reg_drvconf)
 
         self.reg_drvctrl = REG_DRVCTRL | \
-                           get_bits(DRVCTRL, "INTPOL", self.driver_intpol) | \
-                           get_bits(DRVCTRL, "DEDGE", self.driver_dedge) | \
-                           get_bits(DRVCTRL, "MRES", self.driver_mres)
+            get_bits(DRVCTRL, "INTPOL", self.driver_intpol) | \
+            get_bits(DRVCTRL, "DEDGE", self.driver_dedge) | \
+            get_bits(DRVCTRL, "MRES", self.driver_mres)
         self.add_config_cmd(self.reg_drvctrl)
 
         self.reg_chopconf = REG_CHOPCONF | \
-                            get_bits(CHOPCONF, "TBL", self.driver_tbl) | \
-                            get_bits(CHOPCONF, "CHM", self.driver_chm) | \
-                            get_bits(CHOPCONF, "RNDTF", self.driver_rndtf) | \
-                            get_bits(CHOPCONF, "HDEC", self.driver_hdec) | \
-                            get_bits(CHOPCONF, "HEND", self.driver_hend) | \
-                            get_bits(CHOPCONF, "HSTRT", self.driver_hstrt) | \
-                            get_bits(CHOPCONF, "TOFF", self.driver_toff)
+            get_bits(CHOPCONF, "TBL", self.driver_tbl) | \
+            get_bits(CHOPCONF, "CHM", self.driver_chm) | \
+            get_bits(CHOPCONF, "RNDTF", self.driver_rndtf) | \
+            get_bits(CHOPCONF, "HDEC", self.driver_hdec) | \
+            get_bits(CHOPCONF, "HEND", self.driver_hend) | \
+            get_bits(CHOPCONF, "HSTRT", self.driver_hstrt) | \
+            get_bits(CHOPCONF, "TOFF", self.driver_toff)
         self.add_config_cmd(self.reg_chopconf)
 
         self.reg_sgcsconf = REG_SGCSCONF | \
-                            get_bits(SGCSCONF, "SFILT", self.driver_sfilt) | \
-                            get_bits(SGCSCONF, "SGT", self.driver_sgt) | \
-                            get_bits(SGCSCONF, "CS", self.driver_cs)
+            get_bits(SGCSCONF, "SFILT", self.driver_sfilt) | \
+            get_bits(SGCSCONF, "SGT", self.driver_sgt) | \
+            get_bits(SGCSCONF, "CS", self.driver_cs)
         self.add_config_cmd(self.reg_sgcsconf)
 
         self.reg_smarten = REG_SMARTEN | \
-                           get_bits(SMARTEN, "SEIMIN", self.driver_seimin) | \
-                           get_bits(SMARTEN, "SEDN", self.driver_sedn) | \
-                           get_bits(SMARTEN, "SEMAX", self.driver_semax) | \
-                           get_bits(SMARTEN, "SEUP", self.driver_seup) | \
-                           get_bits(SMARTEN, "SEMIN", self.driver_semin)
+            get_bits(SMARTEN, "SEIMIN", self.driver_seimin) | \
+            get_bits(SMARTEN, "SEDN", self.driver_sedn) | \
+            get_bits(SMARTEN, "SEMAX", self.driver_semax) | \
+            get_bits(SMARTEN, "SEUP", self.driver_seup) | \
+            get_bits(SMARTEN, "SEMIN", self.driver_semin)
         self.add_config_cmd(self.reg_smarten)
 
         # Idle timeout
@@ -195,6 +198,7 @@ class TMC2660:
                                                 self.handle_printing)
             self.printer.register_event_handler("idle_timeout:ready",
                                                 self.handle_ready)
+        self.logger.info("driver loaded")
 
     def add_config_cmd(self, val):
         data = [(val >> 16) & 0xff, (val >> 8) & 0xff, val & 0xff]
@@ -238,7 +242,8 @@ class TMC2660:
         self.printer.lookup_object('toolhead').get_last_move_time()
         gcode = self.printer.lookup_object('gcode')
         for reg_name , val in zip(["DRVCONF", "DRVCTRL", "CHOPCONF", "SGCSCONF", "SMARTEN"],
-                            [self.reg_drvconf, self.reg_drvctrl, self.reg_chopconf, self.reg_sgcsconf, self.reg_smarten]):
+                            [self.reg_drvconf, self.reg_drvctrl, self.reg_chopconf,
+                             self.reg_sgcsconf, self.reg_smarten]):
             msg = "%-15s %08x" % (reg_name + " (cached):", val)
             gcode.respond_info(msg)
         # Send one register to get the return data
@@ -247,6 +252,3 @@ class TMC2660:
         pr = bytearray(params['response'])
         msg = "%-15s %08x" % ("RESPONSE:", ((pr[0] << 16) | (pr[1] << 8) | pr[2]))
         gcode.respond_info(msg)
-
-def load_config_prefix(config):
-    return TMC2660(config)

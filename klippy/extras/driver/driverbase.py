@@ -108,6 +108,7 @@ class SpiDriver(DriverBase):
     def _command_write(self, *args, **kwargs):
         raise NotImplementedError("This need to be implemented in parent class")
     def _init_driver(self):
-        raise NotImplementedError("This need to be implemented in parent class")
+        #raise NotImplementedError("This need to be implemented in parent class")
+        pass
     def _build_config(self):
         pass
