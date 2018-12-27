@@ -328,8 +328,11 @@ class GCodeParser:
     def respond(self, msg):
         if self.is_fileinput:
             return
+        ack = " ok\n"
+        if self.need_ack:
+            ack = "\n"
         try:
-            self.write_resp(msg+" ok\n")
+            self.write_resp(msg+ack)
         except os.error:
             logging.exception("Write g-code response")
     def respond_info(self, msg):
