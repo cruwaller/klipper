@@ -37,11 +37,20 @@ class DeltaKinematics:
         for rail in self.rails:
             rail.set_max_jerk(max_halt_velocity, max_halt_accel, self.max_velocity)
         # Read radius and arm lengths
-        self.radius = radius = config.getfloat('delta_radius', above=0.)
-        arm_length_a = stepper_configs[0].getfloat('arm_length', above=radius)
+        self.radius = radius = config.getfloat('delta_radius', above=0., default=None)
+        if radius is None:
+            smooth_rod_offset = config.getfloat('delta_smooth_rod_offset', above=0)
+            carriage_offset = config.getfloat('delta_carriage_offset', above=0)
+            effector_offset = config.getfloat('delta_effector_offset', above=0)
+            self.radius = radius = smooth_rod_offset - carriage_offset - effector_offset
+        self.logger.info("Delta radius: %s" % radius)
+        arm_length_a = stepper_configs[0].getfloat('arm_length', above=radius, default=None)
+        if arm_length_a is None:
+            arm_length_a = config.getfloat('arm_length', above=radius)
         self.arm_lengths = arm_lengths = [
             sconfig.getfloat('arm_length', arm_length_a, above=radius)
             for sconfig in stepper_configs]
+        self.logger.info("arm lengths: %s" % arm_lengths)
         self.arm2 = [arm**2 for arm in arm_lengths]
         self.abs_endstops = [(rail.get_homing_info().position_endstop
                               + math.sqrt(arm2 - radius**2))
