@@ -8,7 +8,7 @@ import Queue
 #from multiprocessing import Queue as QueueMulti
 
 # Local modules
-import queuelogger, reactor
+import queuelogger, reactor, configfile
 import modules.videocam as videocam
 
 # Include www data to search dir
@@ -697,7 +697,7 @@ class RepRapGuiModule(object):
     last_used_file = None
     htmlroot = None
     def __init__(self, config, args):
-        self.logger = config.get_logger("DuetWebControl")
+        self.logger = logging.getLogger("DuetWebControl")
         self.logger_tornado = self.logger.getChild("tornado")
         if args.very_verbose:
             self.logger_tornado.setLevel(logging.DEBUG)
@@ -1003,80 +1003,6 @@ class RepRapGuiModule(object):
 
 # =================================================================================================
 
-class ConfigWrapper:
-    error = ConfigParser.Error
-    class sentinel:
-        pass
-    def __init__(self, fileconfig, section, logger):
-        self.logger = logger
-        self.fileconfig = fileconfig
-        self.section = section
-    def get_logger(self, name=None):
-        if name is None:
-            return self.logger.getChild(self.section)
-        return self.logger.getChild(name)
-    def get_name(self):
-        return self.section
-    def _get_wrapper(self, parser, option, default,
-                     minval=None, maxval=None, above=None, below=None):
-        if (default is not self.sentinel
-            and not self.fileconfig.has_option(self.section, option)):
-            return default
-        try:
-            v = parser(self.section, option)
-            if type(v) == str:
-                v = v.strip('"|\'')
-        except self.error:
-            raise
-        except:
-            raise self.error("Unable to parse option '%s' in section '%s'" % (
-                option, self.section))
-        if minval is not None and v < minval:
-            raise self.error(
-                "Option '%s' in section '%s' must have minimum of %s" % (
-                    option, self.section, minval))
-        if maxval is not None and v > maxval:
-            raise self.error(
-                "Option '%s' in section '%s' must have maximum of %s" % (
-                    option, self.section, maxval))
-        if above is not None and v <= above:
-            raise self.error(
-                "Option '%s' in section '%s' must be above %s" % (
-                    option, self.section, above))
-        if below is not None and v >= below:
-            raise self.error(
-                "Option '%s' in section '%s' must be below %s" % (
-                    option, self.section, below))
-        return v
-    def get(self, option, default=sentinel):
-        return self._get_wrapper(self.fileconfig.get, option, default)
-    def getint(self, option, default=sentinel, minval=None, maxval=None):
-        return self._get_wrapper(
-            self.fileconfig.getint, option, default, minval, maxval)
-    def getfloat(self, option, default=sentinel,
-                 minval=None, maxval=None, above=None, below=None):
-        return self._get_wrapper(self.fileconfig.getfloat, option, default,
-                                 minval, maxval, above, below)
-    def getboolean(self, option, default=sentinel):
-        return self._get_wrapper(self.fileconfig.getboolean, option, default)
-    def getchoice(self, option, choices, default=sentinel):
-        c = self.get(option, default)
-        if c not in choices:
-            raise self.error(
-                "Choice '%s' for option '%s' in section '%s'"
-                " is not a valid choice" % (c, option, self.section))
-        return choices[c]
-    def getsection(self, section):
-        return ConfigWrapper(self.fileconfig, section, self.logger)
-    def has_section(self, section):
-        return self.fileconfig.has_section(section)
-    def get_prefix_sections(self, prefix):
-        return [self.getsection(s) for s in self.fileconfig.sections()
-                if s.startswith(prefix)]
-
-
-# =================================================================================================
-
 if __name__ == "__main__":
     bglogger = None
     parser = argparse.ArgumentParser(
@@ -1106,12 +1032,13 @@ if __name__ == "__main__":
         logging.basicConfig(level=debuglevel,
                             format=queuelogger.LOGFORMAT)
     logging.getLogger().setLevel(debuglevel)
-    logger = logging.getLogger('start')
+    logger = logging.getLogger('server')
     logger.info("Starting ...")
 
     config_file = args.configfile
     fileconfig = ConfigParser.RawConfigParser()
     if not fileconfig.read(config_file):
         raise Exception("Unable to open config file %s" % (config_file,))
-    config = ConfigWrapper(fileconfig, 'reprapgui_process', logger)
+    config = configfile.ConfigWrapper(
+        None, fileconfig, {}, 'reprapgui_process')
     gui = RepRapGuiModule(config, args)
