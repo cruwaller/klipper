@@ -349,7 +349,7 @@ class GuiStats:
                 tools.append(values)
             status_block["tools"] = tools
 
-        elif _type >= 3:
+        if _type >= 3:
             lstat = self.layer_stats
             current_time = toolhead.get_estimated_print_time()
             printing_time = self.print_time
