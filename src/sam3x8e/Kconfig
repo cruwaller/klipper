@@ -26,4 +26,16 @@ config SERIAL_BAUD
     int "Baud rate for serial port"
     default 250000
 
+config RPI_SERIAL
+    bool "Use RPi serial instead of USB"
+    default n
+config RPI_RESET_PIN
+    depends on RPI_SERIAL
+    int "Reset RPi GPIO pin (BCM)"
+    default 22
+config RPI_ERASE_PIN
+    depends on RPI_SERIAL
+    int "Erase RPi GPIO pin (BCM)"
+    default 8
+
 endif

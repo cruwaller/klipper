@@ -37,11 +37,19 @@ lib/bossac/bin/bossac:
 	@echo "  Building bossac"
 	$(Q)make -C lib/bossac bin/bossac
 
+ifeq ($(CONFIG_RPI_SERIAL),)
 flash: $(OUT)klipper.bin lib/bossac/bin/bossac
 	@echo "  Flashing $^ to $(FLASH_DEVICE) via bossac"
 	$(Q)if [ -z $(FLASH_DEVICE) ]; then echo "Please specify FLASH_DEVICE"; exit 1; fi
 	$(Q)lib/bossac/bin/bossac -U -p "$(FLASH_DEVICE)" -a -e -w $(OUT)klipper.bin -v -b
 	$(Q)lib/bossac/bin/bossac -p "$(FLASH_DEVICE)" -R > /dev/null 2>&1 || true
-
+# This triggers flash erase
 #	$(Q)stty $(STTYFARG) $(FLASH_DEVICE) 1200
-#	$(Q)bossac -i -p "$(notdir $(FLASH_DEVICE))" -R -e -w -v -b $(OUT)klipper.bin
+else
+flash: $(OUT)klipper.bin lib/bossac/bin/bossac
+	@echo "  Flashing $^ to $(FLASH_DEVICE) via bossac (RS-232)"
+	$(Q)if [ -z $(FLASH_DEVICE) ]; then echo "Please specify FLASH_DEVICE"; exit 1; fi
+	$(Q)python src/sam3x8e/due_erase.py erase $(CONFIG_RPI_RESET_PIN) $(CONFIG_RPI_ERASE_PIN)
+	$(Q)lib/bossac/bin/bossac --usb-port=0 -p "$(FLASH_DEVICE)" -a -e -w $(OUT)klipper.bin -v -b
+	$(Q)lib/bossac/bin/bossac -p "$(FLASH_DEVICE)" -R > /dev/null 2>&1 || true
+endif
