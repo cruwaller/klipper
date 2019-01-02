@@ -15,20 +15,19 @@ class HostGpioPwm(object):
         initial_duty = config.getfloat(
             'duty', default=self.min_power, minval=self.min_power,
             maxval=self.max_power)
-        self.pin.write(initial_duty)
+        self.pin.set_pwm(initial_duty)
         initial_freq = config.getfloat('freq', default=1, minval=1)
         self.pin.set_freq(initial_freq)
         # Register gcode command
         self.gcode = gcode = printer.lookup_object('gcode')
         gcode.register_mux_command(
-            "HOST_PWM", "NAME", name,
-            self.cmd_read,
+            "HOST_PWM", "NAME", name, self.cmd_PWM,
             desc="Set PWM duty. Args NAME= [DUTY=] [FREQ=]",
             when_not_ready=True)
         self.logger.info("%s : duty %s, freq %s, min %s, max %s" % (
             name, initial_duty, initial_freq,
             self.min_power, self.max_power))
-    def cmd_read(self, params):
+    def cmd_PWM(self, params):
         duty = self.gcode.get_float('DUTY', params,
             default=None, minval=.0, maxval=1.0)
         freq = self.gcode.get_float('FREQ', params,

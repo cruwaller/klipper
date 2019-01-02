@@ -84,10 +84,8 @@ class HostGpioIn:
         pull_up_down = GPIO.PUD_UP if pin_params['pullup'] else GPIO.PUD_DOWN
         GPIO.setup(channel, GPIO.IN, pull_up_down=pull_up_down)
         logger.debug("GPIO IN initialized (pull up: %s)" % pin_params['pullup'])
-    def __read(self):
-        return GPIO.input(self.channel) ^ self.invert
     def get_digital(self, *args):
-        return self.__read()
+        return GPIO.input(self.channel) ^ self.invert
 
 
 class HostGpioEvent:
@@ -102,8 +100,8 @@ class HostGpioEvent:
     def __del__(self):
         if self.channel is not None:
             GPIO.remove_event_detect(self.channel)
-    def read(self):
-        return GPIO.input(self.channel)
+    def get_digital(self, *args):
+        return GPIO.input(self.channel) ^ self.invert
     def set_event(self, cb, edge, bounce=10):
         edge = edge.upper()
         eventc = {"RISING": GPIO.RISING,
@@ -162,7 +160,7 @@ class HostPwm:
         GPIO.setup(channel, GPIO.OUT)
         self.pwm = GPIO.PWM(channel, 1) # 1Hz
         self.pwm.start(self.duty_off)
-        self.set_duty(.0)
+        self.__calc_duty(.0)
         self._static = False
         # logger.debug("GPIO PWM initialized (duty init: %s)" % (self.duty_off,))
     def __del__(self):
@@ -174,7 +172,7 @@ class HostPwm:
         self.freq = freq
         self.pwm.ChangeFrequency(freq)
         self.logger.debug("PWM freq to %s Hz" % freq)
-    def set_duty(self, duty):
+    def __calc_duty(self, duty):
         """ Duty can be 0.0 ... 1.0 """
         if 0. <= duty <= 1.:
             if self.invert:
@@ -183,28 +181,27 @@ class HostPwm:
                 self.duty = duty
             return self.duty
         raise Exception("PWM duty '%s' is not valid!" % duty)
-    def write(self, duty, freq=None):
+    def __write(self, duty, freq=None):
         if self._static:
             # Cannot change duty value if static!
             return
         if freq is not None:
             self.__set_freq(freq)
-        self.__set_duty(self.set_duty(duty))
+        self.__set_duty(self.__calc_duty(duty))
     def get_duty(self):
         if self.invert:
             return 1. - self.duty
         return self.duty
     def get_freq(self):
         return self.freq
-    def start(self):
-        self.__set_duty(self.duty)
-    def stop(self):
-        self.__set_duty(self.duty_off)
+    #def start(self):
+    #    self.__set_duty(self.duty)
+    #def stop(self):
+    #    self.__set_duty(self.duty_off)
     def printer_state(self, state):
         if state == 'shutdown':
-            self.write(self.shutdown_value)
+            self.__write(self.shutdown_value)
     def setup_max_duration(self, max_duration):
-        # self.logger.debug("max_duration: %s", max_duration)
         pass
     def setup_cycle_time(self, cycle_time, hardware_pwm=False):
         self.__set_freq(1. / cycle_time)
@@ -212,10 +209,10 @@ class HostPwm:
         if is_static and start_value != shutdown_value:
             raise pins.error("Static pin can not have shutdown value")
         self.shutdown_value = shutdown_value
-        self.write(start_value)
+        self.__write(start_value)
         self._static = is_static
     def set_pwm(self, print_time, value):
-        self.write(value)
+        self.__write(value)
 
 
 class HostSpi:
