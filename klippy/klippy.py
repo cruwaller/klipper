@@ -7,7 +7,7 @@
 import sys, os, optparse, logging, time, collections, importlib
 import util, reactor, queuelogger, msgproto
 import gcode, configfile, pins, mcu, toolhead
-import hostcpu, gcodes
+import gcodes
 
 # Include extras path to search dir
 sys.path.append(os.path.abspath(
@@ -167,7 +167,7 @@ class Printer:
         self._extruders = {}
         all_sections = config.get_prefix_sections('')
         # Create printer components
-        for m in [pins, mcu, hostcpu]:
+        for m in [pins, mcu]:
             m.add_printer_objects(config)
         for section_config in all_sections:
             self.try_load_module(config, section_config.get_name())

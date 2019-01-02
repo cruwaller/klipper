@@ -4,10 +4,10 @@ class HostGpioPwm(object):
         name = config.get_name().split()[1].strip().replace(" ", "_")
         self.printer = printer = config.get_printer()
         self.gcode = gcode = printer.lookup_object('gcode')
-        hostcpu = printer.lookup_object('hostcpu')
-        self.logger = hostcpu.get_logger(name)
+        hostpins = printer.try_load_module(config, 'hostpins')
+        self.logger = hostpins.get_logger(name)
         # Setup pin
-        self.pin = hostcpu.setup_pin("pwm", config.get("pin"))
+        self.pin = hostpins.setup_pin("pwm", config.get("pin"))
         self.max_power = config.getfloat(
             "max_power", default=1., minval=.0, maxval=1.)
         self.min_power = config.getfloat(
