@@ -18,12 +18,12 @@ class AtxPower(object):
     cmd_ATX_ON_aliases = ['M80']
     cmd_ATX_ON_help = "ATX Power On"
     def cmd_ATX_ON(self, params):
-        self.pin.set_digital(True)
+        self.pin.set_digital(0, True)
         self.gcode.respond_info("ATX ON")
     cmd_ATX_OFF_aliases = ['M81']
     cmd_ATX_OFF_help = "ATX Power Off"
     def cmd_ATX_OFF(self, params):
-        self.pin.set_digital(False)
+        self.pin.set_digital(0, False)
         self.gcode.respond_info("ATX OFF")
 
 def load_config(config):
