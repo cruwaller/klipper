@@ -416,6 +416,7 @@ class MCU_adc:
             self._callback(last_read_time, last_value)
 
 class MCU:
+    hostgpio_rst = None
     error = error
     def __init__(self, config, clocksync):
         self._printer = config.get_printer()
@@ -436,12 +437,15 @@ class MCU:
             self._reactor, self._serialport, baud,
             logger=self.logger.getChild('serial'))
         # Restarts
-        rmethods = {m: m for m in [None, 'arduino', 'command', 'rpi_usb']}
-        self._restart_method = config.getchoice('restart_method',
-                                                rmethods,
-                                                None)
+        rmethods = [None, 'arduino', 'command', 'rpi_usb', 'hostgpio']
+        self._restart_method = config.getchoice(
+            'restart_method', rmethods, None)
         if baud == 0:
             self._restart_method = 'command'
+        elif self._restart_method == 'hostgpio':
+            hostpins = self._printer.try_load_module(config, 'hostpins')
+            self.hostgpio_rst = hostpins.setup_pin(
+                'gpio_out', config.get('reset_pin'))
         self._reset_cmd = self._config_reset_cmd = None
         self._emergency_stop_cmd = None
         self._is_shutdown = self._is_timeout = False
@@ -467,6 +471,7 @@ class MCU:
         self._mcu_tick_avg = 0.
         self._mcu_tick_stddev = 0.
         self._mcu_tick_awake = 0.
+        self.logger.info("Initialized. Restart method: %s" % self._restart_method)
     # Serial callbacks
     def _handle_mcu_stats(self, params):
         count = params['count']
@@ -730,11 +735,19 @@ class MCU:
         chelper.run_hub_ctrl(0)
         self._reactor.pause(self._reactor.monotonic() + 2.)
         chelper.run_hub_ctrl(1)
+    def _restart_rpi_gpio(self):
+        self.logger.info("Attempting MCU '%s' reset via RPi gpio pin", self._name)
+        self._disconnect()
+        self.hostgpio_rst.write(False)
+        self._reactor.pause(self._reactor.monotonic() + 0.2)
+        self.hostgpio_rst.write(True)
     def microcontroller_restart(self):
         if self._restart_method == 'rpi_usb':
             self._restart_rpi_usb()
         elif self._restart_method == 'command':
             self._restart_via_command()
+        elif self._restart_method == 'hostgpio':
+            self._restart_rpi_gpio()
         else:
             self._restart_arduino()
     # Misc external commands
