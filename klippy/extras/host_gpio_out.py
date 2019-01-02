@@ -1,22 +1,26 @@
 
 class HostGpioOut(object):
     def __init__(self, config):
-        name = config.get_name().split()[1].strip().replace(" ", "_")
-        self.printer = printer = config.get_printer()
+        self.name = name = config.get_name().split()[1].strip().replace(" ", "_")
+        printer = config.get_printer()
         self.gcode = gcode = printer.lookup_object('gcode')
-        hostpins = printer.try_load_module(config, 'hostpins')
-        self.logger = hostpins.get_logger(name)
         # Setup pin
-        self.pin = hostpins.setup_pin("gpio_out", config.get("pin"))
+        pin_params = printer.lookup_object('pins').lookup_pin(
+            config.get('pin'), can_invert=True)
+        self.pin = pin_params['chip'].setup_pin(
+            "digital_out", pin_params)
+        # Register gcode command
         gcode.register_mux_command(
             "HOST_GPIO_WRITE", "NAME", name,
             self.cmd_write,
             desc="Set pin value. args: NAME= VALUE=",
             when_not_ready=True)
     def cmd_write(self, params):
-        value = self.gcode.get_float('VALUE', params)
-        self.pin.write(value)
-        self.gcode.respond_info("Pin set ok")
+        value = bool(self.gcode.get_int(
+            'STATE', params, minval=0, maxval=1))
+        self.pin.set_digital(0, value)
+        self.gcode.respond_info("Pin %s set to %s" % (
+            self.name, value))
 
 
 def load_config_prefix(config):

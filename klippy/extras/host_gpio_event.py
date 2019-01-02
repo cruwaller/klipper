@@ -1,13 +1,12 @@
 
 class HostGpioEvent(object):
     def __init__(self, config):
-        name = config.get_name().split()[1].strip().replace(" ", "_")
         self.printer = printer = config.get_printer()
-        self.gcode = gcode = printer.lookup_object('gcode')
-        hostpins = printer.try_load_module(config, 'hostpins')
-        self.logger = hostpins.get_logger(name)
         # Setup pin
-        self.pin = hostpins.setup_pin("gpio_event", config.get("pin"))
+        pin_params = printer.lookup_object('pins').lookup_pin(
+            config.get('pin'), can_invert=True, can_pullup=True)
+        self.pin = pin_params['chip'].setup_pin(
+            "digital_event", pin_params)
         options = {'falling' : 'falling', 'rising' : 'rising',
                    'both' : 'both'}
         self.pin.set_event(self._event_callback,

@@ -1,4 +1,5 @@
-import os, re
+import os, logging
+import pins
 
 (sysname, hostname, release, version, machine) = os.uname()
 
@@ -6,6 +7,7 @@ GPIO = None
 
 if machine in ["x86_64", "x86"]:
     class GpioTemp:
+        logger = logging.getLogger('GPIO_DBG')
         BOARD = 0
         BCM = 1
 
@@ -26,14 +28,17 @@ if machine in ["x86_64", "x86"]:
         def cleanup(self, *args, **kwargs):
             pass
         def input(self, *args, **kwargs):
+            self.logger.debug("Read %s" % str(args))
             return 0
         def output(self, *args, **kwargs):
+            self.logger.debug("Write %s" % str(args))
             pass
         def add_event_detect(self, *args, **kwargs):
             pass
         def remove_event_detect(self, *args, **kwargs):
             pass
         class PWM:
+            logger = logging.getLogger('PWM_DBG')
             def __init__(self, ch, f):
                 pass
             def start(self, duty):
@@ -41,8 +46,10 @@ if machine in ["x86_64", "x86"]:
             def stop(self):
                 pass
             def ChangeFrequency(self, f):
+                self.logger.debug("Freq %s" % f)
                 pass
             def ChangeDutyCycle(self, d):
+                self.logger.debug("Duty %s" % d)
                 pass
     GPIO = GpioTemp()
 elif sysname == "Linux":
@@ -73,13 +80,14 @@ class HostGpioIn:
     def __init__(self, pin_params, logger):
         self.logger = logger
         self.invert = pin_params['invert']
-        self.channel = channel = pin_params['pin_number'] \
-            #pin_params['chip'].get_pin_number(pin_params['pin'])
+        self.channel = channel = pin_params['pin_number']
         pull_up_down = GPIO.PUD_UP if pin_params['pullup'] else GPIO.PUD_DOWN
         GPIO.setup(channel, GPIO.IN, pull_up_down=pull_up_down)
         logger.debug("GPIO IN initialized (pull up: %s)" % pin_params['pullup'])
-    def read(self):
+    def __read(self):
         return GPIO.input(self.channel) ^ self.invert
+    def get_digital(self, *args):
+        return self.__read()
 
 
 class HostGpioEvent:
@@ -87,8 +95,7 @@ class HostGpioEvent:
     def __init__(self, pin_params, logger):
         self.logger = logger
         self.invert = pin_params['invert']
-        self.channel = channel = pin_params['pin_number'] \
-            #pin_params['chip'].get_pin_number(pin_params['pin'])
+        self.channel = channel = pin_params['pin_number']
         pull_up_down = [GPIO.PUD_DOWN, GPIO.PUD_UP][pin_params['pullup']]
         GPIO.setup(channel, GPIO.IN, pull_up_down=pull_up_down)
         logger.debug("GPIO IN event initialized (pull up: %s)" % pin_params['pullup'])
@@ -114,15 +121,32 @@ class HostGpioOut:
     def __init__(self, pin_params, logger):
         self.logger = logger
         self.invert = invert = pin_params['invert']
+        self._static = self.shutdown_value = False
         state = GPIO.HIGH if invert else GPIO.LOW
-        self.channel = channel = pin_params['pin_number'] \
-            #pin_params['chip'].get_pin_number(pin_params['pin'])
+        self.channel = channel = pin_params['pin_number']
         GPIO.setup(channel, GPIO.OUT,
                    pull_up_down=GPIO.PUD_OFF, initial=state)
-        self.write(False)
+        self.__write(False)
         logger.debug("GPIO OUT initialized to state: %s" % state)
-    def write(self, state):
+    def __write(self, state):
+        if self._static:
+            return
         GPIO.output(self.channel, bool(state) ^ self.invert)
+    def printer_state(self, state):
+        if state == 'shutdown':
+            self.__write(self.shutdown_value)
+    def set_digital(self, print_time, value):
+        self.__write(value)
+    def set_pwm(self, print_time, value):
+        self.__write(value >= 0.5)
+    def setup_max_duration(self, max_duration):
+        pass
+    def setup_start_value(self, start_value, shutdown_value, is_static=False):
+        if is_static and start_value != shutdown_value:
+            raise pins.error("Static pin can not have shutdown value")
+        self.shutdown_value = shutdown_value
+        self.set_pwm(0, start_value)
+        self._static = is_static
 
 
 class HostPwm:
@@ -131,25 +155,25 @@ class HostPwm:
         if PWM is None:
             raise pin_params['chip'].config_error("PWM is not supported!")
         self.invert = invert = pin_params['invert']
-        self.freq = 1
+        self.freq = 10 # cycle_time 0.100
         self.duty = None
-        self.duty_off = 100 * invert
-        #channel = pin_params['chip'].get_pin_number(pin_params['pin'])
+        self.shutdown_value = self.duty_off = 100 * invert
         channel = pin_params['pin_number']
         GPIO.setup(channel, GPIO.OUT)
         self.pwm = GPIO.PWM(channel, 1) # 1Hz
         self.pwm.start(self.duty_off)
         self.set_duty(.0)
-        logger.debug("GPIO PWM initialized (duty init: %s)" % (self.duty_off,))
+        self._static = False
+        # logger.debug("GPIO PWM initialized (duty init: %s)" % (self.duty_off,))
     def __del__(self):
         self.pwm.stop()
     def __set_duty(self, duty):
         self.pwm.ChangeDutyCycle(duty * 100.)
         self.logger.debug("PWM duty to %s" % duty)
-    def set_freq(self, freq):
+    def __set_freq(self, freq):
         self.freq = freq
         self.pwm.ChangeFrequency(freq)
-        self.logger.debug("PWM freq to %s" % freq)
+        self.logger.debug("PWM freq to %s Hz" % freq)
     def set_duty(self, duty):
         """ Duty can be 0.0 ... 1.0 """
         if 0. <= duty <= 1.:
@@ -160,8 +184,11 @@ class HostPwm:
             return self.duty
         raise Exception("PWM duty '%s' is not valid!" % duty)
     def write(self, duty, freq=None):
+        if self._static:
+            # Cannot change duty value if static!
+            return
         if freq is not None:
-            self.set_freq(freq)
+            self.__set_freq(freq)
         self.__set_duty(self.set_duty(duty))
     def get_duty(self):
         if self.invert:
@@ -173,6 +200,22 @@ class HostPwm:
         self.__set_duty(self.duty)
     def stop(self):
         self.__set_duty(self.duty_off)
+    def printer_state(self, state):
+        if state == 'shutdown':
+            self.write(self.shutdown_value)
+    def setup_max_duration(self, max_duration):
+        # self.logger.debug("max_duration: %s", max_duration)
+        pass
+    def setup_cycle_time(self, cycle_time, hardware_pwm=False):
+        self.__set_freq(1. / cycle_time)
+    def setup_start_value(self, start_value, shutdown_value, is_static=False):
+        if is_static and start_value != shutdown_value:
+            raise pins.error("Static pin can not have shutdown value")
+        self.shutdown_value = shutdown_value
+        self.write(start_value)
+        self._static = is_static
+    def set_pwm(self, print_time, value):
+        self.write(value)
 
 
 class HostSpi:
@@ -193,20 +236,18 @@ class HostPins(object):
     pin_mode = None
     def __init__(self, config):
         self.printer = printer = config.get_printer()
+        self.printer.lookup_object('pins').register_chip('host', self)
         self.config_error = self.printer.config_error
         self.logger = logger = printer.logger.getChild("hostpins")
-        self.available_pins = self.active_pins = {}
-        self.setmode(config.get('mode', default='BOARD'))
+        self.available_pins = {}
+        self._setmode(config.get('mode', default='BOARD'))
         logger.info("Initialized")
     def __del__(self):
-        self.reset()
+        GPIO.cleanup()
+        self.logger.warning("GPIO ports reset done!")
     def __str__(self):
         return "HostPins"
-    def reset(self):
-        GPIO.cleanup()
-        self.active_pins = {}
-        self.logger.warning("GPIO ports reset done!")
-    def setmode(self, mode='BOARD'):
+    def _setmode(self, mode='BOARD'):
         if mode is None:
             return
         # BOARD = physical pin number in pinstripe
@@ -228,10 +269,7 @@ class HostPins(object):
             # debug linux!
             pinmap = self._rpi_v2_pins()
         self.available_pins = pinmap
-        self.logger.debug("GPIO pin mode is now '%s'" % self.pin_mode)
-    @staticmethod
-    def getmode():
-        return GPIO.getmode()
+        self.logger.debug("GPIO pin mode set to '%s'" % self.pin_mode)
     def _rpi_v1_pins(self):
         # V1 pin header is 26 pins
         if self.pin_mode == "BOARD":
@@ -265,63 +303,21 @@ class HostPins(object):
             return self.logger.getChild(child)
         return self.logger
     def get_pin_number(self, pin):
-        return self.available_pins[pin]
-    def setup_pin(self, pin_type, pin_desc):
-        pin_params = self.lookup_pin(pin_type, pin_desc)
-        pcs = {'gpio_in': HostGpioIn, 'gpio_out': HostGpioOut,
-               'spi': HostSpi, 'i2c': HostI2C, 'pwm': HostPwm,
-               'gpio_event': HostGpioEvent}
-        pin_type = pin_params['type']
-        if pin_type not in pcs:
-            raise self.config_error(
-                "pin type %s not supported on mcu" % (pin_type,))
-        co = pcs[pin_type](pin_params, logger=self.logger.getChild(pin_params['pin']))
-        return co
-    def lookup_pin(self, pin_type, pin_desc, share_type=None):
-        if pin_type not in ['gpio_in', 'gpio_out', 'gpio_event',
-                            'spi', 'i2c', 'pwm']:
-            raise self.config_error("Invalid pin type %s" % pin_type)
-        can_invert = pin_type in ['gpio_in', 'gpio_out', 'gpio_event', 'pwm']
-        can_pullup = pin_type in ['gpio_in', 'gpio_event']
-        desc = pin_desc
-        pullup = invert = 0
-        if can_pullup and '^' in desc:
-            pullup = 1
-        if can_invert and '!' in desc:
-            invert = 1
-        pin = re.sub("[\^!]", "", desc).strip()
-        if [c for c in '^!: ' if c in pin]:
-            format = ""
-            if can_pullup:
-                format += "[^] "
-            if can_invert:
-                format += "[!] "
-            raise self.config_error(
-                "Invalid pin description '%s'\n"
-                "Format is: %s pin_name" % (pin_desc, format))
         if pin not in self.available_pins:
             raise self.config_error(
                 "Requested pin '%s' is not available!" % pin)
-        if pin in self.active_pins:
-            pin_params = self.active_pins[pin]
-            if (share_type is None and pin_params['class'] is not None) or \
-                    share_type != pin_params['share_type']:
-                raise self.config_error(
-                    "pin %s used multiple times in config" % (pin,))
-            if invert != pin_params['invert'] or pullup != pin_params['pullup']:
-                raise self.config_error(
-                    "Shared pin %s must have same polarity" % (pin,))
-            return pin_params
-        pin_params = {'chip': self,
-                      'type': pin_type, 'share_type': share_type,
-                      'pin': pin, 'pin_number': self.get_pin_number(pin),
-                      'invert': invert, 'pullup': pullup,
-                      'class': None}
-        self.active_pins[pin] = pin_params
-        #self.logger.debug("PIN:\n%s" % "\n".join(
-        #    ["    %s: %s" % (k, v,) for k, v in pin_params.items()]))
-        return pin_params
-
+        return self.available_pins[pin]
+    def setup_pin(self, pin_type, pin_params):
+        pcs = {'digital_in': HostGpioIn,
+               'digital_out': HostGpioOut,
+               'digital_event': HostGpioEvent,
+               'spi': HostSpi, 'i2c': HostI2C, 'pwm': HostPwm}
+        if pin_type not in pcs:
+            raise self.config_error(
+                "pin type %s not supported on mcu" % (pin_type,))
+        pin_params['pin_number'] = self.get_pin_number(pin_params['pin'])
+        co = pcs[pin_type](pin_params, logger=self.get_logger(pin_params['pin']))
+        return co
 
 def load_config(config):
-    return HostPins(config.getsection('hostpins'))
+    return HostPins(config)

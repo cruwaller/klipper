@@ -2,22 +2,24 @@
 class HostGpioPwm(object):
     def __init__(self, config):
         name = config.get_name().split()[1].strip().replace(" ", "_")
-        self.printer = printer = config.get_printer()
-        self.gcode = gcode = printer.lookup_object('gcode')
-        hostpins = printer.try_load_module(config, 'hostpins')
-        self.logger = hostpins.get_logger(name)
+        printer = config.get_printer()
+        self.logger = printer.get_logger(name)
         # Setup pin
-        self.pin = hostpins.setup_pin("pwm", config.get("pin"))
-        self.max_power = config.getfloat(
-            "max_power", default=1., minval=.0, maxval=1.)
+        pin_params = printer.lookup_object('pins').lookup_pin(
+            config.get('pin'), can_invert=True)
+        self.pin = pin_params['chip'].setup_pin("pwm", pin_params)
         self.min_power = config.getfloat(
-            "min_power", default=.0, minval=.0, maxval=self.max_power)
+            "min_power", default=.0, minval=.0, maxval=1.)
+        self.max_power = config.getfloat(
+            "max_power", default=1., minval=self.min_power, maxval=1.)
         initial_duty = config.getfloat(
-            'duty', default=.0, minval=self.min_power,
+            'duty', default=self.min_power, minval=self.min_power,
             maxval=self.max_power)
         self.pin.write(initial_duty)
         initial_freq = config.getfloat('freq', default=1, minval=1)
         self.pin.set_freq(initial_freq)
+        # Register gcode command
+        self.gcode = gcode = printer.lookup_object('gcode')
         gcode.register_mux_command(
             "HOST_PWM", "NAME", name,
             self.cmd_read,
@@ -34,7 +36,7 @@ class HostGpioPwm(object):
         if freq is not None:
             self.pin.set_freq(freq)
         if duty is not None:
-            self.pin.write(max(self.min_power, min(duty, self.max_power)))
+            self.pin.set_pwm(0, max(self.min_power, min(duty, self.max_power)))
         self.gcode.respond_info("Duty: %s, freq: %s" % (
             self.pin.get_duty(), self.pin.get_freq()))
 

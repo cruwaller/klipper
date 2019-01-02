@@ -443,9 +443,10 @@ class MCU:
         if baud == 0:
             self._restart_method = 'command'
         elif self._restart_method == 'hostgpio':
-            hostpins = self._printer.try_load_module(config, 'hostpins')
-            self.hostgpio_rst = hostpins.setup_pin(
-                'gpio_out', config.get('reset_pin'))
+            pin_params = self._printer.lookup_object('pins').lookup_pin(
+                config.get('reset_pin'), can_invert=True)
+            self.hostgpio_rst = pin_params['chip'].setup_pin(
+                'digital_out', pin_params)
         self._reset_cmd = self._config_reset_cmd = None
         self._emergency_stop_cmd = None
         self._is_shutdown = self._is_timeout = False

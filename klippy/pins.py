@@ -276,4 +276,6 @@ class PrinterPins:
         self.chips[chip_name] = chip
 
 def add_printer_objects(config):
-    config.get_printer().add_object('pins', PrinterPins())
+    printer = config.get_printer()
+    printer.add_object('pins', PrinterPins())
+    printer.try_load_module(config, 'hostpins')
