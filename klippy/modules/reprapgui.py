@@ -250,20 +250,16 @@ class rrHandler(tornado.web.RequestHandler):
             # Clean up gcode command
             gcode = gcode.replace("0:/", "").replace("0%3A%2F", "")
 
-            if "M80" in gcode:
+            if "M80" in gcode and self.parent.atx_on is not None:
                 # ATX ON
-                atx_on = self.parent.atx_on
-                if atx_on is not None:
-                    resp = os.popen(atx_on).read()
-                    self.parent.append_gcode_resp(resp)
-                    self.logger.info("ATX ON: %s" % resp)
-            elif "M81" in gcode:
+                resp = os.popen(self.parent.atx_on).read()
+                self.parent.append_gcode_resp(resp)
+                self.logger.info("ATX ON: %s" % resp)
+            elif "M81" in gcode and self.parent.atx_off is not None:
                 # ATX OFF
-                atx_off = self.parent.atx_off
-                if atx_off is not None:
-                    resp = os.popen(atx_off).read()
-                    self.parent.append_gcode_resp(resp)
-                    self.logger.info("ATX OFF: %s" % resp)
+                resp = os.popen(self.parent.atx_off).read()
+                self.parent.append_gcode_resp(resp)
+                self.logger.info("ATX OFF: %s" % resp)
             elif "T-1" in gcode:
                 # ignore
                 pass
