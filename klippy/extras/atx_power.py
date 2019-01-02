@@ -1,0 +1,30 @@
+
+class AtxPower(object):
+    def __init__(self, config):
+        self.printer = printer = config.get_printer()
+        # Setup pin
+        pin_params = printer.lookup_object('pins').lookup_pin(
+            config.get('pin'), can_invert=True)
+        self.pin = pin_params['chip'].setup_pin(
+            'digital_out', pin_params)
+        # Register gcode commands
+        self.gcode = gcode = printer.lookup_object('gcode')
+        for cmd in ['ATX_ON', 'ATX_OFF']:
+            func = getattr(self, 'cmd_' + cmd)
+            desc = getattr(self, 'cmd_%s_help' % cmd, None)
+            gcode.register_command(cmd, func, True, desc)
+            for a in getattr(self, 'cmd_' + cmd + '_aliases', []):
+                gcode.register_command(a, func, True)
+    cmd_ATX_ON_aliases = ['M80']
+    cmd_ATX_ON_help = "ATX Power On"
+    def cmd_ATX_ON(self, params):
+        self.pin.write(True)
+        self.gcode.respond_info("ATX ON")
+    cmd_ATX_OFF_aliases = ['M81']
+    cmd_ATX_OFF_help = "ATX Power Off"
+    def cmd_ATX_OFF(self, params):
+        self.pin.write(False)
+        self.gcode.respond_info("ATX OFF")
+
+def load_config(config):
+    return AtxPower(config)
