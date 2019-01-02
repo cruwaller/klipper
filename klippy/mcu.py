@@ -573,6 +573,7 @@ class MCU:
             raise error("MCU '%s' error during config: %s" % (
                 self._name, self._shutdown_msg))
         if config_params['is_shutdown']:
+            self._printer.request_exit('firmware_restart')
             raise error("Can not update MCU '%s' config as it is shutdown" % (
                 self._name,))
         return config_params
@@ -739,9 +740,9 @@ class MCU:
     def _restart_rpi_gpio(self):
         self.logger.info("Attempting MCU '%s' reset via RPi gpio pin", self._name)
         self._disconnect()
-        self.hostgpio_rst.write(False)
+        self.hostgpio_rst.set_digital(0, False)
         self._reactor.pause(self._reactor.monotonic() + 0.2)
-        self.hostgpio_rst.write(True)
+        self.hostgpio_rst.set_digital(0, True)
     def microcontroller_restart(self):
         if self._restart_method == 'rpi_usb':
             self._restart_rpi_usb()
