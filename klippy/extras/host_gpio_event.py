@@ -1,3 +1,4 @@
+import logging
 
 class HostGpioEvent(object):
     def __init__(self, config):
@@ -14,6 +15,8 @@ class HostGpioEvent(object):
         options = {'kill' : 'shutdown', 'reboot' : 'firmware_restart'}
         self.action = config.getchoice('action', options)
     def _event_callback(self, channel):
+        logging.exception(
+            'Host event happened! Request exit: %s' % self.action)
         self.printer.request_exit(self.action)
 
 

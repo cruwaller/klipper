@@ -1,7 +1,7 @@
 
 class HostGpioIn(object):
     def __init__(self, config):
-        self.name = name = config.get_name().split()[1].strip().replace(" ", "_")
+        self.name = name = config.get_name().split()[1]
         printer = config.get_printer()
         self.gcode = gcode = printer.lookup_object('gcode')
         # Setup pin
@@ -16,8 +16,8 @@ class HostGpioIn(object):
             desc="Read defined pin value. Args NAME=",
             when_not_ready=True)
     def cmd_read(self, params):
-        self.gcode.respond_info(
-            "Pin %s value %s" % (self.name, self.pin.get_digital()))
+        self.gcode.respond_info("Pin %s value %s" % (
+            self.name, self.pin.get_digital()))
 
 
 def load_config_prefix(config):

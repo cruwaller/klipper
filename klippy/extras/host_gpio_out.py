@@ -1,7 +1,7 @@
 
 class HostGpioOut(object):
     def __init__(self, config):
-        self.name = name = config.get_name().split()[1].strip().replace(" ", "_")
+        self.name = name = config.get_name().split()[1]
         printer = config.get_printer()
         self.gcode = gcode = printer.lookup_object('gcode')
         # Setup pin
@@ -19,7 +19,7 @@ class HostGpioOut(object):
         value = bool(self.gcode.get_int(
             'VALUE', params, minval=0, maxval=1))
         self.pin.set_digital(0, value)
-        self.gcode.respond_info("Pin %s set to %s" % (
+        self.gcode.respond_info("Pin %s value %s" % (
             self.name, value))
 
 
