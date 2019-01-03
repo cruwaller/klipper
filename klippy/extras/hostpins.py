@@ -7,50 +7,50 @@ GPIO = None
 
 if machine in ["x86_64", "x86"]:
     class GpioTemp:
-        logger = logging.getLogger('GPIO_DBG')
-        BOARD = 0
-        BCM = 1
-
-        RISING = FALLING = BOTH = 0
-        PUD_UP = 2
-        PUD_DOWN = 1
-        PUD_OFF = 0
-        IN = 1
-        OUT = 0
-        HIGH = 1
-        LOW = 0
+        logger = logging.getLogger('Linux.GpioTemp')
+        BOARD = 'BOARD'
+        BCM = 'BCM'
+        RISING = 'RISING'
+        FALLING = 'FALLING'
+        BOTH = 'BOTH'
+        PUD_UP = 'PUD_UP'
+        PUD_DOWN = 'PUD_DOWN'
+        PUD_OFF = 'PUD_OFF'
+        IN = 'IN'
+        OUT = 'OUT'
+        HIGH = 'HIGH'
+        LOW = 'LOW'
         def __init__(self, *args, **kwargs):
             pass
         def setmode(self, mode):
-            pass
-        def setup(self, *args, **kwargs):
-            pass
-        def cleanup(self, *args, **kwargs):
-            pass
-        def input(self, *args, **kwargs):
-            self.logger.debug("Read %s" % str(args))
-            return 0
-        def output(self, *args, **kwargs):
-            self.logger.debug("Write %s" % str(args))
-            pass
-        def add_event_detect(self, *args, **kwargs):
-            pass
-        def remove_event_detect(self, *args, **kwargs):
-            pass
+            self.logger.debug("setmode(%s)" % str(mode))
+        def setup(self, channel, mode, pull_up_down=PUD_OFF, initial=None):
+            self.logger.debug("setup(channel=%s, mode=%s, pull_up_down=%s, initial=%s)" % (
+                channel, mode, pull_up_down, initial))
+        def cleanup(self):
+            self.logger.debug("cleanup()")
+        def input(self, channel):
+            self.logger.debug("input(channel=%s)" % channel)
+            return channel & 1
+        def output(self, channel, state):
+            self.logger.debug("output(channel=%s, state=%s)" % (channel, state))
+        def add_event_detect(self, channel, event, callback=None, bouncetime=None):
+            self.logger.debug("add_event_detect(channel=%s, event=%s, callback=%s, bouncetime=%s)" % (
+                channel, event, callback, bouncetime))
+        def remove_event_detect(self, channel):
+            self.logger.debug("remove_event_detect(channel=%s)" % channel)
         class PWM:
-            logger = logging.getLogger('PWM_DBG')
+            logger = logging.getLogger('Linux.GpioTemp.PWM')
             def __init__(self, ch, f):
-                pass
+                self.logger.debug("__init__(channel=%s, freq=%s)" % (ch, f))
             def start(self, duty):
-                pass
+                self.logger.debug("start(duty=%s)" % duty)
             def stop(self):
-                pass
+                self.logger.debug("stop()")
             def ChangeFrequency(self, f):
-                self.logger.debug("Freq %s" % f)
-                pass
+                self.logger.debug("ChangeFrequency(%s)" % f)
             def ChangeDutyCycle(self, d):
-                self.logger.debug("Duty %s" % d)
-                pass
+                self.logger.debug("ChangeDutyCycle(%s)" % d)
     GPIO = GpioTemp()
 elif sysname == "Linux":
     if machine in ['armv6l', 'armv7l']:
@@ -77,26 +77,22 @@ except AttributeError:
 
 
 class HostGpioIn:
-    def __init__(self, pin_params, logger):
-        self.logger = logger
+    def __init__(self, pin_params):
         self.invert = pin_params['invert']
         self.channel = channel = pin_params['pin_number']
         pull_up_down = GPIO.PUD_UP if pin_params['pullup'] else GPIO.PUD_DOWN
         GPIO.setup(channel, GPIO.IN, pull_up_down=pull_up_down)
-        logger.debug("GPIO IN initialized (pull up: %s)" % pin_params['pullup'])
     def get_digital(self, *args):
         return GPIO.input(self.channel) ^ self.invert
 
 
 class HostGpioEvent:
     channel = None
-    def __init__(self, pin_params, logger):
-        self.logger = logger
+    def __init__(self, pin_params):
         self.invert = pin_params['invert']
         self.channel = channel = pin_params['pin_number']
         pull_up_down = [GPIO.PUD_DOWN, GPIO.PUD_UP][pin_params['pullup']]
         GPIO.setup(channel, GPIO.IN, pull_up_down=pull_up_down)
-        logger.debug("GPIO IN event initialized (pull up: %s)" % pin_params['pullup'])
     def __del__(self):
         if self.channel is not None:
             GPIO.remove_event_detect(self.channel)
@@ -112,12 +108,10 @@ class HostGpioEvent:
             eventc["FALLING"] = GPIO.RISING
         GPIO.add_event_detect(self.channel, eventc[edge],
                               callback=cb, bouncetime=bounce)
-        self.logger.debug("Event '%s' set. Bounce %s" % (edge, bounce,))
 
 
 class HostGpioOut:
-    def __init__(self, pin_params, logger):
-        self.logger = logger
+    def __init__(self, pin_params):
         self.invert = invert = pin_params['invert']
         self._static = self.shutdown_value = False
         state = GPIO.HIGH if invert else GPIO.LOW
@@ -125,14 +119,13 @@ class HostGpioOut:
         GPIO.setup(channel, GPIO.OUT,
                    pull_up_down=GPIO.PUD_OFF, initial=state)
         self.__write(False)
-        logger.debug("GPIO OUT initialized to state: %s" % state)
-    def __write(self, state):
-        if self._static:
+    def __write(self, state, force=False):
+        if self._static and force is False:
             return
         GPIO.output(self.channel, bool(state) ^ self.invert)
     def printer_state(self, state):
         if state == 'shutdown':
-            self.__write(self.shutdown_value)
+            self.__write(self.shutdown_value, force=True)
     def set_digital(self, print_time, value):
         self.__write(value)
     def set_pwm(self, print_time, value):
@@ -148,30 +141,26 @@ class HostGpioOut:
 
 
 class HostPwm:
-    def __init__(self, pin_params, logger):
-        self.logger = logger
+    def __init__(self, pin_params):
         if PWM is None:
             raise pin_params['chip'].config_error("PWM is not supported!")
         self.invert = invert = pin_params['invert']
-        self.freq = 10 # cycle_time 0.100
+        self.freq = 10 # default cycle_time 0.100s
         self.duty = None
-        self.shutdown_value = self.duty_off = 100 * invert
+        self.shutdown_value = 100 * invert
         channel = pin_params['pin_number']
         GPIO.setup(channel, GPIO.OUT)
-        self.pwm = GPIO.PWM(channel, 1) # 1Hz
-        self.pwm.start(self.duty_off)
+        self.pwm = GPIO.PWM(channel, self.freq)
+        self.pwm.start(self.shutdown_value)
         self.__calc_duty(.0)
         self._static = False
-        # logger.debug("GPIO PWM initialized (duty init: %s)" % (self.duty_off,))
     def __del__(self):
         self.pwm.stop()
     def __set_duty(self, duty):
         self.pwm.ChangeDutyCycle(duty * 100.)
-        self.logger.debug("PWM duty to %s" % duty)
     def __set_freq(self, freq):
         self.freq = freq
         self.pwm.ChangeFrequency(freq)
-        self.logger.debug("PWM freq to %s Hz" % freq)
     def __calc_duty(self, duty):
         """ Duty can be 0.0 ... 1.0 """
         if 0. <= duty <= 1.:
@@ -181,12 +170,10 @@ class HostPwm:
                 self.duty = duty
             return self.duty
         raise Exception("PWM duty '%s' is not valid!" % duty)
-    def __write(self, duty, freq=None):
-        if self._static:
+    def __write(self, duty, force=False):
+        if self._static and force is False:
             # Cannot change duty value if static!
             return
-        if freq is not None:
-            self.__set_freq(freq)
         self.__set_duty(self.__calc_duty(duty))
     def get_duty(self):
         if self.invert:
@@ -194,13 +181,11 @@ class HostPwm:
         return self.duty
     def get_freq(self):
         return self.freq
-    #def start(self):
-    #    self.__set_duty(self.duty)
-    #def stop(self):
-    #    self.__set_duty(self.duty_off)
+    def set_freq(self, freq):
+        self.__set_freq(freq)
     def printer_state(self, state):
         if state == 'shutdown':
-            self.__write(self.shutdown_value)
+            self.__write(self.shutdown_value, force=True)
     def setup_max_duration(self, max_duration):
         pass
     def setup_cycle_time(self, cycle_time, hardware_pwm=False):
@@ -216,15 +201,22 @@ class HostPwm:
 
 
 class HostSpi:
-    def __init__(self, pin_params, logger):
-        self.logger = logger
+    # GPIO pins:
+    #   MOSI GPIO10/P19
+    #   MISO GPIO09/P21
+    #   SCLK  GPIO11/P23
+    #   CE0  GPIO08/P24
+    #   CE1  GPIO07/P26
+    def __init__(self, pin_params):
         raise pin_params['chip'].config_error(
             "Host SPI is not implemented yet")
 
 
 class HostI2C:
-    def __init__(self, pin_params, logger):
-        self.logger = logger
+    # GPIO pins:
+    #   SDA1 P2
+    #   SCL1 P3
+    def __init__(self, pin_params):
         raise pin_params['chip'].config_error(
             "Host I2C is not implemented yet")
 
@@ -232,29 +224,13 @@ class HostI2C:
 class HostPins(object):
     pin_mode = None
     def __init__(self, config):
-        self.printer = printer = config.get_printer()
-        self.printer.lookup_object('pins').register_chip('host', self)
-        self.config_error = self.printer.config_error
-        self.logger = logger = printer.logger.getChild("hostpins")
-        self.available_pins = {}
-        self._setmode(config.get('mode', default='BOARD'))
-        logger.info("Initialized")
-    def __del__(self):
-        GPIO.cleanup()
-        self.logger.warning("GPIO ports reset done!")
-    def __str__(self):
-        return "HostPins"
-    def _setmode(self, mode='BOARD'):
-        if mode is None:
-            return
+        printer = config.get_printer()
+        printer.lookup_object('pins').register_chip('host', self)
+        self.config_error = printer.config_error
+        self.logger = printer.logger.getChild("hostpins")
         # BOARD = physical pin number in pinstripe
         # BCM   = Broadcom's chip pin number
-        self.pin_mode = mode
-        if mode == 'BCM':
-            mode = GPIO.BCM
-        else:
-            mode = GPIO.BOARD
-        GPIO.setmode(mode)
+        GPIO.setmode(GPIO.BOARD)
         pinmap = {}
         if machine in ["armv7l", 'aarch64']:
             # Raspberry Pi3 or Orange Pi PC2
@@ -266,34 +242,39 @@ class HostPins(object):
             # debug linux!
             pinmap = self._rpi_v2_pins()
         self.available_pins = pinmap
-        self.logger.debug("GPIO pin mode set to '%s'" % self.pin_mode)
+    def __del__(self):
+        GPIO.cleanup()
+    def __str__(self):
+        return "HostPins"
     def _rpi_v1_pins(self):
-        # V1 pin header is 26 pins
-        if self.pin_mode == "BOARD":
-            return {"P%d" % i: i for i in [
-                3, 5, 7, 8, 10, 11, 12, 13, 15, 16, 18, 19,
-                21, 22, 23, 24, 26
-            ]}
-        # All models in BCM mode:
-        gpios = {"GPIO%d" % i: i for i in [
-            4, 14, 15, 17, 18, 22, 23, 24, 10, 9, 25, 11, 8, 7
+        # Add BOARD mapping
+        gpios = {"P%d" % i: i for i in [
+            # V1 pin header is 26 pins
+            3, 5, 7, 8, 10, 11, 12, 13, 15, 16, 18, 19,
+            21, 22, 23, 24, 26,
         ]}
-        # Pi 1 Model B Revision 2.0 or later:
-        gpios.update({"GPIO%d" % i: i for i in [2, 3, 27]})
-        # Pi 1 Model B Revision 1.0:
-        gpios.update({"GPIO%d" % i: i for i in [0, 1, 21]})
+        # Add BCM to BOARD mapping
+        gpios.update({"GPIO%d" % i[0]: i[1] for i in [
+            # All models:
+            (4, 7), (14, 8), (15, 10), (17, 11), (18, 12),
+            (22, 15), (23, 16), (24, 18), (10, 19), (9, 21), (25, 22),
+            (11, 23), (8, 24), (7, 26),
+            # Pi 1 Model B Revision 2.0 or later:
+            (2, 3), (3, 5), (27, 13),
+            # Pi 1 Model B Revision 1.0:
+            (0, 3), (1, 5), (21, 13),
+        ]})
         return gpios
     def _rpi_v2_pins(self):
         # V2 pin header is 40 pins
         gpios = self._rpi_v1_pins()
-        if self.pin_mode == "BOARD":
-            gpios.update({"P%d" % i: i for i in [
-                29, 31, 32, 33, 35, 36, 37, 38, 40
-            ]})
-        else:
-            gpios.update({"GPIO%d" % i: i for i in [
-                5, 6, 12, 13, 19, 16, 26, 20, 21
-            ]})
+        gpios.update({"P%d" % i: i for i in [
+            29, 31, 32, 33, 35, 36, 37, 38, 40
+        ]})
+        gpios.update({"GPIO%d" % i[0]: i[1] for i in [
+            (5, 29), (6, 31), (12, 32), (13, 33), (19, 35),
+            (16, 36), (26, 37), (20, 38), (21, 40)
+        ]})
         return gpios
     def get_logger(self, child=None):
         if child is not None:
@@ -313,7 +294,7 @@ class HostPins(object):
             raise self.config_error(
                 "pin type %s not supported on mcu" % (pin_type,))
         pin_params['pin_number'] = self.get_pin_number(pin_params['pin'])
-        co = pcs[pin_type](pin_params, logger=self.get_logger(pin_params['pin']))
+        co = pcs[pin_type](pin_params)
         return co
 
 def load_config(config):
