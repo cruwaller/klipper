@@ -208,16 +208,11 @@ class ToolHead:
         # Velocity and acceleration control
         self.max_velocity = config.getfloat('max_velocity', above=0.)
         self.max_accel = config.getfloat('max_accel', above=0.)
-        self.max_accel_to_decel_ratio = config.getfloat(
+        decel_ratio = config.getfloat(
             'max_accel_to_decel_ratio', default=1.0, above=0.,
             maxval=1.)
-        max_accel_to_decel = config.getfloat(
-            'max_accel_to_decel', default=None
-            , above=0., maxval=self.max_accel)
-        if max_accel_to_decel is None:
-            max_accel_to_decel = self.max_accel * self.max_accel_to_decel_ratio
-        #self.max_accel_to_decel = min(max_accel_to_decel, self.max_accel)
-        self.requested_accel_to_decel = max_accel_to_decel
+        self.requested_accel_to_decel = config.getfloat(
+            'max_accel_to_decel', self.max_accel * decel_ratio, above=0.)
         self.max_accel_to_decel = self.requested_accel_to_decel
         self.square_corner_velocity = config.getfloat(
             'square_corner_velocity', 5., minval=0.)
@@ -296,10 +291,10 @@ class ToolHead:
                                desc=self.cmd_SET_VELOCITY_LIMIT_help)
         gcode.register_command('IDLE_POSITION', self.move_to_idle_pos,
                                desc="Move head to defined idle position")
+        # gcode.register_command('M204', self.cmd_M204)
         # Register TURN_OFF_HEATERS command
         gcode.register_command("TURN_OFF_HEATERS", self.cmd_TURN_OFF_HEATERS,
                                desc=self.cmd_TURN_OFF_HEATERS_help)
-        # gcode.register_command('M204', self.cmd_M204)
         self.logger.info("Kinematic created: %s" % self.kin.name)
         self.logger.info("max_accel: %s" % (self.max_accel,))
         self.logger.info("max_accel_to_decel: %s" % (self.max_accel_to_decel,))
@@ -500,37 +495,29 @@ class ToolHead:
                                       self.max_accel)
     cmd_SET_VELOCITY_LIMIT_help = "Set printer velocity limits. " \
                                   "Args: [VELOCITY=] [ACCEL=] [SQUARE_CORNER_VELOCITY=]" \
-                                  " [ACCEL_TO_DECEL=] [ACCEL_TO_DECEL_RATIO=]"
+                                  " [ACCEL_TO_DECEL=]"
     def cmd_SET_VELOCITY_LIMIT(self, params):
         print_time = self.get_last_move_time()
         gcode = self.printer.lookup_object('gcode')
-        max_velocity = gcode.get_float(
-            'VELOCITY', params, self.max_velocity,
-            above=0., maxval=self.config_max_velocity)
-        max_accel = gcode.get_float(
-            'ACCEL', params, self.max_accel,
-            above=0., maxval=self.config_max_accel)
+        max_velocity = gcode.get_float('VELOCITY', params, self.max_velocity,
+                                       above=0.)
+        max_accel = gcode.get_float('ACCEL', params, self.max_accel, above=0.)
         square_corner_velocity = gcode.get_float(
             'SQUARE_CORNER_VELOCITY', params, self.square_corner_velocity,
-            minval=0., maxval=self.config_square_corner_velocity)
-        max_accel_to_decel = gcode.get_float(
-            'ACCEL_TO_DECEL', params, None, above=0.)
-        self.max_accel_to_decel_ratio = gcode.get_float(
-            'ACCEL_TO_DECEL_RATIO', params,
-            self.max_accel_to_decel_ratio, above=0.)
-        if max_accel_to_decel is None:
-            self.requested_accel_to_decel = max_accel * self.max_accel_to_decel_ratio
-        self.max_velocity = max_velocity
-        self.max_accel = max_accel
-        self.square_corner_velocity = square_corner_velocity
+            minval=0.)
+        self.requested_accel_to_decel = gcode.get_float(
+            'ACCEL_TO_DECEL', params, self.requested_accel_to_decel, above=0.)
+        self.max_velocity = min(max_velocity, self.config_max_velocity)
+        self.max_accel = min(max_accel, self.config_max_accel)
+        self.square_corner_velocity = min(square_corner_velocity,
+                                          self.config_square_corner_velocity)
         self._calc_junction_deviation()
         msg = ("max_velocity: %.6f\n"
                "max_accel: %.6f\n"
                "max_accel_to_decel: %.6f\n"
-               "square_corner_velocity: %.6f\n"
-               "junction_deviation: %.6f" % (
-                   max_velocity, max_accel, self.max_accel_to_decel,
-                   square_corner_velocity, self.junction_deviation))
+               "square_corner_velocity: %.6f"% (
+                   max_velocity, max_accel, self.requested_accel_to_decel,
+                   square_corner_velocity))
         self.printer.set_rollover_info("toolhead", "toolhead: %s" % (msg,))
         gcode.respond_info(msg)
     def cmd_M204(self, params):
