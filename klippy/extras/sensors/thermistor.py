@@ -58,6 +58,8 @@ class Thermistor(SensorBase):
         inv_t = self.c1 + self.c2 * ln_r + self.c3 * ln_r**3
         return 1.0/inv_t + KELVIN_TO_CELCIUS
     def calc_adc(self, temp):
+        if temp <= KELVIN_TO_CELCIUS:
+            return 1.
         inv_t = 1. / (temp - KELVIN_TO_CELCIUS)
         if self.c3:
             # Solve for ln_r using Cardano's formula
