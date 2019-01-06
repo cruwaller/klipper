@@ -69,15 +69,15 @@ class GenericGcode(object):
     cmd_M851_help = "Set axis offset. Args [X<offset] [Y<offset>] [Z<offset>]"
     def cmd_M851(self, params):
         # Set X, Y, Z offsets
-        steppers = self.toolhead.get_kinematics().get_steppers()
+        rails = self.toolhead.get_kinematics().get_rails()
         offsets = { self.axis2pos[a]: self.gcode.get_float(a, params)
                     for a, p in self.axis2pos.items() if a in params }
         for p, offset in offsets.items():
-            steppers[p].set_homing_offset(offset)
+            rails[p].set_homing_offset(offset)
         self.gcode.respond("Current offsets: X=%.2f Y=%.2f Z=%.2f" %
-                          (steppers[0].homing_offset,
-                           steppers[1].homing_offset,
-                           steppers[2].homing_offset))
+                          (rails[0].homing_offset,
+                           rails[1].homing_offset,
+                           rails[2].homing_offset))
 
     def cmd_M900(self, params):
         # Pressure Advance configuration
