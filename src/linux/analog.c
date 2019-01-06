@@ -125,6 +125,11 @@ void gpio_out_write(struct gpio_out g, uint8_t val) {
     (void)val;
 }
 
+void
+gpio_out_reset(struct gpio_out g, uint8_t val)
+{
+}
+
 /********************************************************************************/
 
 struct gpio_in gpio_in_setup(uint8_t pin, int8_t pull_up) {
@@ -138,6 +143,11 @@ uint8_t gpio_in_read(struct gpio_in g) {
     //printf("gpio_in_read: pin %d value %u\n", g.fd, g.val);
 #endif
     return g.val; //(g.fd & 1);
+}
+
+void
+gpio_in_reset(struct gpio_in g, int8_t pull_up)
+{
 }
 
 /********************************************************************************/
