@@ -431,6 +431,8 @@ class MCU:
         self.logger = self._printer.logger.getChild("mcu.%s" % (self._name,))
         clocksync.setLogger(self.logger)
         self._printer.register_event_handler("klippy:shutdown", self._shutdown)
+        self._printer.register_event_handler("klippy:disconnect",
+                                             self._disconnect)
         # Serial port
         self._serialport = config.get('serial', '/dev/ttyS0')
         baud = config.getint('baud', 250000, minval=2400)
@@ -797,8 +799,6 @@ class MCU:
     def printer_state(self, state):
         if state == 'connect':
             self._connect()
-        elif state == 'disconnect':
-            self._disconnect()
     def __del__(self):
         self._disconnect()
 
