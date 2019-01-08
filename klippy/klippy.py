@@ -196,16 +196,20 @@ class Printer:
         except (self.config_error, pins.error) as e:
             self.logger.exception("Config error")
             self._set_state("%s%s" % (str(e), message_restart))
+            return
         except msgproto.error as e:
             self.logger.exception("Protocol error")
             self._set_state("%s%s" % (str(e), message_protocol_error))
+            return
         except mcu.error as e:
             self.logger.exception("MCU error during connect")
             self._set_state("%s%s" % (str(e), message_mcu_connect_error))
+            return
         except:
             self.logger.exception("Unhandled exception during connect")
             self._set_state("Internal error during connect.%s" % (
                 message_restart,))
+            return
         try:
             self._set_state(message_ready)
             for cb in self.event_handlers.get("klippy:ready", []):
