@@ -23,6 +23,8 @@ class TelegramModule(object):
     def __init__(self, config):
         global _TELEGRAM_BOT
         self.printer = printer = config.get_printer()
+        self.printer.register_event_handler("klippy:shutdown",
+                                            self._handle_shutdown)
         self.logger = printer.logger.getChild("telegram")
         # self.logger.setLevel(_TELEGRAM_LOG_LEVEL)
         self.gcode = printer.lookup_object('gcode')
@@ -92,11 +94,12 @@ class TelegramModule(object):
         self.logger.info("telegram bot stop")
 
     # ============= Private ==============
+    def _handle_shutdown(self):
+        self.state = 'shutdown'
+        self.__send_message("  Machine is stopped")
     def printer_state(self, state):
         self.state = state
-        if state == 'shutdown':
-            self.__send_message("  Machine is stopped")
-        elif state == 'ready':
+        if state == 'ready':
             self.__send_message("  Machine is running now")
     gcof = None
     gcostat = "Unknown"

@@ -11,6 +11,7 @@ class VirtualSD:
         self.logger = printer.logger.getChild('VirtualSD')
         self.simulate_print = False
         self.toolhead = None
+        printer.register_event_handler("klippy:shutdown", self.handle_shutdown)
         # sdcard state
         sd = config.get('path')
         self.sdcard_dirname = os.path.normpath(os.path.expanduser(sd))
@@ -42,7 +43,10 @@ class VirtualSD:
         except AttributeError:
             return None
     def printer_state(self, state):
-        if state == 'shutdown' and self.work_timer is not None:
+        if state == "ready":
+            self.toolhead = self.printer.lookup_object('toolhead')
+    def handle_shutdown(self):
+        if self.work_timer is not None:
             self.must_pause_work = True
             try:
                 readpos = max(self.file_position - 1024, 0)
@@ -55,8 +59,6 @@ class VirtualSD:
             self.logger.info("Virtual sdcard (%d): %s\nUpcoming (%d): %s",
                              readpos, repr(data[:readcount]),
                              self.file_position, repr(data[readcount:]))
-        elif state == "ready":
-            self.toolhead = self.printer.lookup_object('toolhead')
     def stats(self, eventtime):
         if self.work_timer is None:
             return False, ""

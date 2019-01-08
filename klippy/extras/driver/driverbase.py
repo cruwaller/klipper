@@ -58,9 +58,7 @@ class SpiDriver(DriverBase):
         self.transfer_cmd = None
     # ============ SETUP ===============
     def printer_state(self, state):
-        if state == 'shutdown':
-            pass
-        elif state == 'ready':
+        if state == 'ready':
             if not self.mcu.is_shutdown():
                 self._init_driver()
         elif state == 'connect':

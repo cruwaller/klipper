@@ -12,3 +12,5 @@ out
 lib/hub-ctrl/hub-ctrl
 .idea
 klippy/.version
+lib/bossac/bin
+lib/bossac/obj

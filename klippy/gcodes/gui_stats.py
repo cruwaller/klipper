@@ -33,6 +33,7 @@ class GuiStats:
         # register callbacks
         self.printer.register_event_handler('sd_status', self.sd_status)
         self.printer.register_event_handler('layer_changed', self.layer_changed)
+        self.printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
         # register control commands
         for cmd in ["GUISTATS_GET_ARGS",
                     "GUISTATS_GET_CONFIG", "GUISTATS_GET_STATUS",
@@ -88,6 +89,9 @@ class GuiStats:
         self.gcode.respond('GUISTATS_REPORT='+dump)
         return eventtime + .250
 
+    def _handle_shutdown(self):
+        self.curr_state = "H"
+
     def printer_state(self, state):
         if state == "connect":
             self.curr_state = "B"
@@ -101,7 +105,7 @@ class GuiStats:
                 self.auto_report_timer = None
         elif state == "disconnect":
             self.curr_state = "C"
-        elif state == "shutdown" or state == "halt":
+        elif state == "halt":
             self.curr_state = "H"
 
     def sd_status(self, status):
