@@ -55,6 +55,10 @@ static uint_fast8_t thermocouple_event(struct timer *timer) {
 void
 command_config_thermocouple(uint32_t *args)
 {
+#if (CONFIG_SIMULATOR == 1)
+    printf("Thermocouple Config: oid=%d spi_oid=%d type=%d\n",
+           args[0], args[1], args[2]);
+#endif
     uint8_t chip_type = args[2];
     if (chip_type > TS_CHIP_MAX6675 || !chip_type)
         shutdown("Invalid thermocouple chip type");
@@ -71,6 +75,10 @@ DECL_COMMAND(command_config_thermocouple,
 void
 command_query_thermocouple(uint32_t *args)
 {
+#if (CONFIG_SIMULATOR == 1)
+    printf("Thermocouple Query: oid=%d clock=%d ticks=%d min=%d max=%d\n",
+           args[0], args[1], args[2], args[3], args[4]);
+#endif
     struct thermocouple_spi *spi = oid_lookup(
         args[0], command_config_thermocouple);
 

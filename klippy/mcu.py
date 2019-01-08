@@ -3,7 +3,7 @@
 # Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import os, zlib, math, time
+import sys, os, zlib, logging, math, time
 import serialhdl, pins, chelper, clocksync
 
 class error(Exception):
@@ -370,19 +370,21 @@ class MCU_adc:
         self._pin = pin_params['pin']
         self._min_sample = self._max_sample = 0.
         self._sample_time = self._report_time = 0.
-        self._sample_count = 0
+        self._sample_count = self._range_check_count = 0
         self._report_clock = 0
         self._oid = self._callback = None
         self._mcu.register_config_callback(self._build_config)
         self._inv_max_adc = 0.
     def get_mcu(self):
         return self._mcu
-    def setup_minmax(self, sample_time, sample_count, minval=0., maxval=1.):
+    def setup_minmax(self, sample_time, sample_count,
+                     minval=0., maxval=1., range_check_count=0):
         self._sample_time = sample_time
         self._sample_count = sample_count
         self._min_sample = minval
         self._max_sample = maxval
-    def setup_callback(self, report_time, callback):
+        self._range_check_count = range_check_count
+    def setup_adc_callback(self, report_time, callback):
         self._report_time = report_time
         self._callback = callback
     def _build_config(self):
@@ -402,9 +404,10 @@ class MCU_adc:
             math.ceil(self._max_sample * max_adc))))
         self._mcu.add_config_cmd(
             "query_analog_in oid=%d clock=%d sample_ticks=%d sample_count=%d"
-            " rest_ticks=%d min_value=%d max_value=%d" % (
+            " rest_ticks=%d min_value=%d max_value=%d range_check_count=%d" % (
                 self._oid, clock, sample_ticks, self._sample_count,
-                self._report_clock, min_sample, max_sample), is_init=True)
+                self._report_clock, min_sample, max_sample,
+                self._range_check_count), is_init=True)
         self._mcu.register_msg(self._handle_analog_in_state, "analog_in_state"
                                , self._oid)
     def _handle_analog_in_state(self, params):
@@ -557,12 +560,14 @@ class MCU:
             self.logger.info("Sending MCU '%s' printer configuration...",
                          self._name)
             for c in self._config_cmds:
+                # self.logger.debug("CONFIG ==> %s" % c)
                 self._serial.send(c)
         elif config_crc != prev_crc:
             self._check_restart("CRC mismatch")
             raise error("MCU '%s' CRC does not match config" % (self._name,))
         # Transmit init messages
         for c in self._init_cmds:
+            # self.logger.debug("INIT ==> %s" % c)
             self._serial.send(c)
     def _send_get_config(self):
         get_config_cmd = self.lookup_command("get_config")

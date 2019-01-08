@@ -20,6 +20,7 @@ struct analog_in {
     uint32_t rest_time, sample_time, next_begin_time;
     uint16_t value, min_value, max_value;
     struct gpio_adc pin;
+    uint8_t invalid_count, range_check_count;
     uint8_t state, sample_count;
 };
 
@@ -46,6 +47,19 @@ analog_in_event(struct timer *timer)
     if (a->state < a->sample_count) {
         a->timer.waketime += a->sample_time;
         return SF_RESCHEDULE;
+    }
+    if (likely(a->value >= a->min_value && a->value <= a->max_value)) {
+        a->invalid_count = 0;
+    } else {
+        a->invalid_count++;
+        if (a->invalid_count >= a->range_check_count) {
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+            printf("ADC error %u (min: %u, max: %u, invalid_count: %u)\n",
+                   a->value, a->min_value, a->max_value, a->invalid_count);
+#endif
+            try_shutdown("ADC out of range");
+            a->invalid_count = 0;
+        }
     }
     sched_wake_task(&analog_wake);
     a->next_begin_time += a->rest_time;
@@ -78,13 +92,14 @@ command_query_analog_in(uint32_t *args)
     a->rest_time = args[4];
     a->min_value = args[5];
     a->max_value = args[6];
+    a->range_check_count = args[7];
     if (! a->sample_count)
         return;
     sched_add_timer(&a->timer);
 }
 DECL_COMMAND(command_query_analog_in,
              "query_analog_in oid=%c clock=%u sample_ticks=%u sample_count=%c"
-             " rest_ticks=%u min_value=%hu max_value=%hu");
+             " rest_ticks=%u min_value=%hu max_value=%hu range_check_count=%c");
 
 void
 analog_in_task(void)
@@ -101,19 +116,10 @@ analog_in_task(void)
             irq_enable();
             continue;
         }
-        uint16_t const value = a->value;
-        uint32_t const next_begin_time = a->next_begin_time;
+        uint16_t value = a->value;
+        uint32_t next_begin_time = a->next_begin_time;
         a->state++;
         irq_enable();
-
-        if (value < a->min_value || value > a->max_value) {
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-            printf("ADC error %u (min: %u, max: %u)\n",
-                   value, a->min_value, a->max_value);
-#endif
-            shutdown("ADC out of range");
-        }
-
         sendf("analog_in_state oid=%c next_clock=%u value=%hu"
               , oid, next_begin_time, value);
     }
@@ -123,9 +129,9 @@ DECL_TASK(analog_in_task);
 void
 analog_in_shutdown(void)
 {
-    uint8_t oid;
+    uint8_t i;
     struct analog_in *a;
-    foreach_oid(oid, a, command_config_analog_in) {
+    foreach_oid(i, a, command_config_analog_in) {
         gpio_adc_cancel_sample(a->pin);
         if (a->sample_count) {
             a->state = a->sample_count + 1;
@@ -135,7 +141,7 @@ analog_in_shutdown(void)
         }
 #if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
         printf("ADC shutdown! oid %u, sample_cnt %u\n",
-               oid, a->sample_count);
+               i, a->sample_count);
 #endif
     }
 }

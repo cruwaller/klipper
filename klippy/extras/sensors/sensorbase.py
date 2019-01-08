@@ -8,6 +8,7 @@ import extras.bus as bus
 SAMPLE_TIME_DEFAULT    = 0.001
 SAMPLE_COUNT_DEFAULT   = 8
 REPORT_TIME_DEFAULT    = 0.300
+RANGE_CHECK_COUNT      = 4
 
 VALID_SPI_SENSORS = {
     'MAX31855' : 1,
@@ -36,7 +37,7 @@ class SensorBase(object):
             spi = bus.MCU_SPI_from_config(
                 config, 1, pin_option="sensor_pin", default_speed=4000000)
             if config_cmd is not None:
-                spi.spi_send(config_cmd)
+                spi.spi_send(config_cmd, is_init=False)
             self.mcu = mcu = spi.get_mcu()
             # Reader chip configuration
             self.oid = oid = mcu.create_oid()
@@ -49,7 +50,7 @@ class SensorBase(object):
         else:
             ppins = self.printer.lookup_object('pins')
             self.mcu = ppins.setup_pin('adc', config.get('sensor_pin'))
-            self.mcu.setup_callback(
+            self.mcu.setup_adc_callback(
                 self.report_time, self._handle_adc_result)
         min_temp = config.getfloat('min_temp', minval=0., default=0.)
         max_temp = config.getfloat('max_temp', above=self.min_temp)
@@ -84,7 +85,8 @@ class SensorBase(object):
         if hasattr(self.mcu, "setup_minmax"):
             self.mcu.setup_minmax(
                 self.sample_time, self.sample_count,
-                minval=min(adc_range), maxval=max(adc_range))
+                minval=min(adc_range), maxval=max(adc_range),
+                range_check_count=RANGE_CHECK_COUNT)
     def get_min_max_temp(self):
         return self.min_temp, self.max_temp
     def setup_callback(self, cb):

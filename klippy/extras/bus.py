@@ -17,7 +17,7 @@ class MCU_SPI:
         shutdown_msg = "".join(["%02x" % (x,) for x in shutdown_seq])
         self.oid = self.mcu.create_oid()
         if pin is None:
-            self.config_msg = (
+            self.mcu.add_config_cmd(
                 "config_spi_without_cs oid=%d bus=%d mode=%d rate=%d"
                 " shutdown_msg=%s" % (
                     self.oid, bus, mode, speed, shutdown_msg))
@@ -25,7 +25,7 @@ class MCU_SPI:
             # Set all CS pins high before first config_spi
             self.mcu.add_config_cmd("set_digital_out pin=%s value=%u" % (
                 pin, 1 ^ inverted))
-            self.config_msg = (
+            self.mcu.add_config_cmd(
                 "config_spi oid=%d bus=%d pin=%s inverted=%u mode=%d rate=%d"
                 " shutdown_msg=%s" % (
                     self.oid, bus, pin, inverted, mode, speed, shutdown_msg))
@@ -39,17 +39,16 @@ class MCU_SPI:
     def get_command_queue(self):
         return self.cmd_queue
     def build_config(self):
-        self.mcu.add_config_cmd(self.config_msg)
         self.spi_send_cmd = self.mcu.lookup_command(
             "spi_send oid=%c data=%*s", cq=self.cmd_queue)
         self.spi_transfer_cmd = self.mcu.lookup_command(
             "spi_transfer oid=%c data=%*s", cq=self.cmd_queue)
-    def spi_send(self, data, minclock=0, reqclock=0):
+    def spi_send(self, data, minclock=0, reqclock=0, is_init=True):
         if self.spi_send_cmd is None:
             # Send setup message via mcu initialization
             data_msg = "".join(["%02x" % (x,) for x in data])
             self.mcu.add_config_cmd("spi_send oid=%d data=%s" % (
-                self.oid, data_msg), is_init=True)
+                self.oid, data_msg), is_init=is_init)
             return
         self.spi_send_cmd.send([self.oid, data],
                                minclock=minclock, reqclock=reqclock)
