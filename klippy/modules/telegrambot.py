@@ -23,8 +23,12 @@ class TelegramModule(object):
     def __init__(self, config):
         global _TELEGRAM_BOT
         self.printer = printer = config.get_printer()
-        self.printer.register_event_handler("klippy:shutdown",
-                                            self._handle_shutdown)
+        printer.register_event_handler("klippy:shutdown",
+                                       self._handle_shutdown)
+        printer.register_event_handler("klippy:disconnect",
+                                       self._handle_disconnect)
+        printer.register_event_handler("klippy:ready",
+                                       self._handle_ready)
         self.logger = printer.logger.getChild("telegram")
         # self.logger.setLevel(_TELEGRAM_LOG_LEVEL)
         self.gcode = printer.lookup_object('gcode')
@@ -97,10 +101,13 @@ class TelegramModule(object):
     def _handle_shutdown(self):
         self.state = 'shutdown'
         self.__send_message("  Machine is stopped")
+    def _handle_disconnect(self):
+        self.state = 'disconnect'
+    def _handle_ready(self):
+        self.state = 'ready'
+        self.__send_message("  Machine is ready")
     def printer_state(self, state):
         self.state = state
-        if state == 'ready':
-            self.__send_message("  Machine is running now")
     gcof = None
     gcostat = "Unknown"
     def sd_print_cb(self, status):

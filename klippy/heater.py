@@ -33,6 +33,8 @@ class PrinterHeater:
                                        self._handle_shutdown)
         printer.register_event_handler("klippy:disconnect",
                                        self._handle_shutdown)
+        printer.register_event_handler("klippy:ready",
+                                       self._handle_ready)
         self.gcode = gcode = printer.lookup_object('gcode')
         self.name = name = config.get_name()
         try:
@@ -154,14 +156,12 @@ class PrinterHeater:
     def _handle_shutdown(self):
         self.reactor.update_timer(self.protection_timer,
                                   self.reactor.NEVER)
-    def printer_state(self, state):
-        if state == 'ready':
-            if not self.sensor.get_mcu().is_shutdown():
-                # Start checking
-                self.protect_state = None
-                self.reactor.update_timer(self.protection_timer,
-                                          self.reactor.NOW)
-                self.logger.debug("Temperature protection timer started")
+    def _handle_ready(self):
+        if not self.sensor.get_mcu().is_shutdown():
+            # Start checking
+            self.protect_state = None
+            self.reactor.update_timer(self.protection_timer,
+                                      self.reactor.NOW)
     protect_state = None
     def _check_heating(self, eventtime):
         next_time = 15.0  # next 15sec from now for idle

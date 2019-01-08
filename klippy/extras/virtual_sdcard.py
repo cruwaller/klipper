@@ -12,6 +12,7 @@ class VirtualSD:
         self.simulate_print = False
         self.toolhead = None
         printer.register_event_handler("klippy:shutdown", self.handle_shutdown)
+        printer.register_event_handler("klippy:ready", self.handle_ready)
         # sdcard state
         sd = config.get('path')
         self.sdcard_dirname = os.path.normpath(os.path.expanduser(sd))
@@ -42,9 +43,8 @@ class VirtualSD:
             return self.current_file.name
         except AttributeError:
             return None
-    def printer_state(self, state):
-        if state == "ready":
-            self.toolhead = self.printer.lookup_object('toolhead')
+    def handle_ready(self):
+        self.toolhead = self.printer.lookup_object('toolhead')
     def handle_shutdown(self):
         if self.work_timer is not None:
             self.must_pause_work = True

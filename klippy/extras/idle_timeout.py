@@ -3,6 +3,7 @@
 # Copyright (C) 2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+import logging
 
 DEFAULT_IDLE_GCODE = """
 TURN_OFF_HEATERS
@@ -18,16 +19,15 @@ class IdleTimeout:
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
         self.toolhead = self.timeout_timer = None
+        self.printer.register_event_handler("klippy:ready", self.handle_ready)
         self.state = "Idle"
         self.idle_timeout = config.getfloat('timeout', 600., above=0.)
         self.idle_gcode = config.get('gcode', DEFAULT_IDLE_GCODE).split('\n')
-    def printer_state(self, state):
-        if state == 'ready':
-            self.toolhead = self.printer.lookup_object('toolhead')
-            self.timeout_timer = self.reactor.register_timer(
-                self.timeout_handler)
-            self.printer.register_event_handler("toolhead:sync_print_time",
-                                                self.handle_sync_print_time)
+    def handle_ready(self):
+        self.toolhead = self.printer.lookup_object('toolhead')
+        self.timeout_timer = self.reactor.register_timer(self.timeout_handler)
+        self.printer.register_event_handler("toolhead:sync_print_time",
+                                            self.handle_sync_print_time)
     def transition_idle_state(self, eventtime):
         self.state = "Printing"
         try:

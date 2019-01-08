@@ -8,9 +8,9 @@ import extras.bus as bus
 class DriverBase(object):
     __inv_step_dist = __step_dist = microsteps = None
     def __init__(self, config, has_step_dir_pins=True, has_endstop=False):
-        printer = config.get_printer()
+        self.printer = config.get_printer()
         self.name = name = config.get_name()[7:]
-        self.logger = printer.logger.getChild("driver.%s" % name)
+        self.logger = self.printer.logger.getChild("driver.%s" % name)
         self.microsteps = config.getint('microsteps', None)
         # Driver class can override existing stepper config steps
         self.step_dist = config.getfloat('step_distance', default=None, above=0.)
@@ -48,6 +48,7 @@ class DriverBase(object):
 class SpiDriver(DriverBase):
     def __init__(self, config, has_step_dir_pins=True, has_endstop=False):
         DriverBase.__init__(self, config, has_step_dir_pins, has_endstop)
+        self.printer.register_event_handler("klippy:ready", self.handle_ready)
         # ========== SPI config ==========
         spi = bus.MCU_SPI_from_config(
             config, 3, pin_option="ss_pin", default_speed=2000000)
@@ -57,10 +58,9 @@ class SpiDriver(DriverBase):
         self._transfer = (lambda *args: 0)
         self.transfer_cmd = None
     # ============ SETUP ===============
-    def printer_state(self, state):
-        if state == 'ready':
-            if not self.mcu.is_shutdown():
-                self._init_driver() # TODO: change this!
+    def handle_ready(self):
+        if not self.mcu.is_shutdown():
+            self._init_driver() # TODO: change this!
     def _build_config_cb(self):
         self.transfer_cmd = self.mcu.lookup_command(
             "spi_transfer oid=%c data=%*s")

@@ -8,23 +8,24 @@ import fan
 PIN_MIN_TIME = 0.100
 
 class PrinterHeaterFan:
+    logger = None
     def __init__(self, config):
         self.printer = config.get_printer()
+        self.printer.register_event_handler("klippy:ready", self.handle_ready)
         self.heater_name = config.get("heater")
         self.heater_temp = config.getfloat("heater_temp")
         self.heaters = []
         self.fan = fan.PrinterFan(config, default_shutdown_speed=1.)
         self.mcu = self.fan.mcu_fan.get_mcu()
         self.fan_speed = config.getfloat("fan_speed", 1., minval=0., maxval=1.)
-    def printer_state(self, state):
-        if state == 'ready':
-            self.heaters = [self.printer.lookup_object(n.strip())
-                            for n in self.heater_name.split(',')]
-            self.logger = self.fan.logger = self.printer.logger.getChild(
-                self.fan.name.replace(" ", "_"))
-            self.logger.debug("heater = {}".format(self.heater_name))
-            reactor = self.printer.get_reactor()
-            reactor.register_timer(self.callback, reactor.NOW)
+    def handle_ready(self):
+        self.heaters = [self.printer.lookup_object(n.strip())
+                        for n in self.heater_name.split(',')]
+        self.logger = self.fan.logger = self.printer.logger.getChild(
+            self.fan.name.replace(" ", "_"))
+        self.logger.debug("heater = {}".format(self.heater_name))
+        reactor = self.printer.get_reactor()
+        reactor.register_timer(self.callback, reactor.NOW)
     def callback(self, eventtime):
         power = 0.
         for heater in self.heaters:
