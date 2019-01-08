@@ -33,9 +33,11 @@ class GuiStats:
         # register callbacks
         printer.register_event_handler('sd_status', self.sd_status)
         printer.register_event_handler('layer_changed', self.layer_changed)
-        printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
-        printer.register_event_handler("klippy:disconnect", self._handle_disconnect)
         printer.register_event_handler("klippy:ready", self.handle_ready)
+        printer.register_event_handler("klippy:connect", self._handle_connect)
+        printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
+        printer.register_event_handler("klippy:halt", self._handle_shutdown)
+        printer.register_event_handler("klippy:disconnect", self._handle_disconnect)
         # register control commands
         for cmd in ["GUISTATS_GET_ARGS",
                     "GUISTATS_GET_CONFIG", "GUISTATS_GET_STATUS",
@@ -103,11 +105,8 @@ class GuiStats:
         elif not self.auto_report and self.auto_report_timer is not None:
             self.reactor.unregister_timer(self.auto_report_timer)
             self.auto_report_timer = None
-    def printer_state(self, state):
-        if state == "connect":
-            self.curr_state = "B"
-        elif state == "halt":
-            self.curr_state = "H"
+    def _handle_connect(self):
+        self.curr_state = "B"
 
     def sd_status(self, status):
         if status == 'pause':

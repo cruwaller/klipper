@@ -128,7 +128,6 @@ class PrinterStepper:
                 'endstop_correction_steps', 0.) * self.get_step_dist()
         self.logger.info("steps per mm {} , step in mm {}".
                          format(inv_step_dist, step_dist))
-        printer.add_object(self.name, self) # to get printer_state called
     def get_name(self, short=False):
         if short and self.name.startswith('stepper_'):
             return self.name[8:]

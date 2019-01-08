@@ -65,7 +65,6 @@ class Printer:
         self._extruders = {}
         gc = gcode.GCodeParser(self, input_fd)
         self.objects = collections.OrderedDict({'gcode': gc})
-        self.state_cb = [gc.printer_state]
     class sentinel:
         pass
     def get_start_arg(self, name, default=sentinel):
@@ -100,8 +99,11 @@ class Printer:
             if self.start_args.get('debuginput') is not None:
                 self.request_exit('error_exit')
             else:
-                for cb in self.state_cb:
-                    cb('halt')
+                for cb in self.event_handlers.get("klippy:halt", []):
+                    try:
+                        cb()
+                    except:
+                        logging.exception("Exception during halt handler")
     def add_object(self, name, obj):
         if obj in self.objects:
             raise self.config_error(
@@ -184,16 +186,13 @@ class Printer:
             self.try_load_module(config, section.get_name(), folder="modules_host")
         # Validate that there are no undefined parameters in the config file
         # pconfig.check_unused_options(config)
-        # Determine which printer objects have state callbacks
-        self.state_cb = [o.printer_state for o in self.objects.values()
-                         if hasattr(o, 'printer_state')]
     def _connect(self, eventtime):
         try:
             self._read_config()
-            for cb in self.state_cb:
+            for cb in self.event_handlers.get("klippy:connect", []):
                 if self.state_message is not message_startup:
                     return
-                cb('connect')
+                cb()
         except (self.config_error, pins.error) as e:
             self.logger.exception("Config error")
             self._set_state("%s%s" % (str(e), message_restart))
