@@ -50,7 +50,7 @@ else
 flash: $(OUT)klipper.bin lib/bossac/bin/bossac
 	@echo "  Flashing $^ to $(FLASH_DEVICE) via bossac (RS-232)"
 	$(Q)if [ -z $(FLASH_DEVICE) ]; then echo "Please specify FLASH_DEVICE"; exit 1; fi
-	$(Q)python src/sam3x8e/due_erase.py erase $(CONFIG_RPI_RESET_PIN) $(CONFIG_RPI_ERASE_PIN)
+	$(Q)python src/sam3/due_erase.py erase $(CONFIG_RPI_RESET_PIN) $(CONFIG_RPI_ERASE_PIN)
 	$(Q)lib/bossac/bin/bossac --usb-port=0 -p "$(FLASH_DEVICE)" -a -e -w $(OUT)klipper.bin -v -b
 	$(Q)lib/bossac/bin/bossac -p "$(FLASH_DEVICE)" -R > /dev/null 2>&1 || true
 endif
