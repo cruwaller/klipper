@@ -7,6 +7,7 @@ import math
 import logging
 
 HOMING_STEP_DELAY = 0.00000025
+HOMING_START_DELAY = 0.001
 ENDSTOP_SAMPLE_TIME = .000015
 ENDSTOP_SAMPLE_COUNT = 4
 
@@ -63,6 +64,7 @@ class Homing:
             mcu_endstop.home_start(
                 print_time, ENDSTOP_SAMPLE_TIME, ENDSTOP_SAMPLE_COUNT,
                 min_step_dist / speed)
+        self.toolhead.dwell(HOMING_START_DELAY, check_stall=False)
         # Issue move
         error = None
         try:
