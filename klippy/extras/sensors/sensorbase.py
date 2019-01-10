@@ -37,7 +37,7 @@ class SensorBase(object):
             spi = bus.MCU_SPI_from_config(
                 config, 1, pin_option="sensor_pin", default_speed=4000000)
             if config_cmd is not None:
-                spi.spi_send(config_cmd, is_init=False)
+                spi.spi_send(config_cmd, is_init=True)
             self.mcu = mcu = spi.get_mcu()
             # Reader chip configuration
             self.oid = oid = mcu.create_oid()
