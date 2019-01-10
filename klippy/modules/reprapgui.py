@@ -266,7 +266,7 @@ class rrHandler(tornado.web.RequestHandler):
             else:
                 try:
                     self.parent.printer_write(gcode)
-                except self.parent.gcode.error as e:
+                except self.parent.gcode.error:
                     respdata["err"] = 1
 
         # rr_download?name=XXX
@@ -389,12 +389,9 @@ class rrHandler(tornado.web.RequestHandler):
         elif "rr_fileinfo" in path:
             name = self.get_argument('name', default=None)
             #self.logger.debug("rr_fileinfo: {} , name: {}".format(self.request.uri, name))
-            is_printing = False
             if name is None:
-                sd = self.printer.lookup_object('virtual_sdcard') # TODO: Check this!
+                sd = self.printer.lookup_object('virtual_sdcard')
                 try:
-                    is_printing = (sd.current_file is not None and
-                                   sd.work_timer is not None)
                     # current file printed
                     if sd.current_file is not None:
                         path = sd.current_file.name
@@ -420,13 +417,7 @@ class rrHandler(tornado.web.RequestHandler):
                 respdata["firstLayerHeight"] = info["firstLayerHeight"]
                 respdata["layerHeight"]      = info["layerHeight"]
                 respdata["filament"]         = info["filament"]
-
-                #if is_printing is True:
-                #    # Current file information
-                #    toolhead = self.printer.lookup_object('toolhead')
-                #    respdata["printDuration"] = toolhead.get_print_time()
-                #    respdata["fileName"] = os.path.relpath(path, sd_path) # os.path.basename ?
-                respdata["printDuration"] = info['buildTime']
+                respdata["printDuration"]    = info['buildTime']
                 respdata["fileName"] = os.path.relpath(path, sd_path) # os.path.basename ?
 
         # rr_move?old=XXX&new=YYY
@@ -584,10 +575,10 @@ class RepRapGuiModule(object):
         # Create paths to virtual SD
         sd = printer.try_load_module(config, "virtual_sdcard")
         sdcard_dirname = sd.sdcard_dirname
-        create_dir(os.path.join(sdcard_dirname, "gcodes")) # TODO : remove gcodes folder!
+        create_dir(os.path.join(sdcard_dirname, "gcodes"))
         create_dir(os.path.join(sdcard_dirname, "macros"))
         create_dir(os.path.join(sdcard_dirname, "filaments"))
-        create_dir(os.path.join(sdcard_dirname, "sys")) # TODO: remove sys folder
+        create_dir(os.path.join(sdcard_dirname, "sys"))
         # ------------------------------
         # Start tornado webserver
         if _TORNADO_THREAD is None or not _TORNADO_THREAD.isAlive():
@@ -659,12 +650,12 @@ class RepRapGuiModule(object):
         tornado.ioloop.IOLoop.current().start()
 
     resp = ""
-    ok_rcvd = False
+    resp_rcvd = False
     store_resp = False
     def _write(self, cmd):
         # self.logger.debug("GCode send: %s" % (cmd,))
         with self.lock:
-            self.ok_rcvd = False
+            self.resp_rcvd = False
             self.resp = ""
             os.write(self.pipe_write, "%s\n" % cmd)
     def printer_write_no_update(self, cmd):
@@ -681,13 +672,13 @@ class RepRapGuiModule(object):
         self.logger.debug("GCode resps: %s" % (repr(resp),))
         if "Klipper state" in resp:
             self.append_gcode_resp(resp)
-        elif not self.ok_rcvd or "Error:" in resp or "Warning:" in resp:
+        elif not self.resp_rcvd or "Error:" in resp or "Warning:" in resp:
+            resp = resp.strip()
             if len(resp) > 2:
                 resp = resp.replace("ok", "")
-            resp = resp.strip()
             if self.store_resp or "Error:" in resp or "Warning:" in resp:
                 self.append_gcode_resp(resp)
-            self.ok_rcvd = True
+            self.resp_rcvd = True
         self.resp = ""
     def append_gcode_resp(self, msg):
         self.gcode_resps.append(msg)

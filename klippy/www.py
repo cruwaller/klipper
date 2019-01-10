@@ -238,20 +238,18 @@ class rrHandler(tornado.web.RequestHandler):
             # Clean up gcode command
             gcode = gcode.replace("0:/", "").replace("0%3A%2F", "")
 
-            if "M80" in gcode:
+            atx_on = self.parent.atx_on
+            atx_off = self.parent.atx_off
+            if atx_on is not None and "M80" in gcode:
                 # ATX ON
-                atx_on = self.parent.atx_on
-                if atx_on is not None:
-                    resp = os.popen(atx_on).read()
-                    self.parent.append_gcode_resp(resp)
-                    self.logger.info("ATX ON: %s" % resp)
-            elif "M81" in gcode:
+                resp = os.popen(atx_on).read()
+                self.parent.append_gcode_resp(resp)
+                self.logger.info("ATX ON: %s" % resp)
+            elif atx_off is not None and "M81" in gcode:
                 # ATX OFF
-                atx_off = self.parent.atx_off
-                if atx_off is not None:
-                    resp = os.popen(atx_off).read()
-                    self.parent.append_gcode_resp(resp)
-                    self.logger.info("ATX OFF: %s" % resp)
+                resp = os.popen(atx_off).read()
+                self.parent.append_gcode_resp(resp)
+                self.logger.info("ATX OFF: %s" % resp)
             elif "T-1" in gcode:
                 # ignore
                 pass
@@ -379,10 +377,8 @@ class rrHandler(tornado.web.RequestHandler):
         elif "rr_fileinfo" in path:
             name = self.get_argument('name', default=None)
             # self.logger.debug("rr_fileinfo: {} , name: {}".format(self.request.uri, name))
-            is_printing = False
             if name is None:
                 stat = self.parent.web_getsd()
-                is_printing = stat.get('printing', False)
                 path = stat.get('file', None)
             else:
                 path = self.get_argument('name').replace("0:/", "").replace("0%3A%2F", "")
@@ -548,7 +544,7 @@ class RepRapGuiModule(object):
         htmlroot = os.path.normpath(os.path.join(os.path.dirname(__file__)))
         htmlroot = os.path.join(htmlroot, "modules", "DuetWebControl")
         if not os.path.exists(os.path.join(htmlroot, 'reprap.htm')):
-            raise ConfigWrapper.error("DuetWebControl files not found '%s'" % htmlroot)
+            raise config.error("DuetWebControl files not found '%s'" % htmlroot)
         self.logger.debug("html root: %s" % (htmlroot,))
         self.user = config.get('user', default="")
         self.passwd = config.get('password', default="")
@@ -800,9 +796,9 @@ class RepRapGuiModule(object):
             return
         if not len(msg):
             return
+        msg = msg.strip()
         if len(msg) > 2:
             msg = msg.replace("ok", "")
-        msg = msg.strip()
         # self.logger.debug("GCode resp to GUI: '%s'" % (msg,))
         if "Error" in msg or "Warning" in msg or 'Klipper state' in msg:
             self.gcode_resps.append(msg)
