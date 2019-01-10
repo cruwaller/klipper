@@ -157,9 +157,6 @@ oid_lookup(uint8_t oid, void *type)
         if (oid >= oid_count)
             printf("[OID COUNT] oid_count %u >= oid %u\n",
                    oid_count, oid);
-        if (type != oids[oid].type)
-            printf("[OID TYPE] type %p != oids[oid].type %p\n",
-                   type, oids[oid].type);
 #endif
         shutdown("Invalid oid type");
     }
@@ -200,6 +197,9 @@ command_allocate_oids(uint32_t *args)
     uint8_t count = args[0];
     oids = alloc_chunk(sizeof(oids[0]) * count);
     oid_count = count;
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    printf("oids allocated! count: %u\n", count);
+#endif
 }
 DECL_COMMAND(command_allocate_oids, "allocate_oids count=%c");
 
