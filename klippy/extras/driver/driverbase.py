@@ -60,11 +60,7 @@ class SpiDriver(DriverBase):
     def printer_state(self, state):
         if state == 'ready':
             if not self.mcu.is_shutdown():
-                self._init_driver()
-        elif state == 'connect':
-            pass
-        elif state == 'disconnect':
-            pass
+                self._init_driver() # TODO: change this!
     def _build_config_cb(self):
         self.transfer_cmd = self.mcu.lookup_command(
             "spi_transfer oid=%c data=%*s")

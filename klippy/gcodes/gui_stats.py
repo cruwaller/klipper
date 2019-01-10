@@ -31,9 +31,10 @@ class GuiStats:
         self.first_layer_start = None
         self.firstLayerHeight = .0
         # register callbacks
-        self.printer.register_event_handler('sd_status', self.sd_status)
-        self.printer.register_event_handler('layer_changed', self.layer_changed)
-        self.printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
+        printer.register_event_handler('sd_status', self.sd_status)
+        printer.register_event_handler('layer_changed', self.layer_changed)
+        printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
+        printer.register_event_handler("klippy:disconnect", self._handle_disconnect)
         # register control commands
         for cmd in ["GUISTATS_GET_ARGS",
                     "GUISTATS_GET_CONFIG", "GUISTATS_GET_STATUS",
@@ -91,7 +92,8 @@ class GuiStats:
 
     def _handle_shutdown(self):
         self.curr_state = "H"
-
+    def _handle_disconnect(self):
+        self.curr_state = "C"
     def printer_state(self, state):
         if state == "connect":
             self.curr_state = "B"
@@ -103,8 +105,6 @@ class GuiStats:
             elif not self.auto_report and self.auto_report_timer is not None:
                 self.reactor.unregister_timer(self.auto_report_timer)
                 self.auto_report_timer = None
-        elif state == "disconnect":
-            self.curr_state = "C"
         elif state == "halt":
             self.curr_state = "H"
 

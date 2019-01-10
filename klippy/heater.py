@@ -31,6 +31,8 @@ class PrinterHeater:
         self.printer = printer = config.get_printer()
         printer.register_event_handler("klippy:shutdown",
                                        self._handle_shutdown)
+        printer.register_event_handler("klippy:disconnect",
+                                       self._handle_shutdown)
         self.gcode = gcode = printer.lookup_object('gcode')
         self.name = name = config.get_name()
         try:
@@ -160,11 +162,6 @@ class PrinterHeater:
                 self.reactor.update_timer(self.protection_timer,
                                           self.reactor.NOW)
                 self.logger.debug("Temperature protection timer started")
-        elif state == 'disconnect':
-            # stop checking
-            self.reactor.update_timer(self.protection_timer,
-                                      self.reactor.NEVER)
-            self.logger.debug("Temperature protection timer stopped")
     protect_state = None
     def _check_heating(self, eventtime):
         next_time = 15.0  # next 15sec from now for idle
