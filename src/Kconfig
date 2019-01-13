@@ -93,3 +93,10 @@ config INLINE_STEPPER_HACK
 config SIMULATOR
     bool
     default n
+
+config STEPPER_POLL_ENDSTOP
+    bool
+    default n
+config STEPPER_POLL_ENDSTOP
+    bool "Stepper is polling endstop pin instead of specific endstop event"
+    depends on LOW_LEVEL_OPTIONS && STEP_DELAY != 0

@@ -37,6 +37,9 @@ stop_steppers(struct end_stop *e)
         if (e->steppers[count])
             stepper_stop(e->steppers[count]);
     sched_wake_task(&endstop_wake);
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    printf("endstop_stop_steppers\n");
+#endif
 }
 
 static uint_fast8_t end_stop_oversample_event(struct timer *t);
@@ -86,6 +89,9 @@ end_stop_checkpin(struct end_stop *e)
 {
     uint8_t val = gpio_in_read(e->pin);
     uint8_t res = (val ? e->flags : ~e->flags) & ESF_PIN_HIGH;
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    printf("endstop_checkpin: val %u, res: %u\n", val, res);
+#endif
     if (res)
         // Match -> stop
         stop_steppers(e);
@@ -122,7 +128,7 @@ command_end_stop_set_stepper(uint32_t *args)
     if (pos >= e->stepper_count)
         shutdown("Set stepper past maximum stepper count");
     e->steppers[pos] = stepper_oid_lookup(args[2]);
-#if (STEPPER_POLL_END_STOP)
+#if (CONFIG_STEPPER_POLL_ENDSTOP)
     stepper_set_endstop(e, args[2]);
 #endif
 }
@@ -141,7 +147,7 @@ command_end_stop_home(uint32_t *args)
     if (!e->sample_count) {
         // Disable end stop checking
         e->flags = 0;
-#if (STEPPER_POLL_END_STOP)
+#if (CONFIG_STEPPER_POLL_ENDSTOP)
         uint8_t count = e->stepper_count;
         while (count--)
             if (e->steppers[count])
@@ -153,7 +159,7 @@ command_end_stop_home(uint32_t *args)
     e->time.func = end_stop_event;
     e->trigger_count = e->sample_count;
     e->flags = ESF_HOMING | (args[5] ? ESF_PIN_HIGH : 0);
-#if (STEPPER_POLL_END_STOP)
+#if (CONFIG_STEPPER_POLL_ENDSTOP)
     uint8_t count = e->stepper_count;
     while (count--)
         if (e->steppers[count])

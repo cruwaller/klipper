@@ -3,9 +3,6 @@
 
 #include <stdint.h> // uint8_t
 
-#define STEPPER_POLL_END_STOP 0
-
-
 uint_fast8_t stepper_event(struct timer *t);
 struct stepper *stepper_oid_lookup(uint8_t oid);
 void stepper_stop(struct stepper *s);
