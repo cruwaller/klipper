@@ -15,12 +15,9 @@ class CoreXYKinematics:
         self.rails = [ stepper.PrinterRail(config.getsection('stepper_x')),
                        stepper.PrinterRail(config.getsection('stepper_y')),
                        stepper.LookupMultiRail(config.getsection('stepper_z')) ]
-        self.combined_endstops = config.getboolean('combined_endstops', False)
-        if self.combined_endstops:
-            # endstops are always triggered both
-            #   => no cross connection necessary
-            pass
-        else:
+        # Check if cross connection if necessary
+        #    combined endstops are always triggering both
+        if not config.getboolean('combined_endstops', False):
             # x/y axes also need to stop on each others endstops
             #   => cross connect endstop and stepper x->y and y->x
             self.rails[0].add_to_endstop(self.rails[1].get_endstops()[0][0])

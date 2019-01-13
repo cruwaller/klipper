@@ -41,6 +41,18 @@ def lookup_enable_pin(ppins, pin):
     return enable
 
 
+def lookup_endstop_pin(ppins, pin):
+    if pin is None:
+        raise ppins.error("Endstop requires pin")
+    pin_params = ppins.lookup_pin(pin, can_invert=True,
+                                  share_type='shared_endstop')
+    endstop = pin_params.get('class')
+    if endstop is None:
+        mcu_endstop = pin_params['chip'].setup_pin('endstop', pin_params)
+        pin_params['class'] = endstop = mcu_endstop
+    return endstop
+
+
 def calculate_steps(config, microsteps=None):
     # Read config and send to driver
     step_dist = config.getfloat('step_distance', default=None, above=0.)
@@ -206,7 +218,8 @@ class PrinterRail:
         # Primary endstop and its position
         printer = config.get_printer()
         ppins = printer.lookup_object('pins')
-        mcu_endstop = ppins.setup_pin('endstop', config.get(endstop_pin))
+        # mcu_endstop = ppins.setup_pin('endstop', config.get(endstop_pin))
+        mcu_endstop = lookup_endstop_pin(ppins, config.get(endstop_pin))
         self.endstops = [(mcu_endstop, self.name)]
         stepper.add_to_endstop(mcu_endstop)
         if hasattr(mcu_endstop, "get_position_endstop"):
@@ -374,7 +387,8 @@ class PrinterRail:
         if endstop_pin is not None:
             printer = config.get_printer()
             ppins = printer.lookup_object('pins')
-            mcu_endstop = ppins.setup_pin('endstop', endstop_pin)
+            #mcu_endstop = ppins.setup_pin('endstop', endstop_pin)
+            mcu_endstop = lookup_endstop_pin(ppins, endstop_pin)
             name = stepper.get_name(short=True)
             self.endstops.append((mcu_endstop, name))
             query_endstops = printer.try_load_module(config, 'query_endstops')
