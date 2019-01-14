@@ -31,8 +31,8 @@ class GuiStats:
         self.first_layer_start = None
         self.firstLayerHeight = .0
         # register callbacks
-        printer.register_event_handler('sd_status', self.sd_status)
-        printer.register_event_handler('layer_changed', self.layer_changed)
+        printer.register_event_handler('vsd:status', self.sd_status)
+        printer.register_event_handler('gcode:layer_changed', self.layer_changed)
         printer.register_event_handler("klippy:ready", self.handle_ready)
         printer.register_event_handler("klippy:connect", self._handle_connect)
         printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
