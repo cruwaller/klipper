@@ -134,6 +134,7 @@ class GCodeParser:
             extrude_factor = 0.
         return {
             'speed_factor': self.speed_factor * 60.,
+            'speed': self.speed,
             'extrude_factor': extrude_factor,
             'busy': busy,
             'last_xpos': self.last_position[0],
