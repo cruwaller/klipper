@@ -157,7 +157,7 @@ class JpegHandler(tornado.web.RequestHandler):
         self.set_header('Expires', 'Mon, 3 Jan 2000 12:34:56 GMT')
         self.set_header('Pragma', 'no-cache')
 
-        img = self.camera.get_frame(skip=4)
+        img = self.camera.get_frame()
         self.write("--boundarydonotcross\n")
         self.write("Content-type: image/jpeg\r\n")
         self.write("Content-length: %s\r\n\r\n" % len(img))
@@ -197,6 +197,8 @@ class JpegStreamHandler(tornado.web.RequestHandler):
                 self.write(str(img))
                 served_image_timestamp = time.time()
                 yield tornado.gen.Task(self.flush)
+                if not self.interval:
+                    break
             else:
                 yield tornado.gen.Task(ioloop.add_timeout,
                                        ioloop.time() + self.interval)
