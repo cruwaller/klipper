@@ -155,8 +155,10 @@ oid_lookup(uint8_t oid, void *type)
     if (oid >= oid_count || type != oids[oid].type) {
 #if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
         if (oid >= oid_count)
-            printf("[OID COUNT] oid_count %u >= oid %u\n",
+            printf("[OID ERROR COUNT] oid_count %u >= oid %u\n",
                    oid_count, oid);
+        else
+            printf("[OID ERROR TYPE] oid type error!\n");
 #endif
         shutdown("Invalid oid type");
     }
