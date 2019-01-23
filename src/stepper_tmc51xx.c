@@ -154,6 +154,9 @@ ready:
 void
 command_stepper_tmc5x_config(uint32_t *args)
 {
+#if (CONFIG_SIMULATOR == 1)
+    printf("command_stepper_tmc5x_config()\n");
+#endif
     struct stepper_tmc5x *s = oid_alloc(args[0], command_stepper_tmc5x_config, sizeof(*s));
     s->timer.func = stepper_tmc5x_event;
     s->spi = spidev_oid_lookup(args[1]);
@@ -173,6 +176,9 @@ DECL_COMMAND(command_stepper_tmc5x_config,
 void
 command_stepper_tmc5x_queue(uint32_t *args)
 {
+#if (CONFIG_SIMULATOR == 1)
+    printf("command_stepper_tmc5x_queue()\n");
+#endif
     struct stepper_tmc5x *s = stepper_tmc5x_oid_lookup(args[0]);
 #if (CONFIG_SIMULATOR == 1)
     printf("stepper_tmc5x_queue: next_step_time %u + m->interval %u => count %d, amax %u, dmax %u, vmax %u, vstart %u\n",
@@ -234,6 +240,9 @@ DECL_COMMAND(command_stepper_tmc5x_queue,
 
 static void
 reset_step_clock(struct stepper_tmc5x *s, uint32_t waketime) {
+#if (CONFIG_SIMULATOR == 1)
+    printf("reset_step_clock()\n");
+#endif
     irq_disable();
     if (s->first)
         shutdown("Can't reset time when stepper active");
@@ -245,6 +254,9 @@ reset_step_clock(struct stepper_tmc5x *s, uint32_t waketime) {
 void
 command_stepper_tmc5x_reset_step_clock(uint32_t *args)
 {
+#if (CONFIG_SIMULATOR == 1)
+    printf("command_stepper_tmc5x_reset_step_clock()\n");
+#endif
     struct stepper_tmc5x *s = stepper_tmc5x_oid_lookup(args[0]);
     uint32_t waketime = args[1];
     reset_step_clock(s, waketime);
@@ -258,6 +270,9 @@ DECL_COMMAND(command_stepper_tmc5x_reset_step_clock,
 void
 command_stepper_tmc5x_get_position(uint32_t *args)
 {
+#if (CONFIG_SIMULATOR == 1)
+    printf("command_stepper_tmc5x_get_position()\n");
+#endif
     struct stepper_tmc5x *s = stepper_tmc5x_oid_lookup(args[0]);
     uint8_t msg[5] = { REG_XACTUAL, 0x00, 0x00, 0x00, 0x00 };
     spidev_transfer(s->spi, 1, 5, msg);
@@ -277,6 +292,9 @@ DECL_COMMAND(command_stepper_tmc5x_get_position,
 void
 command_stepper_tmc5x_set_position(uint32_t *args)
 {
+#if (CONFIG_SIMULATOR == 1)
+    printf("command_stepper_tmc5x_set_position()\n");
+#endif
     struct stepper_tmc5x *s = stepper_tmc5x_oid_lookup(args[0]);
     uint32_t position = cpu_to_be32(args[2]);
     // Set mode to 'hold'
@@ -324,6 +342,9 @@ stepper_tmc5x_homing_event(struct timer *t)
 void
 command_stepper_tmc5x_home(uint32_t *args)
 {
+#if (CONFIG_SIMULATOR == 1)
+    printf("command_stepper_tmc5x_home()\n");
+#endif
     struct stepper_tmc5x *s = stepper_tmc5x_oid_lookup(args[0]);
     s->homing_report_interval = args[2];
     if (args[1]) {
@@ -351,6 +372,11 @@ stepper_tmc5x_home_task(void)
 {
     if (!sched_check_wake(&home_wake))
         return;
+
+#if (CONFIG_SIMULATOR == 1)
+    printf("stepper_tmc5x_home_task()\n");
+#endif
+
     uint32_t value;
     uint8_t poll_cmd[5] = {REG_RAMP_STAT, 0x0, 0x0, 0x0, 0x0};
     uint8_t oid, ready = 0;
@@ -381,6 +407,9 @@ DECL_TASK(stepper_tmc5x_home_task);
 void
 stepper_tmc5x_stop(struct stepper_tmc5x *s)
 {
+#if (CONFIG_SIMULATOR == 1)
+        printf("stepper_tmc5x_stop()\n");
+#endif
     sched_del_timer(&s->timer);
     s->next_step_time = 0 - TIMER_ADVANCE;
     s->homing_report_interval = 0;
@@ -412,5 +441,8 @@ DECL_SHUTDOWN(stepper_tmc5x_shutdown);
 struct stepper_tmc5x *
 stepper_tmc5x_oid_lookup(uint8_t oid)
 {
+#if (CONFIG_SIMULATOR == 1)
+    printf("stepper_tmc5x_oid_lookup(oid=%u)\n", oid);
+#endif
     return oid_lookup(oid, command_stepper_tmc5x_config);
 }
