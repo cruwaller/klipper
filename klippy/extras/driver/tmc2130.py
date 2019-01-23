@@ -8,6 +8,7 @@ import types, struct
 import binascii
 from driverbase import SpiDriver
 from mcu import error
+import pins
 
 #***************************************************
 # Registers
@@ -53,6 +54,35 @@ MIN_CURRENT = 100.
 MAX_CURRENT = 1400.
 DEFAULT_SENSE_R = 0.11
 
+# Endstop wrapper
+class VirtualEndstop:
+    def __init__(self, tmc):
+        self.logger = tmc.logger
+        self.tmc = tmc
+        if tmc.endstop_pin is None:
+            raise pins.error("endstop_pin is not defined")
+        ppins = tmc.printer.lookup_object('pins')
+        self.mcu_endstop = mcu_endstop = ppins.setup_pin(
+            'endstop', tmc.endstop_pin)
+        if mcu_endstop.get_mcu() is not tmc.get_mcu():
+            raise pins.error("virtual endstop must be on same mcu")
+        # Wrappers to MCU_endstop class
+        self.get_mcu = mcu_endstop.get_mcu
+        self.add_stepper = mcu_endstop.add_stepper
+        self.get_steppers = mcu_endstop.get_steppers
+        self.home_start = mcu_endstop.home_start
+        self.home_wait = mcu_endstop.home_wait
+        self.query_endstop = mcu_endstop.query_endstop
+        self.query_endstop_wait = mcu_endstop.query_endstop_wait
+        self.TimeoutError = mcu_endstop.TimeoutError
+    def home_prepare(self, *args):
+        self.tmc.init_homing(True)
+        self.mcu_endstop.home_prepare()
+    def home_finalize(self):
+        self.tmc.init_homing(False)
+        self.mcu_endstop.home_finalize()
+
+
 class TMC2130(SpiDriver):
     # Error flags
     isReset      = False
@@ -70,6 +100,11 @@ class TMC2130(SpiDriver):
         self._direction = 0
         SpiDriver.__init__(self, config)
         printer = config.get_printer()
+        # Prepare virtual endstop support
+        ppins = printer.lookup_object('pins')
+        ppins.register_chip(self.name, self)
+        self.endstop_pin = config.get('endstop_pin', default=None)
+        # Read configs
         self.current = config.getfloat('current', 1000.0,
                                        above=MIN_CURRENT, maxval=MAX_CURRENT)
         self.sense_r = config.getfloat('sense_R', DEFAULT_SENSE_R, above=0.09)
@@ -114,6 +149,12 @@ class TMC2130(SpiDriver):
                 cmd, "DRIVER", self.name,
                 getattr(self, 'cmd_' + cmd),
                 desc=getattr(self, 'cmd_' + cmd + '_help', None))
+    def setup_pin(self, pin_type, pin_params):
+        if pin_type != 'endstop' or pin_params['pin'] != 'virtual_endstop':
+            raise pins.error("virtual endstop is only supported")
+        if self.endstop_pin is None:
+            raise pins.error("tmc driver endstop_pin is not defined")
+        return VirtualEndstop(self)
     cmd_DRV_STATUS_help = "args: DRIVER=driver_name"
     def cmd_DRV_STATUS(self, params):
         self.gcode.respond(self.status())

@@ -134,7 +134,7 @@ class TMC51xx(SpiDriver):
             self.enable = ppins.setup_pin('digital_out', enable_pin)
             self.enable.setup_max_duration(0.)
         # register driver as a virtual endstop
-        ppins.register_chip('driver', self)
+        ppins.register_chip(self.name, self)
         # Driver configuration
         self._invert_dir = config.getboolean('direction_inverted', False)
         self._endstop_logic = config.getboolean('endstop_inverted', False)
@@ -189,8 +189,8 @@ class TMC51xx(SpiDriver):
                 getattr(self, 'cmd_' + cmd),
                 desc=getattr(self, 'cmd_' + cmd + '_help', None))
     def setup_pin(self, pin_type, pin_params):
-        if pin_type != 'endstop' or pin_params['pin'] != 'virtual':
-            raise pins.error("Probe virtual endstop only useful as endstop pin")
+        if pin_type != 'endstop' or pin_params['pin'] != 'virtual_endstop':
+            raise pins.error("virtual endstop is only supported")
         return self
     # === GCode handlers ===
     cmd_DRV_STATUS_help = "args: DRIVER=driver_name"
