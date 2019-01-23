@@ -30,7 +30,7 @@ class Accelerometer:
     # Endstop support
     def setup_pin(self, pin_type, pin_params):
         if pin_type != 'endstop' and pin_params['pin'] != 'virtual_endstop':
-            raise self.ppins.error("virtual endstop only useful as endstop")
+            raise self.ppins.error("virtual endstop is only supported")
         self.prepare_pin(pin_params)
         return VirtualEndstop(self)
     def status(self):
