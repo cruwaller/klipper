@@ -10,13 +10,23 @@ from rtd import MAX31865
 
 Sensors = {
     "EPCOS 100K B57560G104F": {
-        'class': Thermistor, 't1': 25., 'r1': 100000.,
-        't2': 150., 'r2': 1641.9, 't3': 250., 'r3': 226.15},
+        'class': Thermistor,
+        't1': 25., 'r1': 100000., 't2': 150., 'r2': 1641.9,
+        't3': 250., 'r3': 226.15 },
     "ATC Semitec 104GT-2": {
-        'class': Thermistor, 't1': 20., 'r1': 126800.,
-        't2': 150., 'r2': 1360., 't3': 300., 'r3': 80.65},
+        'class': Thermistor,
+        't1': 20., 'r1': 126800., 't2': 150., 'r2': 1360.,
+        't3': 300., 'r3': 80.65 },
     "NTC 100K beta 3950": {
-        'class': Thermistor, 't1': 25., 'r1': 100000., 'beta': 3950.},
+        'class': Thermistor,
+        't1': 25., 'r1': 100000., 'beta': 3950.},
+    "Honeywell 100K 135-104LAG-J01": {
+        'class': Thermistor,
+        't1': 25., 'r1': 100000., 'beta': 3974.},
+    "NTC 100K MGB18-104F39050L32": {
+        'class': Thermistor,
+        't1': 25., 'r1': 100000., 'beta': 4100.},
+
     "CustomThermistor": {
         'class': CustomThermistor},
 
