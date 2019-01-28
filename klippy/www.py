@@ -550,9 +550,7 @@ class RepRapGuiModule(object):
         self.passwd = config.get('password', default="")
         # Camera information
         self.feed_interval = config.getfloat('feedrate', minval=.0, default=.1)
-        self.camera = None
-        if config.has_section('videocam'):
-            self.camera = videocam.VideoCamera(config.getsection('videocam'))
+        self.camera = videocam.load_config(config)
         # - M80 / M81 ATX commands
         self.atx_on = config.get('atx_cmd_on', default=None)
         self.atx_off = config.get('atx_cmd_off', default=None)
