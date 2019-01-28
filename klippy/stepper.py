@@ -80,7 +80,6 @@ def calculate_steps(config, microsteps=None):
 # Code storing the definitions for a stepper motor
 class PrinterStepper:
     driver = mcu_stepper = None
-    step_driver = None
     max_velocity = max_accel = 0
     def __init__(self, config, logger=None):
         printer = config.get_printer()
@@ -209,7 +208,6 @@ class PrinterRail:
         # Primary stepper
         stepper = PrinterStepper(config)
         self.logger = stepper.logger
-        self.step_driver = stepper.step_driver
         self.steppers = [stepper]
         self.name = stepper.get_name(short=True)
         self.step_itersolve = stepper.step_itersolve
@@ -217,9 +215,13 @@ class PrinterRail:
         self.is_motor_enabled = stepper.is_motor_enabled
         # Primary endstop and its position
         printer = config.get_printer()
-        ppins = printer.lookup_object('pins')
-        # mcu_endstop = ppins.setup_pin('endstop', config.get(endstop_pin))
-        mcu_endstop = lookup_endstop_pin(ppins, config.get(endstop_pin))
+        driver = stepper.get_driver()
+        if driver and driver.has_endstop:
+            mcu_endstop = driver
+        else:
+            ppins = printer.lookup_object('pins')
+            # mcu_endstop = ppins.setup_pin('endstop', config.get(endstop_pin))
+            mcu_endstop = lookup_endstop_pin(ppins, config.get(endstop_pin))
         self.endstops = [(mcu_endstop, self.name)]
         stepper.add_to_endstop(mcu_endstop)
         if hasattr(mcu_endstop, "get_position_endstop"):
