@@ -4,6 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import extras.bus as bus
+import math
 
 ######################################################################
 # Field helpers
@@ -15,7 +16,7 @@ def ffs(mask):
 
 # Decode two's complement signed integer
 def decode_signed_int(val, bits):
-    if ((val >> (bits - 1)) & 1):
+    if (val >> (bits - 1)) & 1:
         return val - (1 << bits)
     return val
 
@@ -69,6 +70,49 @@ class FieldHelper:
             if sval and sval != "0":
                 fields.append(" %s=%s" % (field_name, sval))
         return "%-11s %08x%s" % (reg_name + ":", value, "".join(fields))
+
+######################################################################
+# Config reading helpers
+######################################################################
+
+def current_bits(current, sense_resistor, vsense_on):
+    sense_resistor += 0.020
+    vsense = 0.32
+    if vsense_on:
+        vsense = 0.18
+    cs = int(32. * current * sense_resistor * math.sqrt(2.) / vsense - 1. + .5)
+    return max(0, min(31, cs))
+
+def get_config_current(config):
+    vsense = False
+    run_current = config.getfloat('run_current', above=0., maxval=2.)
+    hold_current = config.getfloat('hold_current', run_current,
+                                   above=0., maxval=2.)
+    sense_resistor = config.getfloat('sense_resistor', 0.110, above=0.)
+    irun = current_bits(run_current, sense_resistor, vsense)
+    ihold = current_bits(hold_current, sense_resistor, vsense)
+    if irun < 16 and ihold < 16:
+        vsense = True
+        irun = current_bits(run_current, sense_resistor, vsense)
+        ihold = current_bits(hold_current, sense_resistor, vsense)
+    return vsense, irun, ihold
+
+def get_config_microsteps(config):
+    steps = {'256': 0, '128': 1, '64': 2, '32': 3, '16': 4,
+             '8': 5, '4': 6, '2': 7, '1': 8}
+    return config.getchoice('microsteps', steps)
+
+def get_config_stealthchop(config, tmc_freq):
+    mres = get_config_microsteps(config)
+    velocity = config.getfloat('stealthchop_threshold', 0., minval=0.)
+    if not velocity:
+        return mres, False, 0
+    stepper_name = config.get_name().split()[1]
+    stepper_config = config.getsection(stepper_name)
+    step_dist = stepper_config.getfloat('step_distance')
+    step_dist_256 = step_dist / (1 << mres)
+    threshold = int(tmc_freq * step_dist_256 / velocity + .5)
+    return mres, True, max(0, min(0xfffff, threshold))
 
 ######################################################################
 # Driver base handlers
