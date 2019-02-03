@@ -5,6 +5,36 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import extras.bus as bus
 
+######################################################################
+# Field helpers
+######################################################################
+
+# Return the position of the first bit set in a mask
+def ffs(mask):
+    return (mask & -mask).bit_length() - 1
+
+# Provide a string description of a register
+def pretty_format(all_fields, reg_name, value):
+    fields = [ " %s=%d" % (field_name, (value & mask) >> ffs(mask))
+               for field_name, mask in sorted(all_fields.get(
+                   reg_name, {}).items(), key = lambda f: f[1])
+               if value & mask ]
+    return "%-15s %08x%s" % (reg_name + ":", value, "".join(fields))
+
+# Returns value of the register field
+def get_field(all_fields, reg_name, field_name, reg_value):
+    mask = all_fields.get(reg_name, {})[field_name]
+    return (reg_value & mask) >> ffs(mask)
+
+# Returns register value with field bits filled with supplied field value
+def set_field(all_fields, reg_name, field_name, reg_value, field_value):
+    mask = all_fields.get(reg_name, {})[field_name]
+    return (reg_value & ~mask) | ((field_value << ffs(mask)) & mask)
+
+######################################################################
+# Driver base handlers
+######################################################################
+
 class DriverBase(object):
     __inv_step_dist = __step_dist = microsteps = None
     def __init__(self, config, has_step_dir_pins=True, has_endstop=False):
