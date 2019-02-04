@@ -34,16 +34,14 @@ class SensorBase(object):
         self._report_clock = 0
         if chip_type in VALID_SPI_SENSORS:
             # SPI configuration
-            spi = bus.MCU_SPI_from_config(
+            self.chip_type = VALID_SPI_SENSORS[chip_type]
+            self.spi = spi = bus.MCU_SPI_from_config(
                 config, 1, pin_option="sensor_pin", default_speed=4000000)
             if config_cmd is not None:
                 spi.spi_send(config_cmd, is_init=True)
             self.mcu = mcu = spi.get_mcu()
             # Reader chip configuration
             self.oid = oid = mcu.create_oid()
-            mcu.add_config_cmd(
-                "config_thermocouple oid=%u spi_oid=%u chip_type=%u" % (
-                    oid, spi.get_oid(), VALID_SPI_SENSORS[chip_type]))
             mcu.register_msg(self._handle_thermocouple_result,
                 "thermocouple_result", oid)
             mcu.register_config_callback(self._build_config_cb)
@@ -95,6 +93,9 @@ class SensorBase(object):
         return self.report_time
     # ============ INTERNAL ===============
     def _build_config_cb(self):
+        self.mcu.add_config_cmd(
+            "config_thermocouple oid=%u spi_oid=%u chip_type=%u" % (
+                self.oid, self.spi.get_oid(), self.chip_type))
         clock = self.mcu.get_query_slot(self.oid)
         self._report_clock = self.mcu.seconds_to_clock(self.report_time)
         self.mcu.add_config_cmd(
