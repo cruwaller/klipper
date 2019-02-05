@@ -56,7 +56,7 @@ class GCodeParser:
         # G-Code state
         self.need_ack = False
         self.toolhead = self.extruder = None
-        self.speed = 25.0
+        self.speed = 25. * 60.
         self.axis2pos = {'X': 0, 'Y': 1, 'Z': 2, 'E': 3}
         self.simulate_print = False
         self.auto_temp_report = True
