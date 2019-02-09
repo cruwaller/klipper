@@ -4,7 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging, collections
-import driverbase
+import driverbase, field_helpers
 
 TMC_FREQUENCY=12000000.
 
@@ -175,8 +175,8 @@ FieldFormatters = {
     "uv_cp":            (lambda v: "1(Undervoltage!)" if v else ""),
     "SEL_A":            (lambda v: "%d(%s)" % (v, ["TMC222x", "TMC220x"][v])),
     "VERSION":          (lambda v: "%#x" % v),
-    "CUR_A":            (lambda v: str(driverbase.decode_signed_int(v, 9))),
-    "CUR_B":            (lambda v: str(driverbase.decode_signed_int(v, 9))),
+    "CUR_A":            (lambda v: str(field_helpers.decode_signed_int(v, 9))),
+    "CUR_B":            (lambda v: str(field_helpers.decode_signed_int(v, 9))),
     "MRES":             (lambda v: "%d(%dusteps)" % (v, 0x100 >> v)),
     "otpw":             (lambda v: "1(OvertempWarning!)" if v else ""),
     "ot":               (lambda v: "1(OvertempError!)" if v else ""),
@@ -186,7 +186,7 @@ FieldFormatters = {
     "s2vsb":            (lambda v: "1(LowSideShort_B!)" if v else ""),
     "ola":              (lambda v: "1(OpenLoad_A!)" if v else ""),
     "olb":              (lambda v: "1(OpenLoad_B!)" if v else ""),
-    "PWM_SCALE_AUTO":   (lambda v: str(driverbase.decode_signed_int(v, 9)))
+    "PWM_SCALE_AUTO":   (lambda v: str(field_helpers.decode_signed_int(v, 9)))
 }
 
 
@@ -260,7 +260,7 @@ class TMC2208(driverbase.DriverBase):
     def __init__(self, config):
         driverbase.DriverBase.__init__(self, config)
         self.printer = config.get_printer()
-        self.name = config.get_name().split()[1]
+        self.name = config.get_name().split()[-1]
         self.printer.register_event_handler("klippy:connect",
                                             self.handle_connect)
         # pin setup
@@ -289,15 +289,15 @@ class TMC2208(driverbase.DriverBase):
         # Setup basic register values
         self.ifcnt = None
         self.regs = collections.OrderedDict()
-        self.fields = driverbase.FieldHelper(Fields, FieldFormatters, self.regs)
+        self.fields = field_helpers.FieldHelper(Fields, FieldFormatters, self.regs)
         self.fields.set_field("pdn_disable", True)
         self.fields.set_field("mstep_reg_select", True)
         self.fields.set_field("multistep_filt", True)
-        vsense, irun, ihold = driverbase.get_config_current(config)
+        vsense, irun, ihold = field_helpers.get_config_current(config)
         self.fields.set_field("vsense", vsense)
         self.fields.set_field("IHOLD", ihold)
         self.fields.set_field("IRUN", irun)
-        mres, en, thresh = driverbase.get_config_stealthchop(config, TMC_FREQUENCY)
+        mres, en, thresh = field_helpers.get_config_stealthchop(config, TMC_FREQUENCY)
         self.fields.set_field("MRES", mres)
         self.fields.set_field("en_spreadCycle", not en)
         self.fields.set_field("TPWMTHRS", thresh)

@@ -16,13 +16,20 @@ class MotorFan:
             self.printer.logger.getChild(
                 self.fan.name.replace(" ", "_"))
         self.printer.register_event_handler('motor_state', self.event_handler)
+        self.printer.register_event_handler(
+            'toolhead:motor_off', self.event_handler_motor_off)
+        self.printer.register_event_handler(
+            'toolhead:motor_on', self.event_handler_motor_on)
+    def event_handler_motor_off(self, last_move_time):
+        self.event_handler('off')
+    def event_handler_motor_on(self, last_move_time):
+        self.event_handler('on')
     def event_handler(self, state):
         if state == 'off':
             self._power = 0.
         else:
             self._power = self.fan_speed
-        self.reactor.update_timer(self.set_timer,
-                                  self.reactor.NOW)
+        self.reactor.update_timer(self.set_timer, self.reactor.NOW)
     def reactor_callback(self, eventtime):
         print_time = self.mcu.estimated_print_time(eventtime) + PIN_MIN_TIME
         self.fan.set_speed(print_time, self._power)

@@ -430,9 +430,9 @@ class ToolHead:
         self.kin.motor_off(last_move_time)
         for key, ext in self.printer.extruder_get().items():
             ext.motor_off(last_move_time)
+        self.printer.send_event("toolhead:motor_off", last_move_time)
         self.dwell(STALL_TIME)
         self.logger.debug('; Max time of %f', last_move_time)
-        self.printer.send_event('motor_state', 'off')
     def wait_moves(self):
         self._flush_lookahead()
         if self.mcu.is_fileoutput():
