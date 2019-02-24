@@ -92,6 +92,13 @@ class VirtualSD:
         return float(self.file_position) / self.file_size
     def is_active(self):
         return self.work_timer is not None
+    def do_pause(self, park_pos=1):
+        if self.work_timer is not None:
+            self.must_pause_work = True
+            self.printer.send_event('vsd:status', 'pause')
+            # Move head to parking position after pause
+            if park_pos:
+                self.printer.lookup_object('toolhead').move_to_idle_pos()
     # G-Code commands
     def cmd_error(self, params):
         raise self.gcode.error("SD write not supported")
@@ -164,14 +171,9 @@ class VirtualSD:
             self.work_handler, self.reactor.NOW)
     def cmd_M25(self, params):
         # Pause SD print
-        if self.work_timer is not None:
-            self.must_pause_work = True
-            self.printer.send_event('vsd:status', 'pause')
-        # Move head to parking position before pause
         pause = self.gcode.get_int(
             'P', params, default=1, minval=0, maxval=1)
-        if pause:
-            self.printer.lookup_object('toolhead').move_to_idle_pos()
+        self.do_pause(pause)
     def cmd_M26(self, params):
         # Set SD position
         if self.work_timer is not None:
