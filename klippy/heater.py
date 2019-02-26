@@ -35,6 +35,7 @@ class PrinterHeater:
                                        self._handle_shutdown)
         printer.register_event_handler("klippy:ready",
                                        self._handle_ready)
+        printer.register_event_handler("gcode:request_restart", self._turn_off)
         self.gcode = gcode = printer.lookup_object('gcode')
         self.name = name = config.get_name()
         try:
@@ -162,6 +163,8 @@ class PrinterHeater:
             self.protect_state = None
             self.reactor.update_timer(self.protection_timer,
                                       self.reactor.NOW)
+    def _turn_off(self, print_time):
+        self.set_temp(print_time, 0)
     protect_state = None
     def _check_heating(self, eventtime):
         next_time = 15.0  # next 15sec from now for idle
@@ -478,6 +481,60 @@ def load_config(config):
     raise config.get_printer().config_error(
         "Naming without index (bed or [0-9]+) is not allowed")
 
+'''
+class PrinterHeaters:
+    def __init__(self, config):
+        self.printer = config.get_printer()
+        self.sensor_factories = {}
+        self.heaters = {}
+        self.gcode_id_to_sensor = {}
+        self.printer.register_event_handler("gcode:request_restart",
+                                            self.turn_off_all_heaters)
+        # Register TURN_OFF_HEATERS command
+        gcode = self.printer.lookup_object('gcode')
+        gcode.register_command("TURN_OFF_HEATERS", self.cmd_TURN_OFF_HEATERS,
+                               desc=self.cmd_TURN_OFF_HEATERS_help)
+    def add_sensor_factory(self, sensor_type, sensor_factory):
+        self.sensor_factories[sensor_type] = sensor_factory
+    def setup_heater(self, config, gcode_id=None):
+        heater_name = config.get_name().split()[-1]
+        if heater_name == 'extruder':
+            heater_name = 'extruder0'
+        if heater_name in self.heaters:
+            raise config.error("Heater %s already registered" % (heater_name,))
+        # Setup sensor
+        sensor = self.setup_sensor(config)
+        # Create heater
+        self.heaters[heater_name] = heater = Heater(config, sensor)
+        if gcode_id is not None:
+            self.gcode_id_to_sensor[gcode_id] = heater
+        return heater
+    def lookup_heater(self, heater_name):
+        if heater_name == 'extruder':
+            heater_name = 'extruder0'
+        if heater_name not in self.heaters:
+            raise self.printer.config_error(
+                "Unknown heater '%s'" % (heater_name,))
+        return self.heaters[heater_name]
+    def setup_sensor(self, config):
+        self.printer.try_load_module(config, "thermistor")
+        self.printer.try_load_module(config, "adc_temperature")
+        self.printer.try_load_module(config, "spi_temperature")
+        sensor_type = config.get('sensor_type')
+        if sensor_type not in self.sensor_factories:
+            raise self.printer.config_error(
+                "Unknown temperature sensor '%s'" % (sensor_type,))
+        return self.sensor_factories[sensor_type](config)
+    def get_gcode_sensors(self):
+        return self.gcode_id_to_sensor.items()
+    def turn_off_all_heaters(self, print_time):
+        for heater in self.heaters.values():
+            heater.set_temp(print_time, 0.)
+    cmd_TURN_OFF_HEATERS_help = "Turn off all heaters"
+    def cmd_TURN_OFF_HEATERS(self, params):
+        print_time = self.printer.lookup_object('toolhead').get_last_move_time()
+        self.turn_off_all_heaters(print_time)
+'''
 
 def load_config_prefix(config):
     return PrinterHeater(config)

@@ -11,9 +11,11 @@ class PrinterFan:
         self.name = config.get_name()
         self.last_fan_value = 0.
         self.last_fan_time = 0.
+        printer = config.get_printer()
+        printer.register_event_handler("gcode:request_restart",
+                                       self.handle_request_restart)
         self.max_power = config.getfloat('max_power', 1., above=0., maxval=1.)
         self.kick_start_time = config.getfloat('kick_start_time', 0.1, minval=0.)
-        printer = config.get_printer()
         ppins = printer.lookup_object('pins')
         self.mcu_fan = ppins.setup_pin('pwm', config.get('pin'))
         self.mcu_fan.setup_max_duration(0.)
@@ -26,6 +28,8 @@ class PrinterFan:
             0., max(0., min(self.max_power, shutdown_speed)))
         self.logger = printer.logger.getChild(self.name.replace(" ", "_"))
         self.logger.debug("fan '{}' initialized".format(self.name))
+    def handle_request_restart(self, print_time):
+        self.set_speed(print_time, 0.)
     def set_speed(self, print_time, value):
         value = max(0., min(self.max_power, value * self.max_power))
         if value == self.last_fan_value:

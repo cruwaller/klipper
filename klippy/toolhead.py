@@ -208,6 +208,8 @@ class ToolHead:
         self.mcu = self.all_mcus[0]
         self.move_queue = MoveQueue()
         self.commanded_pos = [0., 0., 0., 0.]
+        self.printer.register_event_handler("gcode:request_restart",
+                                            self._handle_request_restart)
         self.printer.register_event_handler("klippy:shutdown",
                                             self._handle_shutdown)
         # Velocity and acceleration control
@@ -480,6 +482,8 @@ class ToolHead:
                  'printing_time': print_time - last_print_start_time }
     def get_print_time(self):
         return self.print_time - self.last_print_start_time
+    def _handle_request_restart(self, print_time):
+        self.motor_off()
     def _handle_shutdown(self):
         self.move_queue.reset()
         self.reset_print_time()
@@ -542,7 +546,7 @@ class ToolHead:
         self._calc_junction_deviation()
     cmd_TURN_OFF_HEATERS_help = "Turn off all heaters"
     def cmd_TURN_OFF_HEATERS(self, params):
-        print_time = self.printer.lookup_object('toolhead').get_last_move_time()
+        print_time = self.get_last_move_time()
         for n, h in self.printer.lookup_objects("heater"):
             h.set_temp(print_time, 0.0)
 
