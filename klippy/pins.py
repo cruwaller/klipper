@@ -233,18 +233,21 @@ class PrinterPins:
                    share_type=None):
         desc = pin_desc.strip()
         pullup = invert = 0
-        if can_pullup and '^' in desc:
-            pullup = 1
+        if can_pullup:
+            if '^' in desc:
+                pullup = 1
+            elif '~' in desc:
+                pullup = -1
         if can_invert and '!' in desc:
             invert = 1
-        desc = re.sub('[\^!]', '', desc).strip()
+        desc = re.sub('[\^~!]', '', desc).strip()
         if ':' not in desc:
             chip_name, pin = 'mcu', desc
         else:
             chip_name, pin = [s.strip() for s in desc.split(':', 1)]
         if chip_name not in self.chips:
             raise error("Unknown pin chip name '%s'" % (chip_name,))
-        if [c for c in '^!: ' if c in pin]:
+        if [c for c in '^~!: ' if c in pin]:
             format = ""
             if can_pullup:
                 format += "[^] "
