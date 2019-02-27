@@ -53,26 +53,6 @@ def lookup_endstop_pin(ppins, pin):
     return endstop
 
 
-def calculate_steps(config, microsteps=None):
-    # Read config and send to driver
-    step_dist = config.getfloat('step_distance', default=None, above=0.)
-    steps_per_mm = config.getfloat('steps_per_mm', default=None, above=0.)
-    microsteps = config.getfloat('microsteps', default=microsteps, above=0.)
-    if step_dist is None and steps_per_mm is None and microsteps is not None:
-        motor_deg = config.getfloat('motor_step_angle', above=0.)
-        # Calculate base on settings
-        pitch = config.getfloat('pitch', above=0.)
-        teeth = config.getfloat('teeths', above=0.)
-        ratio = config.getfloat('gear_ratio', above=0., default=1.0)
-        motor_rev = 360. / motor_deg
-        steps_per_mm = motor_rev * microsteps / (pitch * teeth) * ratio
-    if steps_per_mm is not None:
-        inv_step_dist = steps_per_mm
-        step_dist = 1.0 / inv_step_dist
-    else:
-        inv_step_dist = 1. / step_dist
-    return step_dist, inv_step_dist
-
 ######################################################################
 # Steppers
 ######################################################################
@@ -89,24 +69,13 @@ class PrinterStepper:
         else:
             self.logger = logger.getChild(self.name)
         self.need_motor_enable = True
-        step_dist = inv_step_dist = None
-        # get a driver
-        driver = microsteps = mcu_stepper = None
-        driver_name = config.get('driver', None)
-        if driver_name is not None:
-            driver_section = 'driver %s' % driver_name
-            driver = driver_base.load_driver(config.getsection(driver_section))
-            self.driver = driver
-            if driver is not None:
-                microsteps = driver.microsteps
-                step_dist = driver.step_dist
-                inv_step_dist = driver.inv_step_dist
-                if not driver.has_step_dir_pins:
-                    self.mcu_stepper = mcu_stepper = driver
-        if step_dist is None or inv_step_dist is None:
-            step_dist, inv_step_dist = calculate_steps(config, microsteps)
-            if driver is not None:
-                driver.step_dist = step_dist
+        # Configure driver
+        mcu_stepper = None
+        self.driver = driver = driver_base.load_driver(config)
+        step_dist = driver.step_dist
+        inv_step_dist = driver.inv_step_dist
+        if not driver.has_step_dir_pins:
+            self.mcu_stepper = mcu_stepper = driver
         # Stepper definition
         ppins = printer.lookup_object('pins')
         if mcu_stepper is None:

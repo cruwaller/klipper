@@ -257,8 +257,8 @@ def decode_tmc2208_read(reg, data):
 ######################################################################
 
 class TMC2208(driverbase.DriverBase):
-    def __init__(self, config):
-        driverbase.DriverBase.__init__(self, config)
+    def __init__(self, config, stepper_config):
+        driverbase.DriverBase.__init__(self, config, stepper_config)
         self.printer = config.get_printer()
         self.name = config.get_name().split()[-1]
         self.printer.register_event_handler("klippy:connect",

@@ -28,6 +28,10 @@ class FieldHelper:
             self.registers = {}
         self.field_to_register = { f: r for r, fields in self.all_fields.items()
                                    for f in fields }
+    def set_reg_value(self, reg_name, new_value):
+        self.registers[reg_name] = new_value
+    def get_reg_value(self, reg_name):
+        return self.registers.get(reg_name, 0)
     def get_field(self, field_name, reg_value=None, reg_name=None):
         # Returns value of the register field
         if reg_name is None:

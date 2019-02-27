@@ -4,55 +4,114 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
-import types, struct
+import types, struct, collections, math
 import binascii
 from driverbase import SpiDriver
+import field_helpers
 from mcu import error
 import pins
 
+decode_signed_int = field_helpers.decode_signed_int
+
 #***************************************************
-# Registers
+# Constants
 #***************************************************
-REG_GCONF      = 0x00
-REG_GSTAT      = 0x01
-REG_IOIN       = 0x04
-
-REG_IHOLD_IRUN = 0x10
-REG_TPOWERDOWN = 0x11
-REG_TSTEP      = 0x12
-REG_TPWMTHRS   = 0x13
-REG_TCOOLTHRS  = 0x14
-REG_THIGH      = 0x15
-
-REG_XDIRECT    = 0x2D
-REG_VDCMIN     = 0x33
-
-REG_MSLUT0     = 0x60
-REG_MSLUT1     = 0x61
-REG_MSLUT2     = 0x62
-REG_MSLUT3     = 0x63
-REG_MSLUT4     = 0x64
-REG_MSLUT5     = 0x65
-REG_MSLUT6     = 0x66
-REG_MSLUT7     = 0x67
-REG_MSLUTSEL   = 0x68
-REG_MSLUTSTART = 0x69
-REG_MSCNT      = 0x6A
-REG_MSCURACT   = 0x6B
-
-REG_CHOPCONF   = 0x6C
-REG_COOLCONF   = 0x6D
-REG_DCCTRL     = 0x6E
-REG_DRV_STATUS = 0x6F
-REG_PWMCONF    = 0x70
-REG_PWM_SCALE  = 0x71
-REG_ENCM_CTRL  = 0x72
-REG_LOST_STEPS = 0x73
-
-# Constants:
 MIN_CURRENT = 100.
 MAX_CURRENT = 1400.
-DEFAULT_SENSE_R = 0.11
+
+# **************************************************************************
+# Generic value mappings
+# **************************************************************************
+msteps_map = {
+    256: 0b0000, # 0: 256x microstepping (Native)
+    128: 0b0001, # 1: 128x microstepping
+    64:  0b0010, # 2:  64x microstepping
+    32:  0b0011, # 3:  32x microstepping
+    16:  0b0100, # 4:  16x microstepping
+    8:   0b0101, # 5:   8x microstepping
+    4:   0b0110, # 6:   4x microstepping
+    2:   0b0111, # 7:   2x microstepping
+    1:   0b1000, # 8:   1x full-step
+}
+blank_time_map = {
+    16: 0b00,
+    24: 0b01, # Recommended for most applications.
+    36: 0b10, # Recommended for most applications.
+    54: 0b11
+}
+seup_t = {
+    1: 0b00, # Current increment steps per measured stallGuard2 value = 1
+    2: 0b01, # Current increment steps per measured stallGuard2 value = 2
+    4: 0b10, # Current increment steps per measured stallGuard2 value = 4
+    8: 0b11  # Current increment steps per measured stallGuard2 value = 8
+}
+sedn_t = {
+    32: 0b00, # %00: For each 32 stallGuard2 values decrease by one
+    8:  0b01, # %01: For each 8  stallGuard2 values decrease by one
+    2:  0b10, # %10: For each 2  stallGuard2 values decrease by one
+    1:  0b11  # %11: For each    stallGuard2 value  decrease by one
+}
+pwm_freq_t = {
+    "2/1024": 0b00, # %00: fPWM = 2/1024 fCLK
+    "2/683":  0b01, # %01: fPWM = 2/683  fCLK
+    "2/512":  0b10, # %10: fPWM = 2/512  fCLK
+    "2/410":  0b11  # %11: fPWM = 2/410  fCLK
+}
+freewheel_t = {
+    "NORMAL":    0b00, # %00: Normal operation
+    "FREEWHEEL": 0b01, # %01: Freewheeling
+    "SHORT_LS":  0b10, # %10: Coil shorted using LS drivers
+    "SHORT_HS":  0b11  # %11: Coil shorted using HS drivers
+}
+
+# **************************************************************************
+# Registers
+# **************************************************************************
+Registers = {
+    # GENERAL CONFIGURATION REGISTERS (0x00...0x0F)
+    "GCONF":      [0x00, 'RW'],
+    "GSTAT":      [0x01, 'R'],
+    "IOIN":       [0x04, 'R'],
+    # VELOCITY DEPENDENT DRIVER FEATURE CONTROL REGISTER SET (0x10...0x1F)
+    "IHOLD_IRUN": [0x10, 'W'],
+    "TPOWERDOWN": [0x11, 'W'],
+    "TSTEP":      [0x12, 'R'],
+    "TPWMTHRS":   [0x13, 'W'],
+    "TCOOLTHRS":  [0x14, 'W'],
+    "THIGH":      [0x15, 'W'],
+    # SPI MODE REGISTER (0x2D)
+    "XDIRECT":    [0x2D, 'RW'],
+    # DCSTEP MINIMUM VELOCITY REGISTER (0x33)
+    "VDCMIN":     [0x33, 'W'],
+    # MICROSTEPPING CONTROL REGISTER SET (0x60...0x6B)
+    "MSLUT0":     [0x60, 'W'],
+    "MSLUT1":     [0x61, 'W'],
+    "MSLUT2":     [0x62, 'W'],
+    "MSLUT3":     [0x63, 'W'],
+    "MSLUT4":     [0x64, 'W'],
+    "MSLUT5":     [0x65, 'W'],
+    "MSLUT6":     [0x66, 'W'],
+    "MSLUT7":     [0x67, 'W'],
+    "MSLUTSEL":   [0x68, 'W'],
+    "MSLUTSTART": [0x69, 'W'],
+    "MSCNT":      [0x6A, 'R'],
+    "MSCURACT":   [0x6B, 'R'],
+    # DRIVER REGISTER SET (0x6C...0x7F)
+    "CHOPCONF":   [0x6C, 'RW'],
+    "COOLCONF":   [0x6D, 'W'],
+    "DCCTRL":     [0x6E, 'W'],
+    "DRV_STATUS": [0x6F, 'R'],
+    "PWMCONF":    [0x70, 'W'],
+    "PWM_SCALE":  [0x71, 'R'],
+    "ENCM_CTRL":  [0x72, 'W'],
+    "LOST_STEPS": [0x73, 'R'],
+}
+
+Fields = {
+}
+
+FieldFormatters = {
+}
 
 # Endstop wrapper
 class VirtualEndstop:
@@ -96,57 +155,81 @@ class TMC2130(SpiDriver):
     val_PWMCONF = 0
     val_IHOLD_IRUN = 0  # read only
 
-    def __init__(self, config):
-        self._direction = 0
-        SpiDriver.__init__(self, config)
+    def __init__(self, config, stepper_config):
+        self.vsense = 0
+        SpiDriver.__init__(self, config, stepper_config)
         printer = config.get_printer()
         # Prepare virtual endstop support
         ppins = printer.lookup_object('pins')
         ppins.register_chip(self.name, self)
         self.endstop_pin = config.get('endstop_pin', default=None)
-        # Read configs
-        self.current = config.getfloat('current', 1000.0,
-                                       above=MIN_CURRENT, maxval=MAX_CURRENT)
-        self.sense_r = config.getfloat('sense_R', DEFAULT_SENSE_R, above=0.09)
-        self.hold_multip = config.getfloat('hold_multiplier', 0.5, above=0., maxval=1.0)
-        self.hold_delay = config.getint('hold_delay', 0, minval=0., maxval=15)
-        self.t_power_down = config.getint('power_down_delay', 128, minval=0., maxval=255)
-        self.interpolate = config.getboolean('interpolate', True)
+        # Create a register handler
+        self.regs = collections.OrderedDict()
+        self.fields = field_helpers.FieldHelper(
+            Fields, FieldFormatters, self.regs)
+        # set_field = self.fields.set_field
+        # default int clock freq is 13.2MHz @ 50C
+        self.fCLK = config.getfloat('fCLK', 13200000,
+            above=4000000, maxval=18000000)
+        self._direction = config.getboolean('dir_invert', default=False)
         self.sensor_less_homing = config.getboolean('sensor_less_homing', False)
+        # +1...+63 = less sensitivity, -64...-1 = higher sensitivity
+        self.sg_stall_value = config.getint('stall_threshold',
+                                            10, minval=-64, maxval=63)
         # option to manually set a hybrid threshold
         self.hybrid_threshold = config.getint('hybrid_threshold',
                                               None, minval=0, maxval=1048575)
         # hybrid threshold, speed is used to derive the threshold
         self.stealth_max_speed = config.getint('stealth_max_speed',
                                                None, minval=10)
-        # +1...+63 = less sensitivity, -64...-1 = higher sensitivity
-        self.sg_stall_value = config.getint('stall_threshold',
-                                            10, minval=-64, maxval=63)
+        # Current config
+        self.sense_r = config.getfloat('sense_R', 0.11, above=0.09) + 0.02
+        self.current = config.getfloat('current', 1000.0,
+                                       above=MIN_CURRENT, maxval=MAX_CURRENT)
+        self.hold_multip = config.getfloat('hold_multiplier', 0.5,
+            above=0., maxval=1.0)
+        self.hold_delay = config.getint('hold_delay', 0, minval=0., maxval=15)
+        # Driver registers config
+        self.t_power_down = config.getint('power_down_delay', 128,
+            minval=0., maxval=255)
+        # Diag pins configuration
         diag0types = {
             'NA'           : None,
-            'errors'       : 0,
-            'temp_prewarn' : 1,
-            'stall'        : 2,
+            'errors'       : 'diag0_errors',
+            'temp_prewarn' : 'diag0_temp_prewarn',
+            'stall'        : 'diag0_stall',
         }
         self.diag0purpose = config.getchoice('diag0_out', diag0types, default='NA')
         self.diag0act_high = config.getboolean('diag0_active_high', default=True)
         diag1types = {
             'NA'            : None,
-            'stall'         : 0,
-            'index'         : 1,
-            'chopper_on'    : 2,
-            'steps_skipped' : 3,
+            'stall'         : 'diag1_stall',
+            'index'         : 'diag1_index',
+            'chopper_on'    : 'diag1_chopper_on',
+            'steps_skipped' : 'diag1_steps_skipped',
         }
         self.diag1purpose = config.getchoice('diag1_out', diag1types, default='NA')
         self.diag1act_high = config.getboolean('diag1_active_high', default=True)
+        # Driver mode configurations
         mode = { "spreadCycle" : False, "stealthChop" : True }
         self.silent_mode = config.getchoice('mode', mode, default='stealthChop')
+        self.stealth_gradient = config.getint('stealth_gradient', 5,
+            minval=1, maxval=15)
+        self.stealth_amplitude = config.getint('stealth_amplitude', 180,
+            minval=64, maxval=255)
+        self.stealth_freq = config.getchoice('stealth_freq', pwm_freq_t, "2/683")
+        # chopconf
+        self.interpolate = config.getboolean('interpolate', True)
+        self.blank_time = config.getchoice('blank_time', blank_time_map, 24)
+        self.off_time = config.getint('off_time', 4, minval=2, maxval=15)
+        self.hstart = config.getint('hysterisis_start', 1, minval=1, maxval=8) - 1
+        self.hend = config.getint('hysterisis_end', 2, minval=-3, maxval=12) + 3
         # register command handlers
         self.gcode = gcode = printer.lookup_object('gcode')
         cmds = ["DRV_STATUS", "DRV_CURRENT", "DRV_STALLGUARD"]
         for cmd in cmds:
             gcode.register_mux_command(
-                cmd, "DRIVER", self.name,
+                cmd, "DRIVER", self.name.upper(),
                 getattr(self, 'cmd_' + cmd),
                 desc=getattr(self, 'cmd_' + cmd + '_help', None))
     def setup_pin(self, pin_type, pin_params):
@@ -155,6 +238,10 @@ class TMC2130(SpiDriver):
         if self.endstop_pin is None:
             raise pins.error("tmc driver endstop_pin is not defined")
         return VirtualEndstop(self)
+
+    # **************************************************************************
+    # === GCode handlers ===
+    # **************************************************************************
     cmd_DRV_STATUS_help = "args: DRIVER=driver_name"
     def cmd_DRV_STATUS(self, params):
         self.gcode.respond(self.status())
@@ -189,7 +276,7 @@ class TMC2130(SpiDriver):
         self.logger.info(current)
         res.append(current)
         self.__get_GSTAT(log=res)
-        self.__get_REG_DRV_STATUS(log=res)
+        self.__get_DRV_STATUS(log=res)
         self.__get_IOIN(log=res)
         self.__get_LOST_STEPS(log=res)
         return "\n".join(res)
@@ -197,13 +284,13 @@ class TMC2130(SpiDriver):
     def init_homing(self, enable=True, *args):
         if self.sensor_less_homing:
             if enable is True:
-                self.__set_REG_TCOOLTHRS(0xFFFFF)
+                self.__set_TCOOLTHRS(0xFFFFF)
             else:
-                self.__set_REG_TCOOLTHRS(0)
+                self.__set_TCOOLTHRS(0)
 
     def set_dir(self, direction=0):
         self._direction = direction
-        self.__modify_REG_GCONF('shaft_dir', direction)
+        self.__modify_GCONF('shaft_dir', direction)
     def has_faults(self):
         return (self.isReset or self.isError or
                 self.isStallguard or self.isStandstill)
@@ -217,17 +304,8 @@ class TMC2130(SpiDriver):
             if sg < -64 or 63 < sg:
                 raise self.gcode.error("SG out of range (min: -64, max: 63)")
             self.sg_stall_value = sg
-            self.__modify_REG_COOLCONF('sg_stall_value', sg)
+            self.__modify_COOLCONF('sg_stall_value', sg)
         return "Stallguard is %d" % self.sg_stall_value
-    def get_stallguard(self):
-        return self.sg_stall_value
-    def get_stall_status(self, *args, **kwargs):
-        val = self.__get_REG_DRV_STATUS(check=False)
-        if val & 0b00000001000000000000000000000000:
-            return True
-        return False
-    def get_lost_steps(self, *args, **kwargs):
-        return self._command_read(REG_LOST_STEPS)
 
     #**************************************************************************
     # PRIVATE METHODS
@@ -250,11 +328,15 @@ class TMC2130(SpiDriver):
     | S 8bit |      32bit data                   |
     | STATUS |   D    |   D    |   D    |   D    |
     '''
-    def _command_read(self, cmd, cnt=4): # 40bits always = 5 x 8bit!
+    def _command_read(self, cmd): # 40bits always = 5 x 8bit!
+        cmd, mode = Registers.get(cmd, (cmd, ''))  # map string to value
+        if mode and 'R' not in mode:
+            raise error("TMC2130: register '%s' R/W mode '%s is wrong!" % (
+                cmd, mode))
         cmd &= 0x7F # Makesure the MSB is 0
-        read_cmd = [cmd] + cnt*[0]
-        self._transfer(read_cmd)
-        values = self._transfer(read_cmd)
+        read_cmd = [cmd, 0, 0, 0, 0]
+        self.spi_send(read_cmd)
+        values = self.spi_transfer(read_cmd)
         # convert list of bytes to number
         val    = 0
         size   = len(values)
@@ -288,6 +370,10 @@ class TMC2130(SpiDriver):
     '''
     def _command_write(self, cmd, val=None): # 40bits always = 5 x 8bit!
         if val is not None:
+            cmd, mode = Registers.get(cmd, (cmd, ''))  # map string to value
+            if mode and 'W' not in mode:
+                raise error("TMC2130: register '%s' R/W mode '%s is wrong!" % (
+                    cmd, mode))
             if not isinstance(val, types.ListType):
                 conv = struct.Struct('>I').pack
                 val = list(conv(val))
@@ -295,30 +381,12 @@ class TMC2130(SpiDriver):
                 raise error("TMC2130 internal error! len(val) != 4")
             self.logger.debug("==>> cmd 0x%02X : 0x%s" % (cmd, binascii.hexlify(bytearray(val))))
             cmd |= 0x80 # Make sure command has write bit set
-            self._transfer([cmd] + val)
-
-    def __reset_driver(self):
-        self.logger.debug("Reset driver")
-        # Clear errors by reading GSTAT register
-        self.__get_GSTAT()
-        # Init internal values
-        self.val_GCONF      = 0
-        self.val_CHOPCONF   = 0
-        self.val_COOLCONF   = 0
-        self.val_PWMCONF    = 0
-        self.val_IHOLD_IRUN = 0 # read only
-        # reset registers:
-        self._command_write(REG_GCONF,    self.val_GCONF)
-        self._command_write(REG_CHOPCONF, self.val_CHOPCONF)
-        self._command_write(REG_COOLCONF, self.val_COOLCONF)
-        self._command_write(REG_PWMCONF,  self.val_PWMCONF)
-        self.__set_REG_TCOOLTHRS(0)
+            self.spi_send([cmd] + val)
 
     def __validate_cfg(self):
-        self.__get_GSTAT() # read and reset status
         # validate readable configurations
-        GCONF      = self._command_read(REG_GCONF)
-        CHOPCONF   = self._command_read(REG_CHOPCONF)
+        GCONF      = self._command_read('GCONF')
+        CHOPCONF   = self._command_read('CHOPCONF')
         if GCONF != self.val_GCONF:
             self.logger.error("GCONF Configuration error! [was 0x%08X expected 0x%08X]" %
                               (GCONF, self.val_GCONF))
@@ -327,86 +395,68 @@ class TMC2130(SpiDriver):
                               (CHOPCONF, self.val_CHOPCONF))
 
     def _init_driver(self):
-        self.__reset_driver()
-
-        # Set RMS Current
+        # Clear values
+        self.val_GCONF = 0
+        self.val_CHOPCONF = 0
+        self.val_COOLCONF = 0
+        self.val_PWMCONF = 0
+        self.val_IHOLD_IRUN = 0
+        # Clear errors by reading GSTAT register
+        self.__get_GSTAT()
+        # Calculate RMS current settings
         self.__calc_rms_current(self.current, self.hold_multip,
                                 self.hold_delay, init=True)
         # Motor power down time after last movement (iHOLD current is used)
-        self.__set_REG_TPOWERDOWN(self.t_power_down)
+        self.__set_TPOWERDOWN(self.t_power_down)
 
-        self.__modify_REG_CHOPCONF('microsteps', self.microsteps, send=False)
-        self.__modify_REG_CHOPCONF('blank_time', 24, send=False)
-        self.__modify_REG_CHOPCONF('off_time', 5, send=False) # 8
-        self.__modify_REG_CHOPCONF('interpolate', self.interpolate, send=False)
-        self.__modify_REG_CHOPCONF('chopper_mode', 0, send=False)
-        self.__modify_REG_CHOPCONF('hysterisis_start', 3, send=False)
-        self.__modify_REG_CHOPCONF('hysterisis_end', 2, send=False)
+        self.__modify_CHOPCONF('microsteps', self.microsteps, send=False)
+        self.__modify_CHOPCONF('blank_time', self.blank_time, send=False) # 24
+        self.__modify_CHOPCONF('off_time', self.off_time, send=False) # 5 -> 4
+        self.__modify_CHOPCONF('hysterisis_start', self.hstart, send=False) # 3 -> 0
+        self.__modify_CHOPCONF('hysterisis_end', self.hend, send=False) # 2 -> 5
+        self.__modify_CHOPCONF('interpolate', self.interpolate, send=False)
+        self.__modify_CHOPCONF('chopper_mode', 0, send=False)
 
-        #self.__modify_REG_GCONF('stop_enable', 0)
-        #self.__modify_REG_GCONF('external_ref', 0)
-        #self.__modify_REG_GCONF('internal_Rsense', 0)
-        self.__modify_REG_GCONF('shaft_dir', self._direction, send=False)
-        self.__modify_REG_GCONF('diag0_active_high', self.diag0act_high, send=False)
-        self.__modify_REG_GCONF('diag1_active_high', self.diag1act_high, send=False)
-
-        self.__modify_REG_COOLCONF('sg_stall_value', self.sg_stall_value, send=False)
-
-        if self.silent_mode is True:
-            # stealthChop
-            self.__modify_REG_GCONF('stealthChop', 1, send=False)
-            self.__modify_REG_PWMCONF('stealth_autoscale', 1, send=False)
-            self.__modify_REG_PWMCONF('stealth_gradient', 5, send=False)
-            self.__modify_REG_PWMCONF('stealth_amplitude', 255, send=False)
-            self.__modify_REG_PWMCONF('stealth_freq', "fPWM_2/683", send=False)
-
-            if self.hybrid_threshold is not None:
-                self.__set_REG_TPWMTHRS(self.hybrid_threshold)
-                self.logger.info("Hybrid threshold: {}".
-                                 format(self.hybrid_threshold))
-            elif self.stealth_max_speed is not None:
-                speed = int(12650000 * self.microsteps /
-                            (self.stealth_max_speed * self.inv_step_dist * 256))
-                self.__set_REG_TPWMTHRS(speed)
-                self.logger.info("Stealth max speed: {} ({})".
-                                 format(self.stealth_max_speed, speed))
-        else:
-            # spreadCycle
-            self.__modify_REG_GCONF('stealthChop', 0, send=False)
-
-        # ========== Set diag pins ==========
-        self.__modify_REG_GCONF('diag0_stall', 0, send=False)
-        self.__modify_REG_GCONF('diag0_temp_prewarn', 0, send=False)
-        self.__modify_REG_GCONF('diag0_errors', 0, send=False)
-        if self.diag0purpose is 0:
-            self.__modify_REG_GCONF('diag0_errors', 1, send=False)
-        elif self.diag0purpose is 1:
-            self.__modify_REG_GCONF('diag0_temp_prewarn', 1, send=False)
-        elif self.diag0purpose is 2:
-            self.__modify_REG_GCONF('diag0_stall', 1, send=False)
-
-        self.__modify_REG_GCONF('diag1_steps_skipped', 0, send=False)
-        self.__modify_REG_GCONF('diag1_chopper_on', 0, send=False)
-        self.__modify_REG_GCONF('diag1_index', 0, send=False)
-        self.__modify_REG_GCONF('diag1_stall', 0, send=False)
-        if self.diag1purpose is 0:
-            self.__modify_REG_GCONF('diag1_stall', 1, send=False)
-        elif self.diag1purpose is 1:
-            self.__modify_REG_GCONF('diag1_index', 1, send=False)
-        elif self.diag1purpose is 2:
-            self.__modify_REG_GCONF('diag1_chopper_on', 1, send=False)
-        elif self.diag1purpose is 3:
-            self.__modify_REG_GCONF('diag1_steps_skipped', 1, send=False)
-
+        #self.__modify_GCONF('stop_enable', 0)
+        #self.__modify_GCONF('external_ref', 0)
+        #self.__modify_GCONF('internal_Rsense', 0)
+        self.__modify_GCONF('shaft_dir', self._direction, send=False)
+        # stealthChop (True) or spreadCycle (False)
+        self.__modify_GCONF('stealthChop', self.silent_mode, send=False)
+        # Set diag pins
+        self.__modify_GCONF('diag0_active_high', self.diag0act_high, send=False)
+        self.__modify_GCONF('diag1_active_high', self.diag1act_high, send=False)
+        if self.diag0purpose is not None:
+            self.__modify_GCONF(self.diag0purpose, 1, send=False)
+        if self.diag1purpose is not None:
+            self.__modify_GCONF(self.diag1purpose, 1, send=False)
+        self.__modify_COOLCONF('sg_stall_value', self.sg_stall_value, send=False)
+        # Voltage PWM mode stealthChop config
+        pwm_thrs = 0
+        self.__modify_PWMCONF('stealth_autoscale', 1, send=False)
+        self.__modify_PWMCONF('stealth_gradient', self.stealth_gradient, send=False)
+        self.__modify_PWMCONF('stealth_amplitude', self.stealth_amplitude, send=False) # 255
+        self.__modify_PWMCONF('stealth_freq', self.stealth_freq, send=False)
+        if self.hybrid_threshold is not None:
+            pwm_thrs = self.hybrid_threshold
+            self.logger.info("Hybrid threshold: %s" % pwm_thrs)
+        elif self.stealth_max_speed is not None:
+            pwm_thrs = int(self.fCLK * self.microsteps /
+                           (self.stealth_max_speed * self.inv_step_dist * 256))
+            self.logger.info("Stealth max speed: %u (cfg val: %u)" % (
+                             self.stealth_max_speed, pwm_thrs))
+        self.__set_TPWMTHRS(pwm_thrs)
+        self.__set_TCOOLTHRS(0)
         # Send configurations to driver
         self.logger.debug("Send configurations")
-        self.__set_REG_CHOPCONF(self.val_CHOPCONF)
-        self.__set_REG_COOLCONF(self.val_COOLCONF)
-        self.__set_REG_PWMCONF(self.val_PWMCONF)
-        self.__set_REG_GCONF(self.val_GCONF)
+        self.__set_CHOPCONF(self.val_CHOPCONF)
+        self.__set_COOLCONF(self.val_COOLCONF)
+        self.__set_PWMCONF(self.val_PWMCONF)
+        self.__set_GCONF(self.val_GCONF)
         # Verify configurations
         self.logger.debug("Verify configurations")
-        self.__get_REG_DRV_STATUS()
+        self.__get_GSTAT()  # Check errors and reset
+        self.__get_DRV_STATUS()
         self.__validate_cfg()
         self.logger.debug("Init ready")
 
@@ -415,44 +465,43 @@ class TMC2130(SpiDriver):
                            multip_for_holding_current = None,
                            hold_delay = None,
                            init=False):
-        CS = None
         if current:
             if MIN_CURRENT < current:
                 current /= 1000.
-            sense_r = self.sense_r
-            CS = 32.0 * 1.41421 * current * (sense_r + 0.02) / 0.325 - 1.
-            # If Current Scale is too low, turn on high sensitivity R_sense and calculate again
+            self.vsense = 0
+            CS = 32.0 * math.sqrt(2.) * current * self.sense_r / 0.325 - .5
+            # If Current Scale is too low, turn on high sensitivity R_sense
+            # and calculate again
             if CS < 16:
-                self.__modify_REG_CHOPCONF('vsense', 1, send=(not init))
-                CS = 32.0 * 1.41421 * current * (sense_r + 0.02) / 0.180 - 1.
-            else:
-                # If CS >= 16, turn off high_sense_r if it's currently ON
-                self.__modify_REG_CHOPCONF('vsense', 0, send=(not init))
-            self.__modify_REG_IHOLD_IRUN('IRUN', int(CS), send=False)
+                self.vsense = 1
+                CS = 32.0 * math.sqrt(2.) * current * self.sense_r / 0.180 - .5
+            self.__modify_CHOPCONF('vsense', self.vsense, send=(not init))
+            iRun = int(CS)
+            self.__modify_IHOLD_IRUN('IRUN', iRun, send=False)
             self.current = current
+        else:
+            iRun = self.__read_IHOLD_IRUN('IRUN')
         if multip_for_holding_current:
-            if CS is None:
-                CS = self.__read_REG_IHOLD_IRUN('IRUN')
-            iHold = int(CS * multip_for_holding_current)
-            self.__modify_REG_IHOLD_IRUN('IHOLD', iHold, send=False)
+            iHold = int(iRun * multip_for_holding_current)
+            self.__modify_IHOLD_IRUN('IHOLD', iHold, send=False)
             self.hold_multip = multip_for_holding_current
+        else:
+            iHold = self.__read_IHOLD_IRUN('IHOLD')
         if hold_delay:
-            self.__modify_REG_IHOLD_IRUN('IHOLDDELAY', hold_delay, send=False)
+            self.__modify_IHOLD_IRUN('IHOLDDELAY', hold_delay, send=False)
             self.hold_delay = hold_delay
-        self.__set_REG_IHOLD_IRUN(self.val_IHOLD_IRUN)
+        self.__set_IHOLD_IRUN(self.val_IHOLD_IRUN)
         self.logger.debug("RMS current %.3fA => IHold=%u, IRun=%u, IHoldDelay=%u" % (
-            self.current,
-            self.__read_REG_IHOLD_IRUN('IHOLD'),
-            self.__read_REG_IHOLD_IRUN('IRUN'),
-            self.__read_REG_IHOLD_IRUN('IHOLDDELAY')))
+            self.current, iHold, iRun, self.hold_delay))
 
-    def __get_rms_current(self):
-        vsense = self.__read_REG_CHOPCONF('vsense')
-        CS     = self.__read_REG_IHOLD_IRUN('IRUN')
-        V_fs   = 0.325
-        if vsense is 1:
-            V_fs = 0.180
-        return ( CS + 1. ) / 32.0 * V_fs / (self.sense_r + 0.02) / 1.41421
+    def __get_rms_current(self, cs=None, vsense=None):
+        if vsense is None:
+            # vsense = self.__read_CHOPCONF('vsense')
+            vsense = self.vsense
+        if cs is None:
+            cs = self.__read_IHOLD_IRUN('IRUN')
+        V_fs   = [0.325, 0.180][bool(vsense)]
+        return ( cs + 1. ) / 32.0 * V_fs / self.sense_r / math.sqrt(2)
 
     #**************************************************************************
     # GENERAL CONFIGURATION REGISTERS (0x00..0x0F)
@@ -506,24 +555,24 @@ class TMC2130(SpiDriver):
         'internal_Rsense'     : [( 1, 0b1, None)],
         'external_ref'        : [( 0, 0b1, None)],
     }
-    def __get_REG_GCONF(self):
-        self.val_GCONF = val = self._command_read(REG_GCONF)
+    def __get_GCONF(self):
+        self.val_GCONF = val = self._command_read('GCONF')
         return val
-    def __set_REG_GCONF(self, val):
+    def __set_GCONF(self, val):
         self.val_GCONF = val
-        self._command_write(REG_GCONF, val)
-    def __modify_REG_GCONF(self, name, val, send=True):
-        reg = REG_GCONF if send else None
+        self._command_write('GCONF', val)
+    def __modify_GCONF(self, name, val, send=True):
+        reg = 'GCONF' if send else None
         self.val_GCONF = \
             self.modify_reg(self.GCONF_reg_def[name],
                             self.val_GCONF, val, reg)
-    def __read_REG_GCONF(self, name):
+    def __read_GCONF(self, name):
         return self.read_reg(self.GCONF_reg_def[name], self.val_GCONF)
 
     #==================== GSTAT ====================
     def __get_GSTAT(self, log=list()):
         # R+C
-        status = self._command_read(REG_GSTAT)
+        status = self._command_read('GSTAT')
         if status:
             if status & 0b001:
                 dump = "GSTAT: Reset has occurred!"
@@ -542,7 +591,7 @@ class TMC2130(SpiDriver):
     #==================== IOIN ====================
     def __get_IOIN(self, log=None):
         # R
-        status = self._command_read(REG_IOIN)
+        status = self._command_read('IOIN')
 
         STEP    = 'HIGH' if (status & 0b000001) else 'LOW'
         DIR     = 'HIGH' if (status & 0b000010) else 'LOW'
@@ -581,22 +630,21 @@ class TMC2130(SpiDriver):
         'IRUN'       : [( 8, 0b11111, None)],
         'IHOLDDELAY' : [(16, 0b1111,  None)],
     }
-    def __get_REG_IHOLD_IRUN(self):
-        self.val_IHOLD_IRUN = val = self._command_read(REG_IHOLD_IRUN)
-        return val
-    def __set_REG_IHOLD_IRUN(self, val):
+    def __get_IHOLD_IRUN(self):
+        return self.val_IHOLD_IRUN
+    def __set_IHOLD_IRUN(self, val):
         self.val_IHOLD_IRUN = val
-        self._command_write(REG_IHOLD_IRUN, val)
-    def __modify_REG_IHOLD_IRUN(self, name, val, send=True):
-        reg = REG_IHOLD_IRUN if send else None
+        self._command_write('IHOLD_IRUN', val)
+    def __modify_IHOLD_IRUN(self, name, val, send=True):
+        reg = 'IHOLD_IRUN' if send else None
         self.val_IHOLD_IRUN = \
             self.modify_reg(self.IHOLD_IRUN_reg_def[name],
                             self.val_IHOLD_IRUN, val, reg)
-    def __read_REG_IHOLD_IRUN(self, name):
+    def __read_IHOLD_IRUN(self, name):
         return self.read_reg(self.IHOLD_IRUN_reg_def[name], self.val_IHOLD_IRUN)
 
     #========================================
-    def __set_REG_TPOWERDOWN(self, power_down_delay):
+    def __set_TPOWERDOWN(self, power_down_delay):
         """
         Range 0...255
         power_down_delay sets the delay time after stand still (stst) of the motor
@@ -607,20 +655,20 @@ class TMC2130(SpiDriver):
             power_down_delay = 0
         elif 0xFF < power_down_delay:
             power_down_delay = 0xFF
-        self._command_write(REG_TPOWERDOWN, power_down_delay)
+        self._command_write('TPOWERDOWN', power_down_delay)
 
     #========================================
-    def __get_REG_TSTEP(self):
+    def __get_TSTEP(self):
         """
         Read the actual measured time between two 1/256 microsteps
         derived from the step input frequency in units of 1/fCLK.
 
         microstep velocity time reference t for velocities: TSTEP = fCLK / fSTEP
         """
-        return self._command_read(REG_TSTEP) & 0xFFFFF
+        return self._command_read('TSTEP') & 0xFFFFF
 
     #========================================
-    def __set_REG_TPWMTHRS(self, stealthchop_max_speed):
+    def __set_TPWMTHRS(self, stealthchop_max_speed):
         """
         0..1,048,575
         This is the upper velocity for stealthChop voltage PWM mode.
@@ -632,10 +680,10 @@ class TMC2130(SpiDriver):
             stealthchop_max_speed = 0
         elif 0xFFFFF < stealthchop_max_speed:
             stealthchop_max_speed = 0xFFFFF
-        self._command_write(REG_TPWMTHRS, stealthchop_max_speed)
+        self._command_write('TPWMTHRS', stealthchop_max_speed)
 
     #========================================
-    def __set_REG_TCOOLTHRS(self, coolstep_min_speed):
+    def __set_TCOOLTHRS(self, coolstep_min_speed):
         """
         0..1,048,575
         This is the lower threshold velocity for switching on smart
@@ -657,10 +705,10 @@ class TMC2130(SpiDriver):
             coolstep_min_speed = 0
         elif 0xFFFFF < coolstep_min_speed:
             coolstep_min_speed = 0xFFFFF
-        self._command_write(REG_TCOOLTHRS, coolstep_min_speed)
+        self._command_write('TCOOLTHRS', coolstep_min_speed)
 
     #========================================
-    def __set_REG_THIGH(self, mode_sw_speed):
+    def __set_THIGH(self, mode_sw_speed):
         """
         0..1,048,575
         This velocity setting allows velocity dependent switching into a
@@ -684,12 +732,12 @@ class TMC2130(SpiDriver):
             mode_sw_speed = 0
         elif 0xFFFFF < mode_sw_speed:
             mode_sw_speed = 0xFFFFF
-        self._command_write(REG_THIGH, mode_sw_speed)
+        self._command_write('THIGH', mode_sw_speed)
 
     #**************************************************************************
     # SPI MODE REGISTER SET
     #**************************************************************************
-    def __set_REG_XDRIRECT(self, coil_a_current, coil_b_current):
+    def __set_XDRIRECT(self, coil_a_current, coil_b_current):
         """
         255..+255
         Specifies Motor coil currents and polarity directly
@@ -714,13 +762,13 @@ class TMC2130(SpiDriver):
             val |= 1 << 8
             coil_a_current = -coil_a_current
         val |= coil_a_current
-        self._command_write(REG_XDIRECT, val)
+        self._command_write('XDIRECT', val)
 
     #**************************************************************************
     # dcStep Minimum Velocity Register
     #**************************************************************************
     #==================== VDCMIN ====================
-    def __set_REG_VDCMIN(self, dcstep_min_speed):
+    def __set_VDCMIN(self, dcstep_min_speed):
         """
         0..8,388,607
         The automatic commutation dcStep becomes enabled by the external signal DCEN.
@@ -733,7 +781,7 @@ class TMC2130(SpiDriver):
             dcstep_min_speed = 0
         elif 0x7FFFFF < dcstep_min_speed:
             dcstep_min_speed = 0x7FFFFF
-        self._command_write(REG_VDCMIN, dcstep_min_speed)
+        self._command_write('VDCMIN', dcstep_min_speed)
 
     #**************************************************************************
     # MICROSTEPPING CONTROL REGISTER SET (0x60..0x6B)
@@ -788,23 +836,6 @@ class TMC2130(SpiDriver):
         disable_short_protection,  0/1                0: Short to GND protection is on
                                                       1: Short to GND protection is disabled
     '''
-    msteps_map = {
-        256 : 0b0000, # 0 : 256x microstepping (Native)
-        128 : 0b0001, # 1 : 128x microstepping
-        64  : 0b0010, # 2 :  64x microstepping
-        32  : 0b0011, # 3 :  32x microstepping
-        16  : 0b0100, # 4 :  16x microstepping
-        8   : 0b0101, # 5 :   8x microstepping
-        4   : 0b0110, # 6 :   4x microstepping
-        2   : 0b0111, # 7 :   2x microstepping
-        1   : 0b1000  # 8 :   1x full-step
-    }
-    blank_time_map = {
-        16 : 0b00,
-        24 : 0b01,    # Recommended for most applications.
-        36 : 0b10,    # Recommended for most applications.
-        54 : 0b11
-    }
     CHOPCONF_reg_def = {
         'off_time'                 : [ ( 0, 0b1111, None ) ],
 
@@ -829,18 +860,18 @@ class TMC2130(SpiDriver):
         'double_edge_step'         : [ (29, 0b1,    None) ],
         'disable_short_protection' : [ (30, 0b1,    None) ],
     }
-    def __get_REG_CHOPCONF(self):
-        self.val_CHOPCONF = val = self._command_read(REG_CHOPCONF)
+    def __get_CHOPCONF(self):
+        self.val_CHOPCONF = val = self._command_read('CHOPCONF')
         return val
-    def __set_REG_CHOPCONF(self, val):
+    def __set_CHOPCONF(self, val):
         self.val_CHOPCONF = val
-        self._command_write(REG_CHOPCONF, val)
-    def __modify_REG_CHOPCONF(self, name, val, send=True):
-        reg = REG_CHOPCONF if send else None
+        self._command_write('CHOPCONF', val)
+    def __modify_CHOPCONF(self, name, val, send=True):
+        reg = 'CHOPCONF' if send else None
         self.val_CHOPCONF = \
             self.modify_reg(self.CHOPCONF_reg_def[name],
                             self.val_CHOPCONF, val, reg)
-    def __read_REG_CHOPCONF(self, name):
+    def __read_CHOPCONF(self, name):
         return self.read_reg(self.CHOPCONF_reg_def[name], self.val_CHOPCONF)
 
     #==================== COOLCONF ====================
@@ -863,18 +894,6 @@ class TMC2130(SpiDriver):
                                             (resp. six fullsteps for 3 phase motor) only to compensate
                                             for motor pole tolerances
     '''
-    seup_t = {
-        1 : 0b00, # Current increment steps per measured stallGuard2 value = 1
-        2 : 0b01, # Current increment steps per measured stallGuard2 value = 2
-        4 : 0b10, # Current increment steps per measured stallGuard2 value = 4
-        8 : 0b11  # Current increment steps per measured stallGuard2 value = 8
-    }
-    sedn_t = {
-        32 : 0b00, # %00: For each 32 stallGuard2 values decrease by one
-        8  : 0b01, # %01: For each 8  stallGuard2 values decrease by one
-        2  : 0b10, # %10: For each 2  stallGuard2 values decrease by one
-        1  : 0b11  # %11: For each    stallGuard2 value  decrease by one
-    }
     COOLCONF_reg_def = {
         'sg_min'              : [ ( 0, 0b1111,    None  ) ],
         'sg_step_width'       : [ ( 5, 0b11,      seup_t) ],
@@ -884,23 +903,22 @@ class TMC2130(SpiDriver):
         'sg_stall_value'      : [ (16, 0b1111111, None  ) ],
         'sg_filter'           : [ (24, 0b1,       None  ) ],
     }
-    def __get_REG_COOLCONF(self):
-        self.val_COOLCONF = val = self._command_read(REG_COOLCONF)
-        return val
-    def __set_REG_COOLCONF(self, val):
+    def __get_COOLCONF(self):
+        return self.val_COOLCONF
+    def __set_COOLCONF(self, val):
         self.val_COOLCONF = val
-        self._command_write(REG_COOLCONF, val)
-    def __modify_REG_COOLCONF(self, name, val, send=True):
-        reg = REG_COOLCONF if send else None
+        self._command_write('COOLCONF', val)
+    def __modify_COOLCONF(self, name, val, send=True):
+        reg = 'COOLCONF' if send else None
         self.val_COOLCONF = \
             self.modify_reg(self.COOLCONF_reg_def[name],
                             self.val_COOLCONF, val, reg)
-    def __read_REG_COOLCONF(self, name):
+    def __read_COOLCONF(self, name):
         return self.read_reg(self.COOLCONF_reg_def[name], self.val_COOLCONF)
 
     #==================== DRV_STATUS ====================
-    def __get_REG_DRV_STATUS(self, log=list(), check=True):
-        val = self._command_read(REG_DRV_STATUS)
+    def __get_DRV_STATUS(self, log=list(), check=True):
+        val = self._command_read('DRV_STATUS')
 
         if check:
             if val & 0b10000000000000000000000000000000:
@@ -954,7 +972,13 @@ class TMC2130(SpiDriver):
         return val
 
     #==================== PWMCONF ====================
-    # reset default 0x00050480
+    # reset default 0x00050480 = 0b 1 01 00000100 10000000
+    #   * stealth_amplitude 128
+    #   * stealth_gradient  4
+    #   * stealth_freq      2/683
+    #   * stealth_autoscale 1
+    #   * stealth_symmetric 0
+    #   * standstill_mode   0
     '''
         stealth_amplitude     0..255  pwm_autoscale = 0
                                         User defined PWM amplitude offset (0-255)
@@ -992,18 +1016,6 @@ class TMC2130(SpiDriver):
                                       2: Coil shorted using LS drivers
                                       3: Coil shorted using HS drivers
     '''
-    pwm_freq_t = {
-        "fPWM_2/1024" : 0b00, # %00: fPWM = 2/1024 fCLK
-        "fPWM_2/683"  : 0b01, # %01: fPWM = 2/683  fCLK
-        "fPWM_2/512"  : 0b10, # %10: fPWM = 2/512  fCLK
-        "fPWM_2/410"  : 0b11  # %11: fPWM = 2/410  fCLK
-    }
-    freewheel_t = {
-        "FREEWHEEL_NORMAL"    : 0b00, # %00: Normal operation
-        "FREEWHEEL_FREEWHEEL" : 0b01, # %01: Freewheeling
-        "FREEWHEEL_SHORT_LS"  : 0b10, # %10: Coil shorted using LS drivers
-        "FREEWHEEL_SHORT_HS"  : 0b11  # %11: Coil shorted using HS drivers
-    }
     PWMCONF_reg_def = {
         'stealth_amplitude' : [ (  0, 0b11111111, None ) ],
         'stealth_gradient'  : [ (  8, 0b11111111, None ) ],
@@ -1012,23 +1024,22 @@ class TMC2130(SpiDriver):
         'stealth_symmetric' : [ ( 19, 0b1,        None ) ],
         'standstill_mode'   : [ ( 20, 0b11,       freewheel_t ) ],
     }
-    def __get_REG_PWMCONF(self):
-        self.val_PWMCONF = val = self._command_read(REG_PWMCONF)
-        return val
-    def __set_REG_PWMCONF(self, val):
+    def __get_PWMCONF(self):
+        return self.val_PWMCONF
+    def __set_PWMCONF(self, val):
         self.val_PWMCONF = val
-        self._command_write(REG_PWMCONF, val)
-    def __modify_REG_PWMCONF(self, name, val, send=True):
-        reg = REG_PWMCONF if send else None
+        self._command_write('PWMCONF', val)
+    def __modify_PWMCONF(self, name, val, send=True):
+        reg = 'PWMCONF' if send else None
         self.val_PWMCONF = \
             self.modify_reg(self.PWMCONF_reg_def[name],
                             self.val_PWMCONF, val, reg)
-    def __read_REG_PWMCONF(self, name):
+    def __read_PWMCONF(self, name):
         return self.read_reg(self.PWMCONF_reg_def[name], self.val_PWMCONF)
 
     #========================================
     def __get_LOST_STEPS(self, log=list()):
-        val = self._command_read(REG_LOST_STEPS)
+        val = self._command_read('LOST_STEPS')
         if val:
             dump = "Lost steps: {}".format(val)
             self.logger.error(dump)
