@@ -168,8 +168,13 @@ oid_lookup(uint8_t oid, void *type)
 void *
 oid_alloc(uint8_t oid, void *type, uint16_t size)
 {
-    if (oid >= oid_count || oids[oid].type || is_finalized())
+    if (oid >= oid_count || oids[oid].type || is_finalized()) {
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+        printf("[ERROR] oid %u >= %u, type: %p\n", oid, oid_count, oids[oid].type);
+        printf("    is_finalized() %u\n", is_finalized());
+#endif
         shutdown("Can't assign oid");
+    }
     oids[oid].type = type;
     void *data = alloc_chunk(size);
     oids[oid].data = data;

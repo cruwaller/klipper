@@ -115,7 +115,7 @@ send_move_command(struct spidev_s *spi,
     temp = cpu_to_be32(m->target);
     cmd[25] = 0x80 | REG_XTARGET;
     memcpy(&cmd[26], &temp, 4);
-    spidev_transfer(spi, 1, 30, cmd);
+    spidev_transfer(spi, 0, 30, cmd);
 }
 #endif
 
@@ -133,7 +133,7 @@ stepper_tmc5x_event(struct timer *t)
 #if FILL_IN_ISR
     send_move_command(s->spi, m);
 #else
-    spidev_transfer(s->spi, 1, m->len, m->cmd);
+    spidev_transfer(s->spi, 0, m->len, m->cmd);
 #endif
     s->first = next = m->next;
     move_free(m);
@@ -275,7 +275,7 @@ command_stepper_tmc5x_get_position(uint32_t *args)
 #endif
     struct stepper_tmc5x *s = stepper_tmc5x_oid_lookup(args[0]);
     uint8_t msg[5] = { REG_XACTUAL, 0x00, 0x00, 0x00, 0x00 };
-    spidev_transfer(s->spi, 1, 5, msg);
+    spidev_transfer(s->spi, 0, 5, msg);
     spidev_transfer(s->spi, 1, 5, msg);
     uint32_t value;
     memcpy(&value, &msg[1], 4);
@@ -299,19 +299,19 @@ command_stepper_tmc5x_set_position(uint32_t *args)
     uint32_t position = cpu_to_be32(args[2]);
     // Set mode to 'hold'
     uint8_t msg[5] = { REG_RAMPMODE | 0x80, 0x00, 0x00, 0x00, RAMPMODE_HOLD };
-    spidev_transfer(s->spi, 1, 5, msg);
+    spidev_transfer(s->spi, 0, 5, msg);
     // Write actual register
     msg[0] = 0x80 | REG_XACTUAL;
     memcpy(&msg[1], &position, 4);
-    spidev_transfer(s->spi, 1, 5, msg);
+    spidev_transfer(s->spi, 0, 5, msg);
     // Write target register
     msg[0] = 0x80 | REG_XTARGET;
-    spidev_transfer(s->spi, 1, 5, msg);
+    spidev_transfer(s->spi, 0, 5, msg);
     // Set mode back to 'positioning'
     memset(msg, 0, 5);
     msg[0] = 0x80 | REG_RAMPMODE;
     msg[4] = RAMPMODE_POSITIONING;
-    spidev_transfer(s->spi, 1, 5, msg);
+    spidev_transfer(s->spi, 0, 5, msg);
     if (args[1]) {
         reset_step_clock(s, 0);
     }
@@ -350,7 +350,7 @@ command_stepper_tmc5x_home(uint32_t *args)
     if (args[1]) {
         uint8_t len = args[3];
         if (len) {
-            spidev_transfer(s->spi, 1, len,
+            spidev_transfer(s->spi, 0, len,
                             (uint8_t*)(uintptr_t)args[4]);
         }
         s->timer.func = stepper_tmc5x_homing_event;
@@ -384,7 +384,7 @@ stepper_tmc5x_home_task(void)
     foreach_oid(oid, stepper, command_stepper_tmc5x_config) {
         if (!stepper->homing_report_interval) continue;
         // Send homing feedback...
-        spidev_transfer(stepper->spi, 1, 5, poll_cmd);
+        spidev_transfer(stepper->spi, 0, 5, poll_cmd);
         spidev_transfer(stepper->spi, 1, 5, poll_cmd);
         memcpy(&value, &poll_cmd[1], 4);
         value = be32_to_cpu(value);
