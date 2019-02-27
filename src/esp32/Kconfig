@@ -1,0 +1,174 @@
+# Kconfig settings for Atmel SAM processors
+
+if MACH_ESP32
+
+config ESP32_SELECT
+    bool
+    default y
+    select HAVE_GPIO
+    select HAVE_GPIO_ADC
+#    select HAVE_GPIO_I2C
+    select HAVE_GPIO_SPI
+    select HAVE_GPIO_BITBANGING
+
+config BOARD_DIRECTORY
+    string
+    default "esp32"
+
+config MCU
+    string
+    default "esp32"
+
+config CLOCK_FREQ
+    int
+    default 40000000 # 80000000/2
+
+############### UART SETTINGS ##################
+choice
+    prompt "UART number"
+    #depends on SERIAL_UART
+    config SERIAL_UART0_USED
+        bool "UART0 (RX=GPIO3, TX=GPIO1)"
+    config SERIAL_UART1_USED
+        bool "UART1 (RX=GPIO9, TX=GPI10)"
+    config SERIAL_UART2_USED
+        bool "UART2 (RX=GPI16, TX=GPI17)"
+    config SERIAL_CUSTOM_USED
+        bool "Custom UART pins"
+    config SERIAL_BT
+        bool "Bluetooth Serial"
+endchoice
+
+config SERIAL_CUSTOM_RXD
+    int "UART Custom RXD pin"
+    depends on SERIAL_CUSTOM_USED
+    default 3
+config SERIAL_CUSTOM_TXD
+    int "UART Custom TXD pin"
+    depends on SERIAL_CUSTOM_USED
+    default 1
+
+config SERIAL_UART
+    bool
+    default y if !SERIAL_BT
+    default n if SERIAL_BT
+
+config SERIAL
+    depends on !SERIAL_BT
+    bool
+    default y
+
+############### BLUETOOTH SETTINGS ##################
+config SERIAL_BT_NAME
+    string "Bluetooth name"
+    depends on SERIAL_BT
+    default "KLIPPER_BT"
+
+config SERIAL_BT_PIN
+    string "Bluetooth pin code"
+    depends on SERIAL_BT
+    default "1234"
+
+############### SPI SETTINGS ##################
+
+
+############### TARGET MODULE ##################
+choice
+    prompt "Target hardware"
+    config TMC5130
+        bool "Motor Controller (TMC5130)"
+    config TMC5160
+        bool "Motor Controller (TMC5160)"
+    config HOTENDCTRL
+        bool "Hotend Controller (Carriage)"
+    config STACK_HOTEND
+        bool "RPi Hotend Module (stack)"
+    config STACK_MOTOR
+        bool "RPi Motor Module (stack)"
+endchoice
+
+
+############### IO EXPANDER SETTINGS ##################
+config KLIPPER_HAS_IO_EXPANDERS
+    default n if !(STACK_HOTEND || STACK_MOTOR)
+    default y if (STACK_HOTEND || STACK_MOTOR)
+
+config KLIPPER_HAS_IO_EXPANDERS
+    bool "Has IO Expanders (MCP23S17)"
+    depends on (STACK_HOTEND || STACK_MOTOR)
+
+config KLIPPER_CUSTOM_IO_EXPANDERS
+    bool "Custom IO expander config (MCP23S17)"
+    depends on KLIPPER_HAS_IO_EXPANDERS
+    default n
+
+choice
+    prompt "Number of IO Expanders"
+    depends on KLIPPER_CUSTOM_IO_EXPANDERS
+    default KLIPPER_IO_EXPANDERS_CNT_2
+    config KLIPPER_IO_EXPANDERS_CNT_1
+        bool "1"
+    config KLIPPER_IO_EXPANDERS_CNT_2
+        bool "2"
+    config KLIPPER_IO_EXPANDERS_CNT_3
+        bool "3"
+endchoice
+
+# Init values
+config KLIPPER_IO_EXPANDER_0_CS
+    default -1 if !(STACK_HOTEND || STACK_MOTOR)
+    default 23 if STACK_MOTOR
+    default 22 if STACK_HOTEND
+config KLIPPER_IO_EXPANDER_1_CS
+    default -1 if !STACK_MOTOR
+    default 22 if STACK_MOTOR
+config KLIPPER_IO_EXPANDER_2_CS
+    default -1
+config KLIPPER_IO_EXPANDER_BUS
+    default -1 if !(STACK_HOTEND || STACK_MOTOR)
+    default 1 if (STACK_HOTEND || STACK_MOTOR)
+config KLIPPER_IO_EXPANDER_MODE
+    default -1 if !(STACK_HOTEND || STACK_MOTOR)
+    default 0 if (STACK_HOTEND || STACK_MOTOR)
+config KLIPPER_IO_EXPANDER_SPEED
+    default 0 if !(STACK_HOTEND || STACK_MOTOR)
+    default 4000000 if (STACK_HOTEND || STACK_MOTOR)
+
+# user config
+config KLIPPER_IO_EXPANDER_0_CS
+    int "CS pin 1"
+    depends on KLIPPER_CUSTOM_IO_EXPANDERS && (KLIPPER_IO_EXPANDERS_CNT_1 || KLIPPER_IO_EXPANDERS_CNT_2 || KLIPPER_IO_EXPANDERS_CNT_3)
+    default -1 if !(STACK_HOTEND || STACK_MOTOR)
+    default 23 if STACK_MOTOR
+    default 22 if STACK_HOTEND
+
+config KLIPPER_IO_EXPANDER_1_CS
+    int "CS pin 2"
+    depends on KLIPPER_CUSTOM_IO_EXPANDERS && (KLIPPER_IO_EXPANDERS_CNT_2 || KLIPPER_IO_EXPANDERS_CNT_3)
+    default -1 if !STACK_MOTOR
+    default 22 if STACK_MOTOR
+
+config KLIPPER_IO_EXPANDER_2_CS
+    int "CS pin 3"
+    depends on KLIPPER_CUSTOM_IO_EXPANDERS && KLIPPER_IO_EXPANDERS_CNT_3
+    default -1
+
+config KLIPPER_IO_EXPANDER_BUS
+    int "SPI Bus index"
+    depends on KLIPPER_CUSTOM_IO_EXPANDERS && (KLIPPER_IO_EXPANDERS_CNT_1 || KLIPPER_IO_EXPANDERS_CNT_2 || KLIPPER_IO_EXPANDERS_CNT_3)
+    default -1 if !(STACK_HOTEND || STACK_MOTOR)
+    default 1 if (STACK_HOTEND || STACK_MOTOR)
+
+config KLIPPER_IO_EXPANDER_MODE
+    int "SPI Mode"
+    depends on KLIPPER_CUSTOM_IO_EXPANDERS && (KLIPPER_IO_EXPANDERS_CNT_1 || KLIPPER_IO_EXPANDERS_CNT_2 || KLIPPER_IO_EXPANDERS_CNT_3)
+    default -1 if !(STACK_HOTEND || STACK_MOTOR)
+    default 1 if (STACK_HOTEND || STACK_MOTOR)
+
+config KLIPPER_IO_EXPANDER_SPEED
+    int "SPI Speed"
+    depends on KLIPPER_CUSTOM_IO_EXPANDERS && (KLIPPER_IO_EXPANDERS_CNT_1 || KLIPPER_IO_EXPANDERS_CNT_2 || KLIPPER_IO_EXPANDERS_CNT_3)
+    default 0 if !(STACK_HOTEND || STACK_MOTOR)
+    default 4000000 if (STACK_HOTEND || STACK_MOTOR)
+
+endif

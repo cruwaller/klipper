@@ -4,7 +4,7 @@
 #include <stdint.h> // uint32_t
 #include "ctr.h" // DECL_CTR
 
-#if __arm__
+#if __arm__ || __xtensa__
 #define SCHED_NO_STATS 0
 #define SCHED_NO_SLEEP 1
 #endif

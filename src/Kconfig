@@ -27,6 +27,8 @@ choice
         bool "Linux process"
     config MACH_SIMU
         bool "Host simulator"
+    config MACH_ESP32
+        bool "Espressif ESP32"
 endchoice
 
 source "src/avr/Kconfig"
@@ -37,6 +39,7 @@ source "src/stm32f1/Kconfig"
 source "src/pru/Kconfig"
 source "src/linux/Kconfig"
 source "src/simulator/Kconfig"
+source "src/esp32/Kconfig"
 
 # Generic configuration options for serial ports
 config SERIAL_BAUD
