@@ -14,7 +14,7 @@ class ClockSync:
         self.logger = logging.getLogger('clocksync')
         self.reactor = reactor
         self.serial = None
-        self.get_clock_timer = self.reactor.register_timer(self._get_clock_event)
+        self.get_clock_timer = reactor.register_timer(self._get_clock_event)
         self.get_clock_cmd = None
         self.queries_pending = 0
         self.mcu_freq = 1.
@@ -91,11 +91,11 @@ class ClockSync:
         clock_diff2 = (clock - exp_clock)**2
         if (clock_diff2 > 25. * self.prediction_variance
             and clock_diff2 > (.000500 * self.mcu_freq)**2):
-            if clock > exp_clock and sent_time < self.last_prediction_time + 10.:
+            if clock > exp_clock and sent_time < self.last_prediction_time+10.:
                 self.logger.debug("Ignoring clock sample %.3f:"
-                                  " freq=%d diff=%d stddev=%.3f",
-                                  sent_time, self.clock_est[2], clock - exp_clock,
-                                  math.sqrt(self.prediction_variance))
+                              " freq=%d diff=%d stddev=%.3f",
+                              sent_time, self.clock_est[2], clock - exp_clock,
+                              math.sqrt(self.prediction_variance))
                 return
             self.logger.info("Resetting prediction variance %.3f:"
                              " freq=%d diff=%d stddev=%.3f",
