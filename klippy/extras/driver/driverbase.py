@@ -87,7 +87,7 @@ class SpiDriver(DriverBase):
     # ============ SETUP ===============
     def handle_ready(self):
         if not self.mcu.is_shutdown():
-            self._init_driver() # TODO: change this!
+            self._init_driver()
     def _build_config_cb(self):
         self._build_config()
     def get_mcu(self):

@@ -232,6 +232,12 @@ class TMC2130(SpiDriver):
                 cmd, "DRIVER", self.name.upper(),
                 getattr(self, 'cmd_' + cmd),
                 desc=getattr(self, 'cmd_' + cmd + '_help', None))
+        gcode.register_mux_command(
+            "DUMP_TMC", "STEPPER", self.name.upper(),
+            self.cmd_DUMP_TMC, desc=self.cmd_DUMP_TMC_help)
+        gcode.register_mux_command(
+            "INIT_TMC", "STEPPER", self.name.upper(),
+            self.cmd_INIT_TMC, desc=self.cmd_INIT_TMC_help)
     def setup_pin(self, pin_type, pin_params):
         if pin_type != 'endstop' or pin_params['pin'] != 'virtual_endstop':
             raise pins.error("virtual endstop is only supported")
@@ -265,6 +271,31 @@ class TMC2130(SpiDriver):
     def cmd_DRV_STALLGUARD(self, params):
         sg = self.gcode.get_float('SG', params, default=None)
         self.gcode.respond(self.set_stallguard(sg))
+    cmd_DUMP_TMC_help = "Read and display TMC stepper driver registers"
+    def cmd_DUMP_TMC(self, params):
+        self.printer.lookup_object('toolhead').get_last_move_time()
+        self.logger.info("DUMP_TMC")
+        gcode = self.gcode
+        write_only_regs = []
+        queried_regs = []
+        for reg_name, val in self.regs.items():
+            if Registers[reg_name][1] == 'W':
+                write_only_regs.append(self.fields.pretty_format(reg_name, val))
+            else:
+                val = self._command_read(reg_name)
+                queried_regs.append(self.fields.pretty_format(reg_name, val))
+        msg = ["========== Write-only registers =========="]
+        msg.extend(write_only_regs)
+        msg.append("========== Queried registers ==========")
+        msg.extend(queried_regs)
+        msg = "\n".join(msg)
+        self.logger.info(msg)
+        gcode.respond_info(msg)
+    cmd_INIT_TMC_help = "Initialize TMC stepper driver registers"
+    def cmd_INIT_TMC(self, params):
+        self.logger.info("INIT_TMC")
+        self.printer.lookup_object('toolhead').wait_moves()
+        self._init_driver()
 
     #**************************************************************************
     # PUBLIC METHODS
