@@ -1,6 +1,6 @@
 # Klipper build system
 #
-# Copyright (C) 2016,2017  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2016-2019  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
@@ -108,7 +108,7 @@ $(OUT)compile_time_request.o: $(ctr-y) ./scripts/buildcommands.py
 
 $(OUT)klipper.elf: $(OUT)autoconf.h $(objects-y) $(OUT)compile_time_request.o
 	@echo "  Linking $@"
-	$(Q)$(CC) $^ $(CFLAGS_klipper.elf) -o $@
+	$(Q)$(CC) $(patsubst %.c, $(OUT)src/%.o,$(src-y)) $(OUT)compile_time_request.o $(CFLAGS_klipper.elf) -o $@
 	$(Q)scripts/check-gcc.sh $@ $(OUT)compile_time_request.o
 
 ################ Kconfig rules
