@@ -42,6 +42,8 @@ CFLAGS := -I$(OUT) -Isrc -I$(OUT)board-generic/ -std=gnu11 -O2 -MD -g \
     -ffunction-sections -fdata-sections
 CFLAGS += -flto -fwhole-program -fno-use-linker-plugin # -Wextra
 
+OBJS_klipper.elf = $(patsubst %.c, $(OUT)src/%.o,$(src-y))
+OBJS_klipper.elf += $(OUT)compile_time_request.o
 CFLAGS_klipper.elf = $(CFLAGS) -Wl,--gc-sections
 
 CPPFLAGS = -I$(OUT) -P -MD -MT $@
@@ -66,20 +68,13 @@ proc_makefile = src/$(patsubst "%",%,$(CONFIG_BOARD_DIRECTORY))/Makefile
 
 ################ Convert sources to objects
 
-objects-y = $(src-y:%.c=$(OUT)src/%.o)
-objects-y := $(objects-y:%.cpp=$(OUT)src/%.o)
-objects-y := $(objects-y:%.S=$(OUT)src/%.o)
-objects-y := $(objects-y:%.s=$(OUT)src/%.o)
-objects-y += $(asmsrc-y:%.s=$(OUT)src/%.o)
-objects-y := $(objects-y:%.S=$(OUT)src/%.o)
-
 # parse only c/cpp files
 c-files := $(filter %.c %.cpp,$(src-y))
 ctr-y = $(c-files:%.c=$(OUT)src/%.o.ctr)
 ctr-y := $(ctr-y:%.cpp=$(OUT)src/%.o.ctr)
 
 # Collect all object dirs
-dirs-y := $(dir $(objects-y))
+dirs-y := $(dir $(OBJS_klipper.elf))
 
 ################ Common build rules
 
@@ -106,9 +101,9 @@ $(OUT)compile_time_request.o: $(ctr-y) ./scripts/buildcommands.py
 	$(Q)$(PYTHON) ./scripts/buildcommands.py -d $(OUT)klipper.dict -t "$(CC);$(AS);$(LD);$(OBJCOPY);$(OBJDUMP);$(STRIP)" $(OUT)klipper.compile_time_request $(OUT)compile_time_request.c
 	$(Q)$(CC) $(CFLAGS) -c $(OUT)compile_time_request.c -o $@
 
-$(OUT)klipper.elf: $(OUT)autoconf.h $(objects-y) $(OUT)compile_time_request.o
+$(OUT)klipper.elf: $(OUT)autoconf.h $(OBJS_klipper.elf)
 	@echo "  Linking $@"
-	$(Q)$(CC) $(objects-y) $(OUT)compile_time_request.o $(CFLAGS_klipper.elf) -o $@
+	$(Q)$(CC) $(OBJS_klipper.elf) $(CFLAGS_klipper.elf) -o $@
 	$(Q)scripts/check-gcc.sh $@ $(OUT)compile_time_request.o
 
 ################ Kconfig rules
@@ -141,4 +136,4 @@ distclean: clean
 	$(Q)rm -f .config .config.old
 
 # include dependency files
--include $(objects-y:%.o=%.d) # $(OUT)*.d $(patsubst %,$(OUT)%/*.d,$(dirs-y))
+-include $(OBJS_klipper.elf:%.o=%.d)
