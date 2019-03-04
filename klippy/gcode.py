@@ -346,8 +346,9 @@ class GCodeParser:
             self.write_resp(msg+ack)
         except os.error:
             logging.exception("Write g-code response")
-    def respond_info(self, msg):
-        self.logger.debug(msg)
+    def respond_info(self, msg, log=True):
+        if log:
+            self.logger.info(msg)
         lines = [l.strip() for l in msg.strip().split('\n')]
         self.respond("// " + "\n// ".join(lines))
     def respond_error(self, msg):
@@ -360,12 +361,12 @@ class GCodeParser:
         self.logger.error(msg.replace('\n', ". "))
         lines = msg.strip().split('\n')
         if len(lines) > 1:
-            self.respond_info("%s" % "\n".join(lines[:-1]))
+            self.respond_info("%s" % "\n".join(lines[:-1]), log=False)
         self.respond('!! Error: %s' % (lines[-1].strip(),))
         if self.is_fileinput:
             self.printer.request_exit('error_exit')
     def _respond_state(self, state):
-        self.respond_info("Klipper state: %s" % (state,))
+        self.respond_info("Klipper state: %s" % (state,), log=False)
     # Parameter parsing helpers
     class sentinel: pass
     def get_str(self, name, params, default=sentinel, parser=str,
@@ -791,7 +792,7 @@ class GCodeParser:
     cmd_ECHO_help = "Repond same command back to sender"
     cmd_ECHO_when_not_ready = True
     def cmd_ECHO(self, params):
-        self.respond_info(params['#original'])
+        self.respond_info(params['#original'], log=False)
     cmd_STATUS_when_not_ready = True
     cmd_STATUS_help = "Report the printer status"
     def cmd_STATUS(self, params):
@@ -810,4 +811,4 @@ class GCodeParser:
         for cmd in sorted(self.gcode_handlers):
             if cmd in self.gcode_help:
                 cmdhelp.append("%-10s: %s" % (cmd, self.gcode_help[cmd]))
-        self.respond_info("\n".join(cmdhelp))
+        self.respond_info("\n".join(cmdhelp), log=False)

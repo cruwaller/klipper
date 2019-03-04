@@ -227,7 +227,7 @@ class PrinterExtruder:
                "pressure_advance_lookahead_time: %.6f" % (
                    pressure_advance, pressure_advance_lookahead_time))
         self.printer.set_rollover_info(self.name, "%s: %s" % (self.name, msg))
-        gcode.respond_info(msg)
+        gcode.respond_info(msg, log=False)
     def get_max_velocity(self):
         return self.max_e_velocity, self.max_e_accel
     def get_extrude_factor(self, procent=False):

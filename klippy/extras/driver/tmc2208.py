@@ -373,9 +373,7 @@ class TMC2208(driverbase.DriverBase):
         gcode.respond_info("========== Write-only registers ==========")
         for reg_name, val in self.regs.items():
             if reg_name not in ReadRegisters:
-                msg = self.fields.pretty_format(reg_name, val)
-                logging.info(msg)
-                gcode.respond_info(msg)
+                gcode.respond_info(self.fields.pretty_format(reg_name, val))
         gcode.respond_info("========== Queried registers ==========")
         for reg_name in ReadRegisters:
             try:
@@ -387,9 +385,7 @@ class TMC2208(driverbase.DriverBase):
             if reg_name == "IOIN":
                 drv_type = self.fields.get_field("SEL_A", val)
                 reg_name = "IOIN@TMC220x" if drv_type else "IOIN@TMC222x"
-            msg = self.fields.pretty_format(reg_name, val)
-            logging.info(msg)
-            gcode.respond_info(msg)
+            gcode.respond_info(self.fields.pretty_format(reg_name, val))
     cmd_INIT_TMC_help = "Initialize TMC stepper driver registers"
     def cmd_INIT_TMC(self, params):
         logging.info("INIT_TMC 2208 %s", self.name)
