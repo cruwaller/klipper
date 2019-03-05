@@ -15,7 +15,7 @@
 #include "internal.h" // console_setup
 #include "sched.h" // sched_main
 
-DECL_CONSTANT(MCU, CONFIG_MCU);
+DECL_CONSTANT_STR("MCU", CONFIG_MCU);
 
 #if (CONFIG_SIMULATOR == 1)
 int SIMULATOR_MODE = CONFIG_SIMULATOR;

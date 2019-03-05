@@ -27,7 +27,7 @@
 #define ADC_FREQ_MAX 20000000 // 20MHz
 #define ADC_DELAY    (ADC_FREQ_MAX * 1000ULL / CONFIG_CLOCK_FREQ)
 
-DECL_CONSTANT(ADC_MAX, 4095);
+DECL_CONSTANT("ADC_MAX", 4095);
 
 #define INVALID_ADC (struct gpio_adc){ .channel = 0, .adc_num = 0 }
 DRAM_ATTR static struct gpio_adc adc_started = INVALID_ADC;

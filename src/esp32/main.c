@@ -21,7 +21,7 @@
 #include "board/internal.h"
 
 
-DECL_CONSTANT(MCU, "esp32");
+DECL_CONSTANT_STR("MCU", "esp32");
 
 /*
 
