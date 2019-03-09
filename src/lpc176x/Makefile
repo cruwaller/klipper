@@ -54,22 +54,5 @@ $(OUT)klipper.disasm: $(OUT)klipper.elf
 	$(Q)$(OBJDUMP)  -d -f -M reg-names-std --demangle $< > $@
 
 ifeq ($(CONFIG_SMOOTHIEWARE_BOOTLOADER),y)
-flash: $(OUT)klipper.bin
-	@echo ""
-	@echo "  The LPC176x build does not currently support 'make flash'"
-	@echo ""
-	@echo "  To flash a Smoothieboard, copy the $(OUT)klipper.bin to a file"
-	@echo "  named firmware.bin on an SD card and then restart the"
-	@echo "  Smoothieboard with that SD card."
-else
-LISP := $(shell command -v lpc21isp 2> /dev/null)
-flash: $(OUT)klipper.hex
-	@echo ""
-ifeq ($(LSIP),)
-	@echo "  lpc2lisp is not installed. Please install it and try again."
-else
-	@echo "  Flashing $^ to $(FLASH_DEVICE) via lpc21isp"
-	$(Q)if [ -z $(FLASH_DEVICE) ]; then echo "Please specify FLASH_DEVICE"; exit 1; fi
-	$(Q)lpc21isp $(OUT)klipper.hex $(FLASH_DEVICE) 57600 12000
-endif
-endif
+	@echo "  Flashing $< to $(FLASH_DEVICE)"
+	$(Q)$(PYTHON) ./scripts/flash_usb.py -t lpc176x -d "$(FLASH_DEVICE)" $(OUT)klipper.bin
