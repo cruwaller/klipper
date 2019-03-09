@@ -63,12 +63,11 @@ lib/bossac/bin/bossac:
 
 ifeq ($(CONFIG_RPI_SERIAL),)
 flash: $(OUT)klipper.bin lib/bossac/bin/bossac
-	@echo "  Flashing $< to $(FLASH_DEVICE) via bossac"
-	$(Q)if [ -z $(FLASH_DEVICE) ]; then echo "Please specify FLASH_DEVICE"; exit 1; fi
-	$(Q)lib/bossac/bin/bossac -U -p "$(FLASH_DEVICE)" -a -e -w $< -v -b
-	$(Q)lib/bossac/bin/bossac -p "$(FLASH_DEVICE)" -b -R > /dev/null 2>&1 || true
-# This triggers flash erase
-#	$(Q)stty $(STTYFARG) $(FLASH_DEVICE) 1200
+	@echo "  Flashing $< to $(FLASH_DEVICE)"
+	$(Q)$(PYTHON) ./scripts/flash_usb.py -t atsam -d "$(FLASH_DEVICE)" $(OUT)klipper.bin
+#	$(Q)if [ -z $(FLASH_DEVICE) ]; then echo "Please specify FLASH_DEVICE"; exit 1; fi
+#	$(Q)lib/bossac/bin/bossac -U -p "$(FLASH_DEVICE)" -a -e -w $< -v -b
+#	$(Q)lib/bossac/bin/bossac -p "$(FLASH_DEVICE)" -b -R > /dev/null 2>&1 || true
 else
 flash: $(OUT)klipper.bin lib/bossac/bin/bossac
 	@echo "  Flashing $^ to $(FLASH_DEVICE) via bossac (RS-232)"
