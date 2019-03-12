@@ -10,13 +10,6 @@ SAMPLE_COUNT_DEFAULT   = 8
 REPORT_TIME_DEFAULT    = 0.300
 RANGE_CHECK_COUNT      = 4
 
-VALID_SPI_SENSORS = {
-    'MAX31855' : 1,
-    'MAX31856' : 2,
-    'MAX31865' : 4,
-    'MAX6675'  : 8,
-}
-
 class SensorBase(object):
     min_temp = max_temp = .0
     min_sample_value = max_sample_value = 0
@@ -32,9 +25,9 @@ class SensorBase(object):
         self.report_time = report_time
         self._callback = self.__default_callback
         self._report_clock = 0
-        if chip_type in VALID_SPI_SENSORS:
+        if chip_type is not None:
             # SPI configuration
-            self.chip_type = VALID_SPI_SENSORS[chip_type]
+            self.chip_type = chip_type
             self.spi = spi = bus.MCU_SPI_from_config(
                 config, 1, pin_option="sensor_pin", default_speed=4000000)
             if config_cmd is not None:
@@ -94,7 +87,7 @@ class SensorBase(object):
     # ============ INTERNAL ===============
     def _build_config_cb(self):
         self.mcu.add_config_cmd(
-            "config_thermocouple oid=%u spi_oid=%u chip_type=%u" % (
+            "config_thermocouple oid=%u spi_oid=%u thermocouple_type=%s" % (
                 self.oid, self.spi.get_oid(), self.chip_type))
         clock = self.mcu.get_query_slot(self.oid)
         self._report_clock = self.mcu.seconds_to_clock(self.report_time)
