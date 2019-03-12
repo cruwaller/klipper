@@ -55,4 +55,4 @@ $(OUT)klipper.disasm: $(OUT)klipper.elf
 
 ifeq ($(CONFIG_SMOOTHIEWARE_BOOTLOADER),y)
 	@echo "  Flashing $< to $(FLASH_DEVICE)"
-	$(Q)$(PYTHON) ./scripts/flash_usb.py -t lpc176x -d "$(FLASH_DEVICE)" $(OUT)klipper.bin
+	$(Q)$(PYTHON) ./scripts/flash_usb.py -t lpc176x -d "$(FLASH_DEVICE)" $(if $(NOSUDO),--no-sudo) $(OUT)klipper.bin
