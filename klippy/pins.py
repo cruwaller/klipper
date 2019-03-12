@@ -13,16 +13,6 @@ class error(Exception):
 # Hardware pin names
 ######################################################################
 
-def named_pins(fmt, port_count, bit_count=32):
-    return { fmt % (port, portbit) : port * bit_count + portbit
-             for port in range(port_count)
-             for portbit in range(bit_count) }
-
-def beaglebone_pins():
-    gpios = named_pins("gpio%d_%d", 4)
-    gpios.update({"AIN%d" % i: i+4*32 for i in range(8)})
-    return gpios
-
 def esp_pins(port_count):
     pins = {}
     for port in range(port_count):
@@ -39,9 +29,7 @@ def esp_pins_io_expanders():
         pins['GPIO%u' % port] = port
     return pins
 
-
 MCU_PINS = {
-    "pru": beaglebone_pins(),
     "linux": {"analog%d" % i: i for i in range(8)}, # XXX
     "esp32": esp_pins_io_expanders(),
 }
@@ -160,8 +148,7 @@ beagleboneblack_mappings = {
 def update_map_beaglebone(pins, mcu):
     if mcu != 'pru':
         raise error("Beaglebone aliases not supported on mcu '%s'" % (mcu,))
-    for pin, gpio in beagleboneblack_mappings.items():
-        pins[pin] = pins[gpio]
+    pins.update(beagleboneblack_mappings)
 
 
 ######################################################################
