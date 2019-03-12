@@ -28,10 +28,6 @@ def named_pins(fmt, port_count, bit_count=32):
              for port in range(port_count)
              for portbit in range(bit_count) }
 
-def lpc_pins():
-    return { 'P%d.%d' % (port, pin) : port * 32 + pin
-             for port in range(5) for pin in range(32) }
-
 def beaglebone_pins():
     gpios = named_pins("gpio%d_%d", 4)
     gpios.update({"AIN%d" % i: i+4*32 for i in range(8)})
@@ -56,7 +52,6 @@ def esp_pins_io_expanders():
 
 MCU_PINS = {
     "stm32f103": port_pins(5, 16),
-    "lpc176x": lpc_pins(),
     "pru": beaglebone_pins(),
     "linux": {"analog%d" % i: i for i in range(8)}, # XXX
     "esp32": esp_pins_io_expanders(),
