@@ -30,7 +30,6 @@ def esp_pins_io_expanders():
     return pins
 
 MCU_PINS = {
-    "linux": {"analog%d" % i: i for i in range(8)}, # XXX
     "esp32": esp_pins_io_expanders(),
 }
 

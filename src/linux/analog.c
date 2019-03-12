@@ -21,6 +21,8 @@ extern int SIMULATOR_MODE;
 
 DECL_CONSTANT("ADC_MAX", CONFIG_ADC_MAX_VALUE); // Assume 12bit adc
 
+DECL_ENUMERATION_RANGE("pin", "analog0", 0, 8);
+
 #define IIO_PATH "/sys/bus/iio/devices/iio:device0/in_voltage%d_raw"
 
 struct gpio_adc
