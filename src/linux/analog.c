@@ -196,14 +196,3 @@ gpio_in_reset(struct gpio_in g, int8_t pull_up)
 }
 
 /********************************************************************************/
-
-struct gpio_pwm gpio_pwm_setup(uint8_t pin, uint32_t cycle_time, uint8_t val) {
-    (void)cycle_time;
-    return (struct gpio_pwm){.fd = pin, .val = val};
-}
-void gpio_pwm_write(struct gpio_pwm g, uint8_t val) {
-    (void)g;
-    (void)val;
-}
-
-/********************************************************************************/
