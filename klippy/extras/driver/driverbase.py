@@ -4,6 +4,9 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import extras.bus as bus
+from mcu import error
+import field_helpers
+import binascii, types, struct, math, collections
 
 ######################################################################
 # Driver base handlers
@@ -71,50 +74,21 @@ class DriverBase(object):
     def setup_step_distance(self, step_dist): # needed?
         self.step_dist = step_dist
 
-
 class SpiDriver(DriverBase):
     def __init__(self, config, stepper_config,
                  has_step_dir_pins=True, has_endstop=False):
         DriverBase.__init__(self, config, stepper_config,
             has_step_dir_pins, has_endstop)
-        self.printer.register_event_handler("klippy:ready", self.handle_ready)
         # ========== SPI config ==========
         self.spi = spi = bus.MCU_SPI_from_config(
             config, 3, pin_option="ss_pin", default_speed=2000000)
-        self.mcu = mcu = spi.get_mcu()
+        self.mcu = spi.get_mcu()
         self._oid = spi.get_oid()
-        mcu.register_config_callback(self._build_config_cb)
     # ============ SETUP ===============
-    def handle_ready(self):
-        if not self.mcu.is_shutdown():
-            self._init_driver()
-    def _build_config_cb(self):
-        self._build_config()
     def get_mcu(self):
         return self.mcu
     def get_oid(self):
         return self._oid
-    # ============ REGISTER HANDLING ===============
-    def modify_reg(self, defs, reg, val, addr=None):
-        send = False
-        for offset, mask, _map in defs:
-            try:
-                val = _map[val]
-            except (KeyError, TypeError):
-                pass
-            current_val = ((reg >> offset) & mask)
-            if (current_val ^ (val & mask)) != 0:
-                reg &= ~(mask << offset)
-                reg |= ((val & mask) << offset)
-                send = True
-        if send and addr is not None:
-            self._command_write(addr, reg)
-        return reg
-    def read_reg(self, defs, reg):
-        val = 0
-        for offset, mask, _map in defs:
-            val += ((reg >> offset) & mask)
-        return val
     # ============ SPI ===============
     def spi_send(self, data):
         self.spi.spi_send(data)
@@ -126,7 +100,245 @@ class SpiDriver(DriverBase):
         raise NotImplementedError("This need to be implemented in parent class")
     def _command_write(self, *args, **kwargs):
         raise NotImplementedError("This need to be implemented in parent class")
+
+class TmcSpiDriver(SpiDriver):
+    min_current = 100.
+    max_current = 1400.
+
+    def __init__(self, config, stepper_config,
+                 registers, fields, field_formatters,
+                 has_step_dir_pins=True, has_endstop=False):
+        SpiDriver.__init__(self, config, stepper_config,
+            has_step_dir_pins, has_endstop)
+        self.printer.register_event_handler("klippy:ready", self.handle_ready)
+        self.registers = registers
+        self.vsense = 0
+        self.isReset = self.isError = \
+            self.isStallguard = self.isStandstill = False
+        # Read generic configuration
+        self.sensor_less_homing = config.getboolean('sensor_less_homing', False)
+        self.sense_r = config.getfloat('sense_R', 0.11, above=0.09) + 0.02
+        # Create a register handler
+        self.regs = collections.OrderedDict()
+        self.fields = field_helpers.FieldHelper(
+            fields, field_formatters, self.regs)
+        # register command handlers
+        self.gcode = gcode = self.printer.lookup_object('gcode')
+        cmds = ["DRV_STATUS", "DRV_CURRENT", "DRV_STALLGUARD"]
+        for cmd in cmds:
+            gcode.register_mux_command(
+                cmd, "DRIVER", self.name.upper(),
+                getattr(self, 'cmd_' + cmd),
+                desc=getattr(self, 'cmd_' + cmd + '_help', None))
+        gcode.register_mux_command(
+            "DUMP_TMC", "DRIVER", self.name.upper(),
+            self.cmd_DUMP_TMC, desc=self.cmd_DUMP_TMC_help)
+        gcode.register_mux_command(
+            "INIT_TMC", "DRIVER", self.name.upper(),
+            self.cmd_INIT_TMC, desc=self.cmd_INIT_TMC_help)
+    def handle_ready(self):
+        if not self.mcu.is_shutdown():
+            self._init_driver()
+
+    # **************************************************************************
+    # === virtual declarations ===
+    # **************************************************************************
+    def dump_registers(self):
+        return "N/A"
+    def set_stallguard(self, sg=None):
+        return "N/A"
+    def set_dir(self, direction=0):
+        pass
     def _init_driver(self):
         pass
-    def _build_config(self):
-        pass
+
+    # **************************************************************************
+    # === GCode handlers ===
+    # **************************************************************************
+    cmd_DRV_STATUS_help = "args: DRIVER=driver_name"
+    def cmd_DRV_STATUS(self, params):
+        self.gcode.respond(self.dump_registers())
+    cmd_DRV_CURRENT_help = "args: DRIVER=driver_name [CURRENT=amps]"
+    def cmd_DRV_CURRENT(self, params):
+        current = self.gcode.get_float('CURRENT', params,default=None,
+            minval=(self.min_current/1000.), maxval=(self.max_current/1000.))
+        hold = self.gcode.get_float('HOLD_MULTIPLIER', params, default=None,
+            minval=0., maxval=1.)
+        delay = self.gcode.get_int('HOLD_DELAY', params, default=None,
+            minval = 0, maxval = 15)
+        msg = self._calc_rms_current(current, hold, delay)
+        self.gcode.respond(msg)
+    cmd_DRV_SG_help = "args: DRIVER=driver_name [SG=val]"
+    def cmd_DRV_STALLGUARD(self, params):
+        sg = self.gcode.get_int('SG', params, default=None,
+            minval=-64, maxval=63)
+        msg = "Stallguard is %s" % self.set_stallguard(sg)
+        self.gcode.respond(msg)
+    #cmd_DUMP_TMC_help = "Read and display TMC stepper driver registers"
+    cmd_DUMP_TMC_help = "args: DRIVER=driver_name"
+    def cmd_DUMP_TMC(self, params):
+        self.printer.lookup_object('toolhead').get_last_move_time()
+        self.logger.info("DUMP_TMC")
+        gcode = self.gcode
+        write_only_regs = []
+        queried_regs = []
+        for reg_name, reg_val in self.registers.items():
+            if reg_val[1] == 'W':
+                val = self.regs.get(reg_name, None)
+                if val is not None:
+                    write_only_regs.append(
+                        self.fields.pretty_format(reg_name, int(val)))
+            else:
+                val = self._command_read(reg_name)
+                queried_regs.append(self.fields.pretty_format(reg_name, val))
+        msg = ["========== Write-only registers =========="]
+        msg.extend(write_only_regs)
+        msg.append("========== Queried registers ==========")
+        msg.extend(queried_regs)
+        msg = "\n".join(msg)
+        gcode.respond_info(msg)
+    #cmd_INIT_TMC_help = "Initialize TMC stepper driver registers"
+    cmd_INIT_TMC_help = "args: DRIVER=driver_name"
+    def cmd_INIT_TMC(self, params):
+        self.logger.info("INIT_TMC")
+        self.printer.lookup_object('toolhead').wait_moves()
+        self._init_driver()
+
+    # **************************************************************************
+    # === Public handlers ===
+    # **************************************************************************
+    def has_faults(self):
+        return (self.isReset or self.isError or
+                self.isStallguard or self.isStandstill)
+    def clear_faults(self):
+        self.isReset = self.isError = False
+        self.isStallguard = self.isStandstill = False
+    def get_current(self):
+        rms = self._get_rms_current()
+        self.logger.debug("get_current = %.3fA" % rms)
+        return rms * 1000.
+
+    '''
+    ~                    READ / WRITE data transfer example
+    =================================================================================
+    action                       | data sent to TMC2130  | data received from TMC2130
+    =================================================================================
+    read DRV_STATUS              | --> 0x6F00000000      | <-- 0xSS & unused data
+    read DRV_STATUS              | --> 0x6F00000000      | <-- 0xSS & DRV_STATUS
+    write CHOPCONF := 0x00ABCDEF | --> 0xEC00ABCDEF      | <-- 0xSS & DRV_STATUS
+    write CHOPCONF := 0x00123456 | --> 0xEC00123456      | <-- 0xSS00ABCDEF
+    =================================================================================
+    '''
+
+    '''
+    READ FRAME:
+    |               40bit                        |
+    | S 8bit |      32bit data                   |
+    | STATUS |   D    |   D    |   D    |   D    |
+    '''
+    def _command_read(self, cmd): # 40bits always = 5 x 8bit!
+        cmd, mode = self.registers.get(cmd, (cmd, '')) # map string to value
+        if mode and 'R' not in mode:
+            raise error("TMC register '%s' R/W mode '%s is wrong!" % (
+                cmd, mode))
+        cmd &= 0x7F # Makesure the MSB is 0
+        read_cmd = [cmd, 0, 0, 0, 0]
+        self.spi_send(read_cmd)
+        values = self.spi_transfer(read_cmd)
+        # convert list of bytes to number
+        val    = 0
+        size   = len(values)
+        status = 0
+        if 0 < size:
+            status = int(values[0])
+            if status:
+                if status & 0b0001:
+                    self.isReset = True
+                    self.logger.warning("Reset has occurred!")
+                if status & 0b0010:
+                    self.isError = True
+                    self.logger.error("Driver error detected!")
+                if status & 0b0100:
+                    self.isStallguard = True
+                    self.logger.warning("Stallguard active")
+                if status & 0x1000:
+                    self.isStandstill = True
+                    self.logger.info("Motor stand still")
+            for idx in range(1, size):
+                val <<= 8
+                val |= int(values[idx])
+        self.logger.debug("<<== cmd 0x%02X : 0x%08X [status: 0x%02X]" % (
+            cmd, val, status))
+        return val
+
+    '''
+    WRITE FRAME:
+    |               40bit                        |
+    | A 8bit |      32bit data                   |
+    |  ADDR  |   D    |   D    |   D    |   D    |
+    '''
+    def _command_write(self, cmd, val=None): # 40bits always = 5 x 8bit!
+        if val is not None:
+            cmd, mode = self.registers.get(cmd, (cmd, '')) # map string to value
+            if mode and 'W' not in mode:
+                raise error("TMC register '%s' R/W mode '%s is wrong!" % (
+                    cmd, mode))
+            if not isinstance(val, types.ListType):
+                conv = struct.Struct('>I').pack
+                val = list(conv(val))
+            if len(val) != 4:
+                raise error("TMC driver internal error! len(val) != 4")
+            self.logger.debug("==>> cmd 0x%02X : 0x%s" % (
+                cmd, binascii.hexlify(bytearray(val))))
+            cmd |= 0x80 # Make sure command has write bit set
+            self.spi_send([cmd] + val)
+
+    def _calc_rms_current(self,
+                          current = None,
+                          multip_for_holding_current = None,
+                          hold_delay = None,
+                          init=False):
+        if current is not None:
+            # Check if current is in mA or A
+            if self.min_current < current:
+                current /= 1000.
+            vsense = 0
+            base = 32.0 * math.sqrt(2.) * current * self.sense_r
+            CS = base / 0.325 - .5
+            if CS < 16:
+                # If Current Scale is too low, turn on high sensitivity R_sense
+                # and calculate again
+                vsense = 1
+                CS = base / 0.180 - .5
+            self.fields.set_field('vsense', vsense)
+            self.vsense = vsense
+            iRun = int(CS)
+            self.fields.set_field('run_current', iRun)
+        else:
+            iRun = self.fields.get_field('run_current')
+            current = self._get_rms_current(cs=iRun)
+        if multip_for_holding_current is not None:
+            iHold = int(iRun * multip_for_holding_current)
+            self.fields.set_field('hold_current', iHold)
+        else:
+            iHold = self.fields.get_field('hold_current')
+        if hold_delay is not None:
+            self.fields.set_field('hold_delay', hold_delay)
+        else:
+            hold_delay = self.fields.get_field('hold_delay')
+        if not init:
+            self._command_write('CHOPCONF', self.regs['CHOPCONF'])
+            self._command_write('IHOLD_IRUN', self.regs['IHOLD_IRUN'])
+        msg = "RMS current %.3fA => IHold %u, IRun %u, IHoldDelay %u" % (
+            current, iHold, iRun, hold_delay)
+        self.logger.debug(msg)
+        return msg
+
+    def _get_rms_current(self, cs=None, vsense=None):
+        if vsense is None:
+            # vsense = self.fields.get_field('vsense')
+            vsense = self.vsense
+        if cs is None:
+            cs = self.fields.get_field('run_current')
+        V_fs   = [0.325, 0.180][bool(vsense)]
+        return ( cs + 1. ) / 32.0 * V_fs / self.sense_r / math.sqrt(2)

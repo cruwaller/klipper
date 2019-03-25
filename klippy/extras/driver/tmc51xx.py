@@ -4,19 +4,13 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
-import types, struct, math, collections, binascii
-from driverbase import SpiDriver
+import math
+from driverbase import TmcSpiDriver
 import field_helpers
 from mcu import error
 import chelper, pins
 
 decode_signed_int = field_helpers.decode_signed_int
-
-#***************************************************
-# Constants
-#***************************************************
-MIN_CURRENT = 100.
-MAX_CURRENT = 2000.
 
 # **************************************************************************
 # Generic value mappings
@@ -359,15 +353,8 @@ FieldFormatters = {
     'stealthChop':        (lambda v: '1(stealthChop)' if v else "0(spreadCycle)"),
     "internal_Rsense":    (lambda v: "1(IntR)" if v else ""),
     "external_ref":       (lambda v: "1(ExtVREF)" if v else ""),
-    'diag0_active_high':  (lambda v: "0(diag0 inverted)" if not v else ""),
-    'diag1_active_high':  (lambda v: "0(diag1 inverted)" if not v else ""),
-    "diag1_steps_skipped": (lambda v: "1(Diag1 steps skip)" if v else ""),
-    "diag1_chopper_on":   (lambda v: "1(Diag1 chopper on)" if v else ""),
-    "diag1_index":        (lambda v: "1(Diag1 index)" if v else ""),
-    "diag1_stall":        (lambda v: "1(Diag1 stall)" if v else ""),
-    "diag0_stall":        (lambda v: "1(Diag0 stall)" if v else ""),
-    "diag0_temp_prewarn": (lambda v: "1(Diag0 temp)" if v else ""),
-    "diag0_errors":       (lambda v: "1(Diag0 errors)" if v else ""),
+    'diag0_active_high':  (lambda v: "0(inverted)" if not v else ""),
+    'diag1_active_high':  (lambda v: "0(inverted)" if not v else ""),
     # GSTAT
     'gstat_reset'   : (lambda v: 'Reset has occurred!' if v else ""),
     'gstat_drv_err' : (lambda v: 'overtemperature or short circuit!' if v else ""),
@@ -396,16 +383,17 @@ FieldFormatters = {
     'CUR_A': (lambda v: str(decode_signed_int(v, 9))),
     'CUR_B': (lambda v: str(decode_signed_int(v, 9))),
     # DRV_STATUS
-    'sg_result': (lambda v: "%s(Current)" % v),
-    'fsactive': (lambda v: "1(Fullstep)" if v else ""),
-    'cs_actual': (lambda v: "%s(Current)" % v),
-    'stallGuard': (lambda v: "1(Stalled)" if v else ""),
-    'ot': (lambda v: "1(Overtemperature)" if v else ""),
-    's2ga': (lambda v: "1(A Short)" if v else ""),
-    's2gb': (lambda v: "1(B Short)" if v else ""),
-    'ola': (lambda v: "1(A Open Load)" if v else ""),
-    'olb': (lambda v: "1(B Open Load)" if v else ""),
-    'stst': (lambda v: "1(StandStill)" if v else ""),
+    'sg_result':        (lambda v: "%s(Current)" % v),
+    'fsactive':         (lambda v: "1(Fullstep)" if v else ""),
+    'cs_actual':        (lambda v: "%s(Current)" % v),
+    'stallGuard':       (lambda v: "1(Stalled)" if v else ""),
+    "otpw":             (lambda v: "1(OvertempWarning!)" if v else ""),
+    "ot":               (lambda v: "1(OvertempError!)" if v else ""),
+    "s2ga":             (lambda v: "1(ShortToGND_A!)" if v else ""),
+    "s2gb":             (lambda v: "1(ShortToGND_B!)" if v else ""),
+    "ola":              (lambda v: "1(OpenLoad_A!)" if v else ""),
+    "olb":              (lambda v: "1(OpenLoad_B!)" if v else ""),
+    'stst':             (lambda v: "1(StandStill)" if v else ""),
     # CHOPCONF
     'chopper_mode': (lambda v: '1(Fast decay)' if v else '0(Standard)'),
     'interpolate': (lambda v: "1(on)" if v else "0(off)"),
@@ -413,26 +401,24 @@ FieldFormatters = {
     'hysterisis_start': (lambda v: "%d" % (v+1)),
     'hysterisis_end': (lambda v: "%d" % (v-3)),
     'blank_time': (lambda v: "%d" % {v: k for k, v in blank_time_map.items()}[v]),
-    'microsteps': (lambda v: "%d" % {v: k for k, v in msteps_map.items()}[v]),
+    "microsteps": (lambda v: "%d(%dusteps)" % (v, 0x100 >> v)),
     'vsense': (lambda v: "1(high res)" if v else "0(normal)"),
     # COOLCONF
     'sg_filter': (lambda v: "1(enabled)" if v else '0(disabled)'),
     'sg_stall_value': (lambda v: "%s(SG)" % str(decode_signed_int(v, 7))),
     'sg_min': (lambda v: "%d" % v if v else '0(disabled)'),
     'sg_max': (lambda v: "%d" % v),
+    # PWMCONF
+    'stealth_freq':    (lambda v: "%s" % {v: k for k, v in pwm_freq_t.items()}[v]),
+    'standstill_mode': (lambda v: "%s" % {v: k for k, v in freewheel_t.items()}[v]),
     # ENCM_CTRL
     'encoder_inverted': (lambda v: "1(Inverted)" if v else ""),
     'encoder_maxspeed': (lambda v: "1(MaxSpeed)" if v else ""),
 }
 
 
-class TMC51xx(SpiDriver):
+class TMC51xx(TmcSpiDriver):
     _stepper_kinematics = None
-    # Error flags
-    isReset      = False
-    isError      = False
-    isStallguard = False
-    isStandstill = False
 
     class TimeoutError(Exception):
         pass
@@ -447,8 +433,11 @@ class TMC51xx(SpiDriver):
         self._last_state = {}
         self._home_cmd = None
         # init
-        SpiDriver.__init__(self, config, stepper_config,
+        TmcSpiDriver.__init__(self, config, stepper_config,
+            Registers, Fields, FieldFormatters,
             has_step_dir_pins=False, has_endstop=True)
+        self.max_current = 2000.
+        self.mcu.register_config_callback(self._build_config_cb)
         self._stepper_oid = stepper_oid = self.mcu.create_oid()
         self.mcu.register_msg(self._home_handle_end_stop_state,
                               "stepper_tmc5x_home_status", stepper_oid)
@@ -464,16 +453,9 @@ class TMC51xx(SpiDriver):
             self.enable.setup_max_duration(0.)
         # register driver as a virtual endstop
         ppins.register_chip(self.name, self)
-        # Create a register handler
-        self.regs = collections.OrderedDict()
-        self.fields = field_helpers.FieldHelper(
-            Fields, FieldFormatters, self.regs)
-        set_field = self.fields.set_field
         # Driver configuration
+        set_field = self.fields.set_field
         self.sensor_less_homing = config.getboolean('sensor_less_homing', False)
-        # +1...+63 = less sensitivity, -64...-1 = higher sensitivity
-        self.sg_stall_value = config.getint('stall_threshold', 10,
-            minval=-64, maxval=63)
         # option to manually set a hybrid threshold
         hybrid_threshold = config.getint('hybrid_threshold', None,
             minval=0, maxval=1048575)
@@ -500,17 +482,9 @@ class TMC51xx(SpiDriver):
         # Driver mode configurations
         mode = { "spreadCycle" : False, "stealthChop" : True }
         self.silent_mode = config.getchoice('mode', mode, default='stealthChop')
-        # Current config
-        self.sense_r = config.getfloat('sense_R', 0.11, above=0.09) + 0.02
-        self.current = config.getfloat('current', 1000.0,
-            above=MIN_CURRENT, maxval=MAX_CURRENT)
-        self.hold_multip = config.getfloat('hold_multiplier', 0.5,
-            above=0., maxval=1.0)
-        self.hold_delay = config.getint('hold_delay', 10, minval=0, maxval=15)
         # Calculate step calculation factors
         # default int clock freq is 13.2MHz @ 50C
-        self.fCLK = fCLK = config.getfloat('fCLK', 13200000.,
-            above=4000000, maxval=18000000)
+        fCLK = config.getfloat('fCLK', 13200000., above=4000000, maxval=18000000)
         # t = 2^24 / fCLK
         self.speed_factor = float(1 << 24) / fCLK * self.microsteps
         # ta2 = 2^41 / (fCLK^2)
@@ -529,7 +503,9 @@ class TMC51xx(SpiDriver):
         set_field('interpolate', config.getboolean('interpolate', True))
         # -- COOLCONF
         set_field('sg_filter', config.getboolean('stall_filter', default=False))
-        set_field('sg_stall_value', self.sg_stall_value)
+        # +1...+63 = less sensitivity, -64...-1 = higher sensitivity
+        set_field('sg_stall_value', config.getint('stall_threshold', 10,
+            minval=-64, maxval=63))
         set_field('sg_min', config.getint('current_increase_threshold', 0,
             minval=0, maxval=15))
         set_field('sg_max', config.getint('current_decrease_threshold', 0,
@@ -601,81 +577,19 @@ class TMC51xx(SpiDriver):
             set_field('enc_const_fraction', fraction)
             set_field('enc_sel_decimal', enc_decimal)
         # ========== Set Current ==========
-        self.__calc_rms_current(self.current, self.hold_multip,
-                                self.hold_delay, init=True)
+        current = config.getfloat('current', 1000.0,
+            above=self.min_current, maxval=self.max_current)
+        hold_multip = config.getfloat('hold_multiplier', 0.5,
+            above=0., maxval=1.0)
+        hold_delay = config.getint('hold_delay', 10, minval=0, maxval=15)
+        self._calc_rms_current(current, hold_multip, hold_delay, init=True)
         # local inits
         self.set_ignore_move(False)
         self.set_homing_dir()
-        # register command handlers
-        self.gcode = gcode = printer.lookup_object('gcode')
-        cmds = ["DRV_STATUS", "DRV_CURRENT", "DRV_STALLGUARD"]
-        for cmd in cmds:
-            gcode.register_mux_command(
-                cmd, "DRIVER", self.name.upper(),
-                getattr(self, 'cmd_' + cmd),
-                desc=getattr(self, 'cmd_' + cmd + '_help', None))
-        gcode.register_mux_command(
-            "DUMP_TMC", "STEPPER", self.name.upper(),
-            self.cmd_DUMP_TMC, desc=self.cmd_DUMP_TMC_help)
-        gcode.register_mux_command(
-            "INIT_TMC", "STEPPER", self.name.upper(),
-            self.cmd_INIT_TMC, desc=self.cmd_INIT_TMC_help)
     def setup_pin(self, pin_type, pin_params):
         if pin_type != 'endstop' or pin_params['pin'] != 'virtual_endstop':
             raise pins.error("virtual endstop is only supported")
         return self
-
-    # **************************************************************************
-    # === GCode handlers ===
-    # **************************************************************************
-    cmd_DRV_STATUS_help = "args: DRIVER=driver_name"
-    def cmd_DRV_STATUS(self, params):
-        self.gcode.respond(self.dump_registers())
-    cmd_DRV_CURRENT_help = "args: DRIVER=driver_name [CURRENT=amps]"
-    def cmd_DRV_CURRENT(self, params):
-        current = self.gcode.get_float('CURRENT', params,
-                                       default=None,
-                                       minval=(MIN_CURRENT/1000.),
-                                       maxval=(MAX_CURRENT / 1000.))
-        hold = self.gcode.get_float('HOLD_MULTIPLIER', params,
-                                    default=self.hold_multip,
-                                    minval=0., maxval=1.)
-        delay = self.gcode.get_int('HOLD_DELAY', params,
-                                   default=self.hold_delay,
-                                   minval = 0, maxval = 15)
-        self.__calc_rms_current(current, hold, delay)
-        msg = "Current is %.3fA, hold current %.3fA, hold delay %s" % (
-            self.current, (self.hold_multip * self.current), self.hold_delay)
-        self.gcode.respond(msg)
-    cmd_DRV_SG_help = "args: DRIVER=driver_name [SG=val]"
-    def cmd_DRV_STALLGUARD(self, params):
-        sg = self.gcode.get_float('SG', params, default=None)
-        self.gcode.respond(self.set_stallguard(sg))
-    cmd_DUMP_TMC_help = "Read and display TMC stepper driver registers"
-    def cmd_DUMP_TMC(self, params):
-        self.printer.lookup_object('toolhead').get_last_move_time()
-        self.logger.info("DUMP_TMC")
-        gcode = self.gcode
-        write_only_regs = []
-        queried_regs = []
-        for reg_name, val in self.regs.items():
-            if Registers[reg_name][1] == 'W':
-                write_only_regs.append(self.fields.pretty_format(reg_name, val))
-            else:
-                val = self._command_read(reg_name)
-                queried_regs.append(self.fields.pretty_format(reg_name, val))
-        msg = ["========== Write-only registers =========="]
-        msg.extend(write_only_regs)
-        msg.append("========== Queried registers ==========")
-        msg.extend(queried_regs)
-        msg = "\n".join(msg)
-        self.logger.info(msg)
-        gcode.respond_info(msg)
-    cmd_INIT_TMC_help = "Initialize TMC stepper driver registers"
-    def cmd_INIT_TMC(self, params):
-        self.logger.info("INIT_TMC")
-        self.printer.lookup_object('toolhead').wait_moves()
-        self._init_driver()
 
     # **************************************************************************
     # HOMING
@@ -819,7 +733,7 @@ class TMC51xx(SpiDriver):
     def dump_registers(self):
         res = [
             "NAME: %s" % self.name,
-            "RMS current: %.3fA" % self.__get_rms_current()
+            "RMS current: %.3fA" % self._get_rms_current()
         ]
         dump_regs = [key for key, val in Registers.items() if 'R' in val[1]]
         for reg in dump_regs:
@@ -837,29 +751,18 @@ class TMC51xx(SpiDriver):
     def set_dir(self, direction=0):
         new_value = self.fields.set_field('shaft_dir', direction)
         self._command_write('GCONF', new_value)
-    def has_faults(self):
-        return (self.isReset or self.isError or
-                self.isStallguard or self.isStandstill)
-    def clear_faults(self):
-        self.isReset = self.isError = False
-        self.isStallguard = self.isStandstill = False
-    def get_current(self):
-        rms = self.__get_rms_current()
-        self.logger.debug("get_current = %.3fA" % rms)
-        return rms * 1000.
     def set_stallguard(self, sg=None):
         if sg is not None:
-            if sg < -64 or 63 < sg:
-                raise self.gcode.error("SG out of range (min: -64, max: 63)")
-            self.sg_stall_value = sg
-            new_value = self.fields.set_field('sg_stall_value', sg)
-            self._command_write('COOLCONF', new_value)
-        return "Stallguard is %d" % self.sg_stall_value
+            new_val = self.fields.set_field('sg_stall_value', sg)
+            self._command_write('COOLCONF', new_val)
+        else:
+            sg = self.fields.get_field('sg_stall_value')
+        return sg
 
     #**************************************************************************
     # PRIVATE METHODS
     #**************************************************************************
-    def _build_config(self):
+    def _build_config_cb(self):
         self.mcu.add_config_cmd(
             "stepper_tmc5x_config oid=%u spi_oid=%u" % (
                 self._stepper_oid, self._oid,))
@@ -931,127 +834,6 @@ class TMC51xx(SpiDriver):
         if chopconf != chopconf_exp:
             self.logger.error("CHOPCONF Configuration error! [was 0x%08X expected 0x%08X]" %
                               (chopconf, chopconf_exp))
-
-    '''
-    ~                    READ / WRITE data transfer example
-    =================================================================================
-    action                       | data sent to TMC51xx  | data received from TMC51xx
-    =================================================================================
-    read DRV_STATUS              | --> 0x6F00000000      | <-- 0xSS & unused data
-    read DRV_STATUS              | --> 0x6F00000000      | <-- 0xSS & DRV_STATUS
-    write CHOPCONF := 0x00ABCDEF | --> 0xEC00ABCDEF      | <-- 0xSS & DRV_STATUS
-    write CHOPCONF := 0x00123456 | --> 0xEC00123456      | <-- 0xSS00ABCDEF
-    =================================================================================
-    '''
-
-    '''
-    READ FRAME:
-    |               40bit                        |
-    | S 8bit |      32bit data                   |
-    | STATUS |   D    |   D    |   D    |   D    |
-    '''
-    def _command_read(self, cmd): # 40bits always = 5 x 8bit!
-        cmd, mode = Registers.get(cmd, (cmd, ''))  # map string to value
-        if 'R' not in mode:
-            raise error("TMC51xx: register '%s' R/W mode '%s is wrong!" % (
-                cmd, mode))
-        cmd &= 0x7F # Makesure the MSB is 0
-        read_cmd = [cmd, 0, 0, 0, 0]
-        self.spi_send(read_cmd)
-        values = self.spi_transfer(read_cmd)
-        # convert list of bytes to number
-        val    = 0
-        size   = len(values)
-        status = 0
-        if 0 < size:
-            status = int(values[0])
-            if status:
-                if status & 0b0001:
-                    self.isReset = True
-                    self.logger.warning("  Reset has occurred!")
-                if status & 0b0010:
-                    self.isError = True
-                    self.logger.error("  Driver error detected!")
-                if status & 0b0100:
-                    self.isStallguard = True
-                    self.logger.warning("  Stallguard active")
-                if status & 0x1000:
-                    self.isStandstill = True
-                    self.logger.info("  Motor stand still")
-            for idx in range(1, size):
-                val <<= 8
-                val |= int(values[idx])
-        self.logger.debug("<<== cmd 0x%02X : 0x%08X [status: 0x%02X]" % (
-            cmd, val, status))
-        return val
-
-    '''
-    WRITE FRAME:
-    |               40bit                        |
-    | A 8bit |      32bit data                   |
-    |  ADDR  |   D    |   D    |   D    |   D    |
-    '''
-    def _command_write(self, cmd, val=None): # 40bits always = 5 x 8bit!
-        if val is not None:
-            cmd, mode = Registers.get(cmd, (cmd, ''))  # map string to value
-            if 'W' not in mode:
-                raise error("TMC51xx: register '%s' R/W mode '%s is wrong!" % (
-                    cmd, mode))
-            if not isinstance(val, types.ListType):
-                conv = struct.Struct('>I').pack
-                val = list(conv(val))
-            if len(val) != 4:
-                raise error("TMC51xx internal error! len(val) != 4")
-            self.logger.debug("==>> cmd 0x%02X : 0x%s" % (
-                cmd, binascii.hexlify(bytearray(val))))
-            cmd |= 0x80 # Make sure command has write bit set
-            self.spi_send([cmd] + val)
-
-    def __calc_rms_current(self,
-                           current = None,
-                           multip_for_holding_current = None,
-                           hold_delay = None,
-                           init=False):
-        if current:
-            # Check if current is in mA or A
-            if MIN_CURRENT < current:
-                current /= 1000.
-            self.vsense = 0
-            CS = 32.0 * math.sqrt(2.) * current * self.sense_r / 0.325 - .5
-            # If Current Scale is too low, turn on high sensitivity R_sense
-            # and calculate again
-            if CS < 16:
-                self.vsense = 1
-                CS = 32.0 * math.sqrt(2.) * current * self.sense_r / 0.180 - .5
-            self.fields.set_field('vsense', self.vsense)
-            iRun  = int(CS)
-            self.fields.set_field('run_current', iRun)
-            self.current = current
-        else:
-            iRun = self.fields.get_field('run_current')
-        if multip_for_holding_current:
-            iHold = int(iRun * multip_for_holding_current)
-            self.fields.set_field('hold_current', iHold)
-            self.hold_multip = multip_for_holding_current
-        else:
-            iHold = self.fields.get_field('hold_current')
-        if hold_delay:
-            self.fields.set_field('hold_delay', hold_delay)
-            self.hold_delay  = hold_delay
-        if not init:
-            self._command_write('CHOPCONF', self.regs['CHOPCONF'])
-            self._command_write('IHOLD_IRUN', self.regs['IHOLD_IRUN'])
-        self.logger.debug("RMS current %.3fA => IHold=%u, IRun=%u, IHoldDelay=%u" % (
-            self.current, iHold, iRun, self.hold_delay))
-
-    def __get_rms_current(self, cs=None, vsense=None):
-        if vsense is None:
-            # vsense = self.fields.get_field('vsense')
-            vsense = self.vsense
-        if cs is None:
-            cs = self.fields.get_field('run_current')
-        V_fs = [0.325, 0.180][bool(vsense)]
-        return ( cs + 1. ) / 32.0 * V_fs / self.sense_r / math.sqrt(2.)
 
     def __get_global_status(self):
         status = self._command_read('GSTAT')
