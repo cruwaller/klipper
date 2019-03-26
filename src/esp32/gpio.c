@@ -13,6 +13,7 @@
 #include <soc/io_mux_reg.h>
 #include <soc/gpio_struct.h>
 
+DECL_ENUMERATION_RANGE("pin", "GPIO0", 0, 40);
 
 // Internal
 void

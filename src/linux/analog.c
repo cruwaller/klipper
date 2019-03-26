@@ -21,7 +21,23 @@ extern int SIMULATOR_MODE;
 
 DECL_CONSTANT("ADC_MAX", CONFIG_ADC_MAX_VALUE); // Assume 12bit adc
 
+#if (CONFIG_SIMULATOR == 1)
+#define GPIO(PORT, NUM) (((PORT)-'A') * 32 + (NUM))
+DECL_ENUMERATION_RANGE("pin", "PA0", GPIO('A', 0), 32);
+DECL_ENUMERATION_RANGE("pin", "PB0", GPIO('B', 0), 32);
+DECL_ENUMERATION_RANGE("pin", "PC0", GPIO('C', 0), 32);
+DECL_ENUMERATION_RANGE("pin", "PD0", GPIO('D', 0), 32);
+DECL_ENUMERATION_RANGE("pin", "PE0", GPIO('E', 0), 32);
+
+// esp32 extension boards
+DECL_ENUMERATION_RANGE("pin", "GPIO0", 0, 40);
+DECL_ENUMERATION_RANGE("pin", "GPIO100", 0, 32);
+DECL_ENUMERATION_RANGE("pin", "GPIO132", 32, 32);
+DECL_ENUMERATION_RANGE("pin", "GPIO164", 64, 32);
+
+#else
 DECL_ENUMERATION_RANGE("pin", "analog0", 0, 8);
+#endif
 
 #define IIO_PATH "/sys/bus/iio/devices/iio:device0/in_voltage%d_raw"
 

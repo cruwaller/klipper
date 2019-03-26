@@ -8,7 +8,13 @@
 #include "sched.h" // sched_shutdown
 #include "board/internal.h"
 
-
+DECL_ENUMERATION_RANGE("pin", "GPIO100", 0, 32);
+#if (CONFIG_KLIPPER_IO_EXPANDER_1_CS != -1)
+DECL_ENUMERATION_RANGE("pin", "GPIO132", 32, 32);
+#endif
+#if (CONFIG_KLIPPER_IO_EXPANDER_2_CS != -1)
+DECL_ENUMERATION_RANGE("pin", "GPIO164", 64, 32);
+#endif
 
 /********************************************************************************
  * SPI IO Expander MCP23S17
