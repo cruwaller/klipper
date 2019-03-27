@@ -86,12 +86,16 @@ def current_bits(current, sense_resistor, vsense_on):
     cs = int(32. * current * sense_resistor * math.sqrt(2.) / vsense - 1. + .5)
     return max(0, min(31, cs))
 
-def get_config_current(config):
+def bits_to_current(bits, sense_resistor, vsense_on):
+    sense_resistor += 0.020
+    vsense = 0.32
+    if vsense_on:
+        vsense = 0.18
+    current = (bits + 1) * vsense / (32 * sense_resistor * math.sqrt(2.))
+    return round(current, 2)
+
+def calc_current_config(run_current, hold_current, sense_resistor):
     vsense = False
-    run_current = config.getfloat('run_current', above=0., maxval=2.)
-    hold_current = config.getfloat('hold_current', run_current,
-                                   above=0., maxval=2.)
-    sense_resistor = config.getfloat('sense_resistor', 0.110, above=0.)
     irun = current_bits(run_current, sense_resistor, vsense)
     ihold = current_bits(hold_current, sense_resistor, vsense)
     if irun < 16 and ihold < 16:
@@ -99,6 +103,15 @@ def get_config_current(config):
         irun = current_bits(run_current, sense_resistor, vsense)
         ihold = current_bits(hold_current, sense_resistor, vsense)
     return vsense, irun, ihold
+
+def get_config_current(config):
+    run_current = config.getfloat('run_current', above=0., maxval=2.)
+    hold_current = config.getfloat('hold_current', run_current,
+                                   above=0., maxval=2.)
+    sense_resistor = config.getfloat('sense_resistor', 0.110, above=0.)
+    vsense, irun, ihold = calc_current_config(
+                              run_current, hold_current, sense_resistor)
+    return vsense, irun, ihold, sense_resistor
 
 def get_config_microsteps(config):
     steps = {'256': 0, '128': 1, '64': 2, '32': 3, '16': 4,
