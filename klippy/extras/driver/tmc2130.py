@@ -363,9 +363,7 @@ class TMC2130(TmcSpiDriver):
             set_field(diag0purpose, 1)
         if diag1purpose is not None:
             set_field(diag1purpose, 1)
-        mode = { "spreadCycle" : False, "stealthChop" : True }
-        silent_mode = config.getchoice('mode', mode, default='stealthChop')
-        set_field('stealthChop', silent_mode)
+        set_field('stealthChop', self.silent_mode)
         # PWMCONF
         set_field('stealth_autoscale', 1)
         set_field('stealth_gradient', config.getint('stealth_gradient', 5,

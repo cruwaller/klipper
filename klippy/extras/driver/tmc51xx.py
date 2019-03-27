@@ -455,7 +455,6 @@ class TMC51xx(TmcSpiDriver):
         ppins.register_chip(self.name, self)
         # Driver configuration
         set_field = self.fields.set_field
-        self.sensor_less_homing = config.getboolean('sensor_less_homing', False)
         # option to manually set a hybrid threshold
         hybrid_threshold = config.getint('hybrid_threshold', None,
             minval=0, maxval=1048575)
@@ -479,11 +478,8 @@ class TMC51xx(TmcSpiDriver):
         }
         diag1purpose = config.getchoice('diag1_out', diag1types, default='NA')
         diag1act_high = config.getboolean('diag1_active_high', default=True)
-        # Driver mode configurations
-        mode = { "spreadCycle" : False, "stealthChop" : True }
-        self.silent_mode = config.getchoice('mode', mode, default='stealthChop')
         # Calculate step calculation factors
-        # default int clock freq is 13.2MHz @ 50C
+        #   - default int clock freq is 13.2MHz @ 50C
         fCLK = config.getfloat('fCLK', 13200000., above=4000000, maxval=18000000)
         # t = 2^24 / fCLK
         self.speed_factor = float(1 << 24) / fCLK * self.microsteps

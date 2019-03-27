@@ -117,6 +117,8 @@ class TmcSpiDriver(SpiDriver):
             self.isStallguard = self.isStandstill = False
         # Read generic configuration
         self.sensor_less_homing = config.getboolean('sensor_less_homing', False)
+        mode = { "spreadCycle" : False, "stealthChop" : True }
+        self.silent_mode = config.getchoice('mode', mode, default='stealthChop')
         self.sense_r = config.getfloat('sense_R', 0.11, above=0.09) + 0.02
         # Create a register handler
         self.regs = collections.OrderedDict()
