@@ -53,6 +53,6 @@ $(OUT)klipper.disasm: $(OUT)klipper.elf
 	@echo "  Creating disasm file $@"
 	$(Q)$(OBJDUMP)  -d -f -M reg-names-std --demangle $< > $@
 
-ifeq ($(CONFIG_SMOOTHIEWARE_BOOTLOADER),y)
+flash: $(OUT)klipper.bin
 	@echo "  Flashing $< to $(FLASH_DEVICE)"
 	$(Q)$(PYTHON) ./scripts/flash_usb.py -t lpc176x -d "$(FLASH_DEVICE)" $(if $(NOSUDO),--no-sudo) $(OUT)klipper.bin
