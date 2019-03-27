@@ -31,18 +31,6 @@ choice
     depends on SIMULATOR
     config SIM_MACH_atmega2560
         bool "atmega2560"
-    config SIM_MACH_atmega1280
-        bool "atmega1280"
-    config SIM_MACH_at90usb1286
-        bool "at90usb1286"
-    config SIM_MACH_atmega1284p
-        bool "atmega1284p"
-    config SIM_MACH_atmega644p
-        bool "atmega644p"
-    config SIM_MACH_atmega328
-        bool "atmega328"
-    config SIM_MACH_atmega168
-        bool "atmega168"
     config SIM_MACH_sam3x8e
         bool "sam3x8e"
     config SIM_MACH_lpc176x
@@ -55,12 +43,6 @@ config MCU
     string
     depends on SIMULATOR
     default "linux" if !SIMULATOR
-    default "atmega168" if SIMULATOR && SIM_MACH_atmega168
-    default "atmega328" if SIMULATOR && SIM_MACH_atmega328
-    default "atmega1284p" if SIMULATOR && SIM_MACH_atmega1284p
-    default "atmega644p" if SIMULATOR && SIM_MACH_atmega644p
-    default "at90usb1286" if SIMULATOR && SIM_MACH_at90usb1286
-    default "atmega1280" if SIMULATOR && SIM_MACH_atmega1280
     default "atmega2560" if SIMULATOR && SIM_MACH_atmega2560
     default "sam3x8e" if SIMULATOR && SIM_MACH_sam3x8e
     default "lpc176x" if SIMULATOR && SIM_MACH_lpc176x
@@ -70,6 +52,6 @@ config ADC_MAX_VALUE
     int
     default 4095 if !SIMULATOR
     default 4095 if SIMULATOR && (SIM_MACH_sam3x8e || SIM_MACH_lpc176x || SIM_MACH_esp32)
-    default 1023 if SIMULATOR && !SIM_MACH_sam3x8e && !SIM_MACH_lpc176x && !SIM_MACH_esp32
+    default 1023 if SIMULATOR && SIM_MACH_atmega2560
 
 endif

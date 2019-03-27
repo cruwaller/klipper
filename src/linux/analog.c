@@ -22,6 +22,21 @@ extern int SIMULATOR_MODE;
 DECL_CONSTANT("ADC_MAX", CONFIG_ADC_MAX_VALUE); // Assume 12bit adc
 
 #if (CONFIG_SIMULATOR == 1)
+#if (CONFIG_SIM_MACH_atmega2560)
+#define GPIO(PORT, NUM) (((PORT)-'A') * 8 + (NUM))
+DECL_ENUMERATION_RANGE("pin", "PA0", GPIO('A', 0), 8);
+DECL_ENUMERATION_RANGE("pin", "PB0", GPIO('B', 0), 8);
+DECL_ENUMERATION_RANGE("pin", "PC0", GPIO('C', 0), 8);
+DECL_ENUMERATION_RANGE("pin", "PD0", GPIO('D', 0), 8);
+DECL_ENUMERATION_RANGE("pin", "PE0", GPIO('E', 0), 8);
+DECL_ENUMERATION_RANGE("pin", "PF0", GPIO('F', 0), 8);
+DECL_ENUMERATION_RANGE("pin", "PG0", GPIO('G', 0), 8);
+DECL_ENUMERATION_RANGE("pin", "PH0", GPIO('H', 0), 8);
+DECL_ENUMERATION_RANGE("pin", "PJ0", GPIO('J', 0), 8);
+DECL_ENUMERATION_RANGE("pin", "PK0", GPIO('K', 0), 8);
+DECL_ENUMERATION_RANGE("pin", "PL0", GPIO('L', 0), 8);
+
+#elif (CONFIG_SIM_MACH_sam3x8e)
 #define GPIO(PORT, NUM) (((PORT)-'A') * 32 + (NUM))
 DECL_ENUMERATION_RANGE("pin", "PA0", GPIO('A', 0), 32);
 DECL_ENUMERATION_RANGE("pin", "PB0", GPIO('B', 0), 32);
@@ -29,11 +44,24 @@ DECL_ENUMERATION_RANGE("pin", "PC0", GPIO('C', 0), 32);
 DECL_ENUMERATION_RANGE("pin", "PD0", GPIO('D', 0), 32);
 DECL_ENUMERATION_RANGE("pin", "PE0", GPIO('E', 0), 32);
 
-// esp32 extension boards
+#elif (CONFIG_SIM_MACH_lpc176x)
+#define GPIO(PORT, NUM) ((PORT) * 32 + (NUM))
+DECL_ENUMERATION_RANGE("pin", "P0.0", GPIO(0, 0), 32);
+DECL_ENUMERATION_RANGE("pin", "P1.0", GPIO(1, 0), 32);
+DECL_ENUMERATION_RANGE("pin", "P2.0", GPIO(2, 0), 32);
+DECL_ENUMERATION_RANGE("pin", "P3.0", GPIO(3, 0), 32);
+DECL_ENUMERATION_RANGE("pin", "P4.0", GPIO(4, 0), 32);
+
+#elif (CONFIG_SIM_MACH_esp32)
 DECL_ENUMERATION_RANGE("pin", "GPIO0", 0, 40);
+// extension boards
 DECL_ENUMERATION_RANGE("pin", "GPIO100", 0, 32);
 DECL_ENUMERATION_RANGE("pin", "GPIO132", 32, 32);
 DECL_ENUMERATION_RANGE("pin", "GPIO164", 64, 32);
+
+#else
+#error "Simulator config is not supported!"
+#endif
 
 #else
 DECL_ENUMERATION_RANGE("pin", "analog0", 0, 8);
