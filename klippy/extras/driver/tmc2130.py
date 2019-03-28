@@ -302,8 +302,7 @@ class VirtualEndstop:
 class TMC2130(TmcSpiDriver):
     def __init__(self, config, stepper_config):
         TmcSpiDriver.__init__(self, config, stepper_config,
-            Registers, Fields, FieldFormatters)
-        self.max_current = 1400.
+            Registers, Fields, FieldFormatters, max_current=1400.)
         printer = config.get_printer()
         # Prepare virtual endstop support
         ppins = printer.lookup_object('pins')

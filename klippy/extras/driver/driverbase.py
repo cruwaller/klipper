@@ -74,6 +74,11 @@ class DriverBase(object):
     def setup_step_distance(self, step_dist): # needed?
         self.step_dist = step_dist
 
+
+######################################################################
+# SPI configured drivers
+######################################################################
+
 class SpiDriver(DriverBase):
     def __init__(self, config, stepper_config,
                  has_step_dir_pins=True, has_endstop=False):
@@ -95,35 +100,37 @@ class SpiDriver(DriverBase):
     def spi_transfer(self, data):
         params = self.spi.spi_transfer(data)
         return list(bytearray(params['response']))
-    # ============ VIRTUAL ===============
-    def _command_read(self, *args, **kwargs):
-        raise NotImplementedError("This need to be implemented in parent class")
-    def _command_write(self, *args, **kwargs):
-        raise NotImplementedError("This need to be implemented in parent class")
+
+
+######################################################################
+# TMC SPI drivers
+######################################################################
 
 class TmcSpiDriver(SpiDriver):
-    min_current = 100.
-    max_current = 1400.
-
     def __init__(self, config, stepper_config,
                  registers, fields, field_formatters,
-                 has_step_dir_pins=True, has_endstop=False):
+                 has_step_dir_pins=True, has_endstop=False,
+                 max_current=1000.):
         SpiDriver.__init__(self, config, stepper_config,
             has_step_dir_pins, has_endstop)
         self.printer.register_event_handler("klippy:ready", self.handle_ready)
+        self.min_current = 100.
+        self.max_current = max_current
         self.registers = registers
         self.vsense = 0
-        self.isReset = self.isError = \
-            self.isStallguard = self.isStandstill = False
-        # Read generic configuration
-        self.sensor_less_homing = config.getboolean('sensor_less_homing', False)
-        mode = { "spreadCycle" : False, "stealthChop" : True }
-        self.silent_mode = config.getchoice('mode', mode, default='stealthChop')
-        self.sense_r = config.getfloat('sense_R', 0.11, above=0.09) + 0.02
         # Create a register handler
         self.regs = collections.OrderedDict()
         self.fields = field_helpers.FieldHelper(
             fields, field_formatters, self.regs)
+        # Read generic configuration
+        self.sensor_less_homing = config.getboolean('sensor_less_homing', False)
+        mode = { "spreadCycle" : False, "stealthChop" : True }
+        self.silent_mode = config.getchoice('mode', mode, default='stealthChop')
+        sense_resistor = config.getfloat('sense_R', None, minval=0.09)
+        if sense_resistor is None:
+            sense_resistor = config.getfloat(
+                'sense_resistor', 0.11, minval=0.09)
+        self.sense_resistor = sense_resistor + 0.02
         # register command handlers
         self.gcode = gcode = self.printer.lookup_object('gcode')
         cmds = ["DRV_STATUS", "DRV_CURRENT", "DRV_STALLGUARD"]
@@ -176,7 +183,6 @@ class TmcSpiDriver(SpiDriver):
             minval=-64, maxval=63)
         msg = "Stallguard is %s" % self.set_stallguard(sg)
         self.gcode.respond(msg)
-    #cmd_DUMP_TMC_help = "Read and display TMC stepper driver registers"
     cmd_DUMP_TMC_help = "args: DRIVER=driver_name"
     def cmd_DUMP_TMC(self, params):
         self.printer.lookup_object('toolhead').get_last_move_time()
@@ -199,7 +205,6 @@ class TmcSpiDriver(SpiDriver):
         msg.extend(queried_regs)
         msg = "\n".join(msg)
         gcode.respond_info(msg)
-    #cmd_INIT_TMC_help = "Initialize TMC stepper driver registers"
     cmd_INIT_TMC_help = "args: DRIVER=driver_name"
     def cmd_INIT_TMC(self, params):
         self.logger.info("INIT_TMC")
@@ -209,29 +214,14 @@ class TmcSpiDriver(SpiDriver):
     # **************************************************************************
     # === Public handlers ===
     # **************************************************************************
-    def has_faults(self):
-        return (self.isReset or self.isError or
-                self.isStallguard or self.isStandstill)
-    def clear_faults(self):
-        self.isReset = self.isError = False
-        self.isStallguard = self.isStandstill = False
     def get_current(self):
         rms = self._get_rms_current()
         self.logger.debug("get_current = %.3fA" % rms)
         return rms * 1000.
 
-    '''
-    ~                    READ / WRITE data transfer example
-    =================================================================================
-    action                       | data sent to TMC2130  | data received from TMC2130
-    =================================================================================
-    read DRV_STATUS              | --> 0x6F00000000      | <-- 0xSS & unused data
-    read DRV_STATUS              | --> 0x6F00000000      | <-- 0xSS & DRV_STATUS
-    write CHOPCONF := 0x00ABCDEF | --> 0xEC00ABCDEF      | <-- 0xSS & DRV_STATUS
-    write CHOPCONF := 0x00123456 | --> 0xEC00123456      | <-- 0xSS00ABCDEF
-    =================================================================================
-    '''
-
+    # **************************************************************************
+    # === Protected handlers ===
+    # **************************************************************************
     '''
     READ FRAME:
     |               40bit                        |
@@ -239,7 +229,8 @@ class TmcSpiDriver(SpiDriver):
     | STATUS |   D    |   D    |   D    |   D    |
     '''
     def _command_read(self, cmd): # 40bits always = 5 x 8bit!
-        cmd, mode = self.registers.get(cmd, (cmd, '')) # map string to value
+        # cmd, mode = self.registers.get(cmd, (cmd, '')) # map string to value
+        cmd, mode = self.registers.get(cmd)
         if mode and 'R' not in mode:
             raise error("TMC register '%s' R/W mode '%s is wrong!" % (
                 cmd, mode))
@@ -249,24 +240,21 @@ class TmcSpiDriver(SpiDriver):
         values = self.spi_transfer(read_cmd)
         # convert list of bytes to number
         val    = 0
-        size   = len(values)
         status = 0
-        if 0 < size:
+        if values:
             status = int(values[0])
+            '''
             if status:
                 if status & 0b0001:
-                    self.isReset = True
                     self.logger.warning("Reset has occurred!")
                 if status & 0b0010:
-                    self.isError = True
                     self.logger.error("Driver error detected!")
                 if status & 0b0100:
-                    self.isStallguard = True
                     self.logger.warning("Stallguard active")
                 if status & 0x1000:
-                    self.isStandstill = True
                     self.logger.info("Motor stand still")
-            for idx in range(1, size):
+            '''
+            for idx in range(1, len(values)):
                 val <<= 8
                 val |= int(values[idx])
         self.logger.debug("<<== cmd 0x%02X : 0x%08X [status: 0x%02X]" % (
@@ -281,7 +269,8 @@ class TmcSpiDriver(SpiDriver):
     '''
     def _command_write(self, cmd, val=None): # 40bits always = 5 x 8bit!
         if val is not None:
-            cmd, mode = self.registers.get(cmd, (cmd, '')) # map string to value
+            # cmd, mode = self.registers.get(cmd, (cmd, '')) # map string to value
+            cmd, mode = self.registers.get(cmd)
             if mode and 'W' not in mode:
                 raise error("TMC register '%s' R/W mode '%s is wrong!" % (
                     cmd, mode))
@@ -297,15 +286,16 @@ class TmcSpiDriver(SpiDriver):
 
     def _calc_rms_current(self,
                           current = None,
-                          multip_for_holding_current = None,
+                          hold_current_multiplier = None,
                           hold_delay = None,
                           init=False):
+        initial_vsense = self.vsense
         if current is not None:
             # Check if current is in mA or A
             if self.min_current < current:
                 current /= 1000.
             vsense = 0
-            base = 32.0 * math.sqrt(2.) * current * self.sense_r
+            base = 32.0 * math.sqrt(2.) * current * self.sense_resistor
             CS = base / 0.325 - .5
             if CS < 16:
                 # If Current Scale is too low, turn on high sensitivity R_sense
@@ -314,13 +304,13 @@ class TmcSpiDriver(SpiDriver):
                 CS = base / 0.180 - .5
             self.fields.set_field('vsense', vsense)
             self.vsense = vsense
-            iRun = int(CS)
+            iRun = max(0, min(int(CS), 31))
             self.fields.set_field('run_current', iRun)
         else:
             iRun = self.fields.get_field('run_current')
             current = self._get_rms_current(cs=iRun)
-        if multip_for_holding_current is not None:
-            iHold = int(iRun * multip_for_holding_current)
+        if hold_current_multiplier is not None:
+            iHold = int(iRun * hold_current_multiplier)
             self.fields.set_field('hold_current', iHold)
         else:
             iHold = self.fields.get_field('hold_current')
@@ -329,7 +319,8 @@ class TmcSpiDriver(SpiDriver):
         else:
             hold_delay = self.fields.get_field('hold_delay')
         if not init:
-            self._command_write('CHOPCONF', self.regs['CHOPCONF'])
+            if initial_vsense != self.vsense:
+                self._command_write('CHOPCONF', self.regs['CHOPCONF'])
             self._command_write('IHOLD_IRUN', self.regs['IHOLD_IRUN'])
         msg = "RMS current %.3fA => IHold %u, IRun %u, IHoldDelay %u" % (
             current, iHold, iRun, hold_delay)
@@ -343,4 +334,4 @@ class TmcSpiDriver(SpiDriver):
         if cs is None:
             cs = self.fields.get_field('run_current')
         V_fs   = [0.325, 0.180][bool(vsense)]
-        return ( cs + 1. ) / 32.0 * V_fs / self.sense_r / math.sqrt(2)
+        return ( cs + 1. ) / 32.0 * V_fs / self.sense_resistor / math.sqrt(2)

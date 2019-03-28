@@ -435,8 +435,7 @@ class TMC51xx(TmcSpiDriver):
         # init
         TmcSpiDriver.__init__(self, config, stepper_config,
             Registers, Fields, FieldFormatters,
-            has_step_dir_pins=False, has_endstop=True)
-        self.max_current = 2000.
+            has_step_dir_pins=False, has_endstop=True, max_current=2000.)
         self.mcu.register_config_callback(self._build_config_cb)
         self._stepper_oid = stepper_oid = self.mcu.create_oid()
         self.mcu.register_msg(self._home_handle_end_stop_state,
