@@ -32,7 +32,7 @@ class Accelerometer:
         if pin_type != 'endstop' and pin_params['pin'] != 'virtual_endstop':
             raise self.ppins.error("virtual endstop is only supported")
         self.prepare_pin(pin_params)
-        return VirtualEndstop(self)
+        return VirtualEndstop(self, pin_params)
     def status(self):
         return "None"
     def get_position_str(self):
@@ -69,17 +69,19 @@ class Accelerometer:
 
 # Endstop wrapper
 class VirtualEndstop:
-    def __init__(self, accelerometer):
+    def __init__(self, accelerometer, pin_params):
         self.prepare_done = False
         self.logger = accelerometer.logger
         self.accelerometer = accelerometer
-        if accelerometer.pin is None:
-            raise pins.error("Accelerometer virtual endstop requires pin")
-        ppins = accelerometer.printer.lookup_object('pins')
-        self.mcu_endstop = mcu_endstop = ppins.setup_pin(
-            'endstop', accelerometer.pin)
-        if mcu_endstop.get_mcu() is not accelerometer.spi.get_mcu():
-            raise pins.error("Accelerometer virtual endstop must be on same mcu")
+        if pin_params['pin'] == 'virtual_endstop':
+            # Setup a pin if virtual endstop
+            if accelerometer.pin is None:
+                raise pins.error("Accelerometer virtual endstop requires pin")
+            ppins = accelerometer.printer.lookup_object('pins')
+            mcu_endstop = ppins.setup_pin('endstop', accelerometer.pin)
+        else:
+            mcu_endstop = pin_params['chip'].setup_pin('endstop', pin_params)
+        self.mcu_endstop = mcu_endstop
         # Wrappers to MCU_endstop class
         self.get_mcu = mcu_endstop.get_mcu
         self.add_stepper = mcu_endstop.add_stepper
@@ -90,17 +92,17 @@ class VirtualEndstop:
         self.query_endstop_wait = mcu_endstop.query_endstop_wait
         self.TimeoutError = mcu_endstop.TimeoutError
     def home_prepare(self, *args):
-        if self.prepare_done:
+        if self.prepare_done: # shared pin protect
             return
+        self.prepare_done = True
         self.accelerometer.home_prepare(*args)
         self.mcu_endstop.home_prepare()
-        self.prepare_done = True
     def home_finalize(self):
         if not self.prepare_done:
             return
-        self.accelerometer.home_finalize()
-        self.mcu_endstop.home_finalize()
         self.prepare_done = False
+        self.mcu_endstop.home_finalize()
+        self.accelerometer.home_finalize()
 
 
 class ADXL345(Accelerometer):

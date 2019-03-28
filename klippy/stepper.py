@@ -46,11 +46,12 @@ def lookup_endstop_pin(ppins, pin):
         raise ppins.error("Endstop requires pin")
     pin_params = ppins.lookup_pin(pin, can_invert=True,
                                   share_type='shared_endstop')
-    endstop = pin_params.get('class')
-    if endstop is None:
-        mcu_endstop = pin_params['chip'].setup_pin('endstop', pin_params)
-        pin_params['class'] = endstop = mcu_endstop
-    return endstop
+    mcu_endstop = pin_params.get('endstop_mcu')
+    if mcu_endstop is None:
+        chip = pin_params.get('virtual_chip', pin_params['chip'])
+        mcu_endstop = chip.setup_pin('endstop', pin_params)
+        pin_params['endstop_mcu'] = mcu_endstop
+    return mcu_endstop
 
 
 ######################################################################

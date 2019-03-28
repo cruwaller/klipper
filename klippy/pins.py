@@ -181,6 +181,13 @@ class PrinterPins:
             chip_name, pin = [s.strip() for s in desc.split(':', 1)]
         if chip_name not in self.chips:
             raise error("Unknown pin chip name '%s'" % (chip_name,))
+        '''
+        if ':' in pin:
+            # virtual config, mcu is also defined, call again
+            params = self.lookup_pin(pin, can_invert, can_pullup, share_type)
+            params['virtual_chip'] = self.chips[chip_name]
+            return params
+        '''
         if [c for c in '^~!: ' if c in pin]:
             format = ""
             if can_pullup:
@@ -207,7 +214,9 @@ class PrinterPins:
         can_invert = pin_type in ['stepper', 'endstop', 'digital_out', 'pwm']
         can_pullup = pin_type in ['endstop']
         pin_params = self.lookup_pin(pin_desc, can_invert, can_pullup)
-        return pin_params['chip'].setup_pin(pin_type, pin_params)
+        chip = pin_params.get('virtual_chip', pin_params['chip'])
+        return chip.setup_pin(pin_type, pin_params)
+        #return pin_params['chip'].setup_pin(pin_type, pin_params)
     def reset_pin_sharing(self, pin_params):
         share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
         del self.active_pins[share_name]
