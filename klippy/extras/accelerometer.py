@@ -147,48 +147,50 @@ class ADXL345(Accelerometer):
 
     def __init__(self, config):
         Accelerometer.__init__(self, config, spi_mode=3)
-        # Full resolution mode changes threshold values to 4mg/LSB
-        #   instaed of 62.5mg/LSB
-        self.full_res = config.getboolean('full_res', True)
-        # DC = absolute threshold value, AC = referenced threshold
-        self.isr_act_absolute = config.getboolean(
-            'isr_active_absolute', default=True)
-        self.isr_inact_absolute = config.getboolean(
-            'isr_inactive_absolute', default=True)
+        # == TAP config
+        self.tap_threshold(config.getint(
+            'isr_tap_threshold', default=1, above=0, maxval=0xff))
+        # == ACT config
         self.act_threshold(config.getint(
             'isr_active_threshold', default=1, above=0, maxval=0xff))
+        isr_act_absolute = config.getboolean(
+            'isr_active_absolute', default=True)
+        # == INACT config
         self.inact_threshold(config.getint(
             'isr_inactive_threshold', default=1, above=0, maxval=0xff))
         self.inact_timer(config.getint(
-            'isr_inactive_timer', default=0, minval=0, maxval=0xffff))
+            'isr_inactive_timer', default=0, minval=0, maxval=0xff))
+        isr_inact_absolute = config.getboolean(
+            'isr_inactive_absolute', default=True)
+        # == generic
+        # Full resolution mode changes threshold values to 4mg/LSB
+        #   instaed of 62.5mg/LSB
+        full_res = config.getboolean('full_res', True)
         self.isr_type = config.getchoice(
-            'isr_type', ['both', 'active', 'inactive'], default='active')
-        self.filter_range = config.getchoice(
+            'isr_type', ['both', 'active', 'inactive', 'tap'], default='active')
+        filter_range = config.getchoice(
             'filter_range', ['2g', '4g', '8g', '16g'], default='2g')
         filter_odr = config.getchoice(
             'filter_ord', ['12.5Hz', '25Hz', '50Hz',
                            '100Hz', '200Hz', '400Hz'], default='400Hz')
         self.filter_odr = 1. / float(filter_odr[:-2])
         # Fixed 10bit resolution in normal mode
-        self.resolution_in_bits = 10
-        if self.full_res:
-            # up to 13bits in full resolution mode (4mg/LSB)
-            self.resolution_in_bits = 13
-        self.filter_ratio = (2 * float(self.filter_range[:-1])
+        #   up to 13bits in full resolution mode (4mg/LSB)
+        self.resolution_in_bits = [10, 13][full_res]
+        self.filter_ratio = (2 * float(filter_range[:-1])
                              / float(1 << self.resolution_in_bits))
         # Configure:
-        self.int_map(self.isr_type)
-        self.int_source(self.isr_type)
+        self.act_inact_control(type=self.isr_type,
+            absolute_overthreshold=isr_act_absolute,
+            absolute_underthreshold=isr_inact_absolute)
+        self.int_map(config.getchoice('isr_pin',
+            {'int1': 0, 'int2': 1}, default='int1'))
+        self.int_enable()
         self.bw_rate(filter_odr)
-        if self.pin is None:
-            self.data_format(range=self.filter_range, full_res=self.full_res)
+        self.data_format(range=filter_range, full_res=full_res, init=True)
 
     def prepare_pin(self, pin_params):
-        self.data_format(invert=pin_params['invert'],
-                         range=self.filter_range,
-                         full_res=self.full_res)
-    def ready_handler(self):
-        pass
+        self.data_format(invert=pin_params['invert'])
     def home_prepare(self, *args):
         self.int_enable(self.isr_type)
         self.power_control(measure='measure')
@@ -227,6 +229,21 @@ class ADXL345(Accelerometer):
             [self.REG_DATAZ0, 0x00, 0x00], skip=1, reverse=True)
         return self.__convert_value(value, raw)
 
+    def tap_threshold(self, threshold, dur=2, axes="xyz"):
+        if not threshold:
+            dur = 0 # Disabled
+        # The scale factor is 62.5 mg/LSB
+        self.send([self.REG_THRESH_TAP, threshold & 0xff])
+        # duration in 625us/LSB
+        self.send([self.REG_DUR, dur & 0xff])
+        self.send([self.REG_LATENT, 0]) # disable double tap
+        # self.send([self.REG_WINDOW, 0]) # disable double tap
+        tap_axes = 0
+        for idx, axe in enumerate('zyx'):
+            if axe in axes:
+                tap_axes |= 1 << idx
+        self.send([self.REG_TAP_AXES, tap_axes])
+
     def act_threshold(self, threshold):
         # The scale factor is 62.5 mg/LSB
         self.send([self.REG_THRESH_ACT, threshold & 0xff])
@@ -237,21 +254,16 @@ class ADXL345(Accelerometer):
         # The scale factor is 1 sec/LSB
         self.send([self.REG_TIME_INACT, time & 0xff])
     def act_inact_control(self, type='disabled',
-                          absolute_overthreshold=True, absolute_underthreshold=True):
-        regorig = None
+                          absolute_overthreshold=True,
+                          absolute_underthreshold=True):
         reg = 0  # set to default
-        if type not in ['init', 'disabled']:
-            reg = regorig = self.transfer([self.REG_ACT_INACT_CTL, 0x00], skip=1)
-            if 'overthreshold' in type or type == 'both':
-                reg &= 0b00001111
-                reg |= (not absolute_overthreshold) << 7
-                reg |= 0b111 << 4 # enabled XYZ
-            if 'underthreshold' in type or type == 'both':
-                reg &= 0b11110000
-                reg |= (not absolute_underthreshold) << 3
-                reg |= 0b111 # enabled XYZ
-        if regorig != reg:
-            self.send([self.REG_ACT_INACT_CTL, reg])
+        if type in ['overthreshold', 'active', 'both']:
+            reg |= (not absolute_overthreshold) << 7
+            reg |= 0b111 << 4 # enabled XYZ
+        if type == ['underthreshold', 'inactive', 'both']:
+            reg |= (not absolute_underthreshold) << 3
+            reg |= 0b111 # enabled XYZ
+        self.send([self.REG_ACT_INACT_CTL, reg])
     def bw_rate(self, rate, low_power=False):
         reg = {'12.5Hz': 0b0111, '25Hz': 0b1000, '50Hz': 0b1001,
                '100Hz': 0b1010, '200Hz': 0b1011, '400Hz': 0b1100}[rate]
@@ -267,40 +279,44 @@ class ADXL345(Accelerometer):
         self.send([self.REG_POWER_CTL, reg])
 
     @staticmethod
-    def __int_handle(reg, type):
-        if type == 'disable':
-            reg = (reg & ~(0b11 << 3))
-        else:
-            if type in ['overthreshold', 'active', 'both']:
-                reg = (reg & ~(1 << 4)) | 1 << 4
-            if type == ['underthreshold', 'inactive', 'both']:
-                reg = (reg & ~(1 << 3)) | 1 << 3
+    def __int_handle(type):
+        # bits for INT_MAP and INT_ENABLE registers
+        reg = 0
+        if type == 'tap':
+            # enable single tap isr
+            reg |= 1 << 6
+        elif type == 'tap':
+            # enable active and inactive
+            reg |= 0b11 << 3
+        elif type in ['overthreshold', 'active']:
+            reg |= 1 << 4
+        elif type == ['underthreshold', 'inactive']:
+            reg |= 1 << 3
         return reg
-    reg_int_enable = 0
     def int_enable(self, type='disable'):
-        reg = self.__int_handle(self.reg_int_enable, type)
-        self.send([self.REG_INT_ENABLE, reg])
-        self.reg_int_enable = reg
-    reg_int_map = 0
-    def int_map(self, type='disable'):
-        reg = self.__int_handle(self.reg_int_map, type)
-        self.send([self.REG_INT_MAP, reg])
-        self.reg_int_map = reg
-    reg_int_source = 0
-    def int_source(self, type='disable'):
-        reg = self.__int_handle(self.reg_int_source, type)
-        self.send([self.REG_INT_SOUCE, reg])
-        self.reg_int_source = reg
+        # configure which isr is enabled
+        self.send([self.REG_INT_ENABLE, self.__int_handle(type)])
+    def int_map(self, pin=0):
+        # configure which isr pin is used
+        #   0b0 -> INT1, 0b1 -> INT2
+        self.send([self.REG_INT_MAP, pin*0xff])
     reg_data_format = 0
-    def data_format(self, invert=False, full_res=True,
-                    justify=False, range='2g'):
+    def data_format(self, invert=None, full_res=None, justify=None, range=None,
+                    init=False):
         reg = self.reg_data_format
-        reg = (reg & ~(1 << 5)) | invert << 5
-        reg = (reg & ~(1 << 3)) | full_res << 3
-        reg = (reg & ~(1 << 2)) | justify << 2
-        reg = (reg & ~0b11) | {'2g': 0b00, '4g': 0b01, '8g': 0b10, '16g': 0b11}[range]
-        self.send([self.REG_DATA_FORMAT, reg])
-        self.reg_data_format = reg
+        if invert is not None:
+            reg = (reg & ~(1 << 5)) | invert << 5
+        if full_res is not None:
+            reg = (reg & ~(1 << 3)) | full_res << 3
+        if justify is not None:
+            reg = (reg & ~(1 << 2)) | justify << 2
+        if range is not None:
+            reg = (reg & ~0b11) | {
+                '2g': 0b00, '4g': 0b01, '8g': 0b10, '16g': 0b11}[range]
+        if reg != self.reg_data_format or init:
+            # reconfigure if something is changed
+            self.send([self.REG_DATA_FORMAT, reg])
+            self.reg_data_format = reg
 
 
 class ADXL362(Accelerometer):
@@ -380,8 +396,8 @@ class ADXL362(Accelerometer):
             value = value - (1 << 12)
         return value * self.filter_ratio
     def prepare_pin(self, pin_params):
-        act = self.isr_type in ['active', 'both']
-        inact = self.isr_type in ['inactive', 'both']
+        act = self.isr_type in ['overthreshold', 'active', 'both']
+        inact = self.isr_type in ['underthreshold', 'inactive', 'both']
         self.interrupt_map(bank=0, invert=pin_params['invert'],
                            inact=inact, act=act)
     def ready_handler(self):
