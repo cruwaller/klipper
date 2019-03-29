@@ -33,13 +33,13 @@ stop_steppers(struct end_stop *e)
 {
     e->flags = ESF_REPORT;
     uint8_t count = e->stepper_count;
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    printf("endstop_stop_steppers: count=%u\n", count);
+#endif
     while (count--)
         if (e->steppers[count])
             stepper_stop(e->steppers[count]);
     sched_wake_task(&endstop_wake);
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-    printf("endstop_stop_steppers\n");
-#endif
 }
 
 static uint_fast8_t end_stop_oversample_event(struct timer *t);

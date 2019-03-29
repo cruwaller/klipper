@@ -664,7 +664,10 @@ class MCU:
     def create_oid(self):
         self._oid_count += 1
         return self._oid_count - 1
-    def register_config_callback(self, cb):
+    def register_config_callback(self, cb, prio=False):
+        if prio:
+            self._config_callbacks.insert(0, cb)
+            return
         self._config_callbacks.append(cb)
     def add_config_cmd(self, cmd, is_init=False):
         if is_init:

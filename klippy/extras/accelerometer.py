@@ -82,6 +82,8 @@ class VirtualEndstop:
         else:
             mcu_endstop = pin_params['chip'].setup_pin('endstop', pin_params)
         self.mcu_endstop = mcu_endstop
+        #mcu_endstop.get_mcu().register_config_callback(
+        #    self._build_config, prio=True)
         # Wrappers to MCU_endstop class
         self.get_mcu = mcu_endstop.get_mcu
         self.add_stepper = mcu_endstop.add_stepper
@@ -91,6 +93,11 @@ class VirtualEndstop:
         self.query_endstop = mcu_endstop.query_endstop
         self.query_endstop_wait = mcu_endstop.query_endstop_wait
         self.TimeoutError = mcu_endstop.TimeoutError
+    def _build_config(self):
+        kin = self.accelerometer.printer.lookup_object(
+            'toolhead').get_kinematics()
+        for stepper in kin.get_steppers('Z'):
+            stepper.add_to_endstop(self)
     def home_prepare(self, *args):
         if self.prepare_done: # shared pin protect
             return

@@ -185,7 +185,8 @@ class ProbeEndstopWrapper:
         pin = config.get('pin')
         pin_params = ppins.lookup_pin(pin, can_invert=True, can_pullup=True)
         self.mcu_endstop = pin_params['chip'].setup_pin('endstop', pin_params)
-        self.mcu_endstop.get_mcu().register_config_callback(self._build_config)
+        self.mcu_endstop.get_mcu().register_config_callback(
+            self._build_config, prio=True)
         # Wrappers
         self.get_mcu = self.mcu_endstop.get_mcu
         self.add_stepper = self.mcu_endstop.add_stepper
@@ -199,7 +200,7 @@ class ProbeEndstopWrapper:
         kin = self.printer.lookup_object('toolhead').get_kinematics()
         for stepper in kin.get_steppers('Z'):
             stepper.add_to_endstop(self)
-    def home_prepare(self):
+    def home_prepare(self, *args):
         if self.activate_gcode is not None:
             gcode = self.printer.lookup_object('gcode')
             gcode.run_script_from_command(self.activate_gcode)

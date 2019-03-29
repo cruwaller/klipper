@@ -284,6 +284,9 @@ command_reset_step_clock(uint32_t *args)
 {
     struct stepper *s = stepper_oid_lookup(args[0]);
     uint32_t waketime = args[1];
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    printf("command_reset_step_clock: oid %u, stepper %p\n", args[0], s);
+#endif
     irq_disable();
     if (s->count)
         shutdown("Can't reset time when stepper active");
@@ -328,6 +331,9 @@ DECL_COMMAND(command_stepper_get_position, "stepper_get_position oid=%c");
 void
 stepper_stop(struct stepper *s)
 {
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    printf("stepper_stop: stepper %p\n", s);
+#endif
     sched_del_timer(&s->time);
     s->next_step_time = 0;
     s->position = -stepper_get_position(s);
