@@ -17,7 +17,8 @@ config BOARD_DIRECTORY
 
 config CLOCK_FREQ
     int
-    default 20000000
+    default 8000000 if SIM_MACH_atmega2560_8
+    default 20000000 if !SIM_MACH_atmega2560_8
 
 config SIMULATOR
     bool "Compile for target software simulator"
@@ -31,6 +32,8 @@ choice
     depends on SIMULATOR
     config SIM_MACH_atmega2560
         bool "atmega2560"
+    config SIM_MACH_atmega2560_8
+        bool "atmega2560 8MHz"
     config SIM_MACH_sam3x8e
         bool "sam3x8e"
     config SIM_MACH_lpc176x
@@ -43,7 +46,7 @@ config MCU
     string
     depends on SIMULATOR
     default "linux" if !SIMULATOR
-    default "atmega2560" if SIMULATOR && SIM_MACH_atmega2560
+    default "atmega2560" if SIMULATOR && (SIM_MACH_atmega2560 || SIM_MACH_atmega2560_8)
     default "sam3x8e" if SIMULATOR && SIM_MACH_sam3x8e
     default "lpc176x" if SIMULATOR && SIM_MACH_lpc176x
     default "esp32" if SIMULATOR && SIM_MACH_esp32
@@ -52,6 +55,6 @@ config ADC_MAX_VALUE
     int
     default 4095 if !SIMULATOR
     default 4095 if SIMULATOR && (SIM_MACH_sam3x8e || SIM_MACH_lpc176x || SIM_MACH_esp32)
-    default 1023 if SIMULATOR && SIM_MACH_atmega2560
+    default 1023 if SIMULATOR && (SIM_MACH_atmega2560 || SIM_MACH_atmega2560_8)
 
 endif
