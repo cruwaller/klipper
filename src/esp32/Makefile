@@ -1,8 +1,7 @@
-# Additional ESP32 build rules
+# ESP32 build rules
 
 # Setup the toolchain
 CROSS_PREFIX = xtensa-esp32-elf-
-#CROSS_PREFIX := $(TOOLSDIR)/$(CROSS_PREFIX)
 
 # IDF environment paths
 ifeq ($(IDF_BUILD_PATH),)
