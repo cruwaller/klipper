@@ -11,6 +11,8 @@ camera_index: 0
 class VideoCamera(object):
     import cv2
     def __init__(self, config):
+        # Find OpenCV version
+        major_ver = int(self.cv2.__version__.split('.')[0])
         resolution = config.get('resolution', default="640x480")
         if "x" not in resolution:
             raise config.error("Invalid resolution format! ")
@@ -20,27 +22,38 @@ class VideoCamera(object):
         height = config.getint('resolution_height',
                                default=int(resolution[1]), above=0)
         fps = config.getfloat('fps', default=0, minval=0.)
-        self.skip = config.getint('skip', default=4)
         self.index = index = config.getint('camera_index', default=0)
+        # Validate version
+        if major_ver < 3:
+            # version 2.x
+            prop_fps = self.cv2.cv.CV_CAP_PROP_FPS
+            prop_width = self.cv2.cv.CV_CAP_PROP_FRAME_WIDTH
+            prop_height = self.cv2.cv.CV_CAP_PROP_FRAME_HEIGHT
+        elif major_ver == 3:
+            # version 3.x
+            prop_fps = self.cv2.CAP_PROP_FPS
+            prop_width = self.cv2.CAP_PROP_FRAME_WIDTH
+            prop_height = self.cv2.CAP_PROP_FRAME_HEIGHT
+        else:
+            raise config.error("opencv version '%s' is not supported!",
+                major_ver)
         self.video = video = self.cv2.VideoCapture(index)
         if not video.isOpened():
             raise config.error("Could not open video device")
-        video.set(self.cv2.CAP_PROP_FPS, fps)
-        video.set(self.cv2.CAP_PROP_FRAME_WIDTH, width)
-        video.set(self.cv2.CAP_PROP_FRAME_HEIGHT, height)
+        video.set(prop_fps, fps)
+        video.set(prop_width, width)
+        video.set(prop_height, height)
         self.lock = threading.Lock()
-        print("VIDEO CAM LOADED!")
     def __del__(self):
         self.video.release()
     def get_frame(self):
         with self.lock:
             video = self.video
-            for idx in range(0, self.skip):
-                success, image = video.read()
-            success, image = video.read()
-            if image is not None:
-                ret, jpeg = self.cv2.imencode('.jpg', image)
-                return jpeg.tostring()
+            if video.grab():
+                success, image = video.retrieve()
+                if success and image is not None:
+                    ret, jpeg = self.cv2.imencode('.jpg', image)
+                    return jpeg.tostring()
             return ""
     def get_pic(self):
         return self.get_frame()
