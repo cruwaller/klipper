@@ -9,7 +9,7 @@ install_packages()
 {
     # Packages for python cffi
     PKGLIST="python-virtualenv virtualenv python-dev libffi-dev build-essential"
-    PKGLIST="${PKGLIST} python-opencv"
+    PKGLIST="${PKGLIST} python-opencv python-numpy"
     # kconfig requirements
     PKGLIST="${PKGLIST} libncurses-dev"
     # hub-ctrl
@@ -41,6 +41,10 @@ create_virtualenv()
     ${PYTHONDIR}/bin/pip install -r ${SRCDIR}/scripts/klippy-requirements.txt
     ${PYTHONDIR}/bin/pip install -r ${SRCDIR}/requirements.txt
     ${PYTHONDIR}/bin/pip install RPi.GPIO
+
+    # Link/copy opencv required global system packages
+    ln -s /usr/lib/python2.7/dist-packages/numpy/ ${PYTHONDIR}/lib/python2.7/site-packages/
+    cp /usr/lib/python2.7/dist-packages/cv.* ${PYTHONDIR}/lib/python2.7/site-packages/
 }
 
 # Step 3: Install startup script
