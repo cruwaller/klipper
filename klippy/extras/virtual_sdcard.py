@@ -6,6 +6,7 @@
 import os, errno
 
 class VirtualSD:
+
     def __init__(self, config):
         self.printer = printer = config.get_printer()
         self.logger = printer.logger.getChild('VirtualSD')
@@ -68,8 +69,9 @@ class VirtualSD:
         try:
             filenames = os.listdir(self.sdcard_dirname)
             return [(fname, os.path.getsize(os.path.join(dname, fname)))
-                    for fname in filenames
-                    if not fname.startswith('.')]
+                    for fname in sorted(filenames, key=str.lower)
+                    if not fname.startswith('.')
+                    and os.path.isfile((os.path.join(dname, fname)))]
         except:
             self.logger.exception("virtual_sdcard get_file_list")
             raise self.gcode.error("Unable to get file list")
