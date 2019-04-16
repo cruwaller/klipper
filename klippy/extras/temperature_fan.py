@@ -18,6 +18,7 @@ class TemperatureFan:
         else:
             self.name = config.get_name().split()[1]
         self.printer = config.get_printer()
+        self.gcode = self.printer.lookup_object('gcode')
         self.logger = self.printer.get_logger(self.name)
         min_temp = config.getfloat('min_temp', minval=KELVIN_TO_CELCIUS, default=None)
         max_temp = config.getfloat('max_temp', above=min_temp, default=None)
@@ -35,14 +36,20 @@ class TemperatureFan:
             self.fan = fan.PrinterFan(config, default_shutdown_speed=1.)
             self.max_speed = config.getfloat('max_speed', 1., above=0., maxval=1.)
             self.min_speed = config.getfloat('min_speed', 0.3, above=0., maxval=1.)
-            self.target_temp = config.getfloat(
+            self.target_temp_conf = config.getfloat(
                 'target_temp', 40. if self.max_temp > 40. else self.max_temp,
                 minval=self.min_temp, maxval=self.max_temp)
+            self.target_temp = self.target_temp_conf
             algos = {'watermark': ControlBangBang, 'pid': ControlPID}
             algo = config.getchoice('control', algos)
             self.control = algo(self, config)
         self.next_speed_time = 0.
         self.last_speed_value = 0.
+        self.gcode.register_mux_command(
+            "SET_TEMPERATURE_FAN_TARGET", "TEMPERATURE_FAN", self.name,
+            self.cmd_SET_TEMPERATURE_FAN_TARGET_TEMP,
+            desc=self.cmd_SET_TEMPERATURE_FAN_TARGET_TEMP_help)
+
     def set_speed(self, read_time, value):
         if self.fan is None:
             return
@@ -73,6 +80,16 @@ class TemperatureFan:
         return self.min_speed
     def get_max_speed(self):
         return self.max_speed
+    cmd_SET_TEMPERATURE_FAN_TARGET_TEMP_help = "Sets a temperature fan target"
+    def cmd_SET_TEMPERATURE_FAN_TARGET_TEMP(self, params):
+        temp = self.gcode.get_float('TARGET', params, self.target_temp_conf)
+        self.set_temp(temp)
+    def set_temp(self, degrees):
+        if degrees and (degrees < self.min_temp or degrees > self.max_temp):
+            raise self.gcode.error(
+                "Requested temperature (%.1f) out of range (%.1f:%.1f)"
+                % (degrees, self.min_temp, self.max_temp))
+        self.target_temp = degrees
 
 ######################################################################
 # Bang-bang control algo
