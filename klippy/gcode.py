@@ -17,10 +17,10 @@ class GCodeParser:
         self.logger = printer.logger.getChild('gcode')
         self.printer = printer
         self.fd = fd
-        printer.register_event_handler("klippy:ready", self.handle_ready)
-        printer.register_event_handler("klippy:shutdown", self.handle_shutdown)
+        printer.register_event_handler("klippy:ready", self._handle_ready)
+        printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
         printer.register_event_handler("klippy:disconnect",
-                                       self.handle_disconnect)
+                                       self._handle_disconnect)
         # Input handling
         self.reactor = printer.get_reactor()
         self.is_processing_data = False
@@ -28,7 +28,7 @@ class GCodeParser:
         self.fd_handle = None
         if not self.is_fileinput:
             self.fd_handle = self.reactor.register_fd(self.fd,
-                                                      self.process_data)
+                                                      self._process_data)
         self.partial_input = ""
         self.pending_commands = []
         self.bytes_read = 0
@@ -75,7 +75,7 @@ class GCodeParser:
             return False
         if self.fd_handle is not None:
             self.reactor.unregister_fd(self.fd_handle)
-        self.fd_handle = self.reactor.register_fd(fd_r, self.process_data)
+        self.fd_handle = self.reactor.register_fd(fd_r, self._process_data)
         self.fd = fd_r
         return True
     def register_command(self, cmd, func, when_not_ready=False, desc=None):
@@ -90,7 +90,7 @@ class GCodeParser:
         #        "gcode command %s already registered" % (cmd,))
         if not (len(cmd) >= 2 and not cmd[0].isupper() and cmd[1].isdigit()):
             origfunc = func
-            func = lambda params: origfunc(self.get_extended_params(params))
+            func = lambda params: origfunc(self._get_extended_params(params))
         else:
             raise self.printer.config_error("GCode must be is capitals! cmd: %s" % cmd)
         self.ready_gcode_handlers[cmd] = func
@@ -103,7 +103,7 @@ class GCodeParser:
     def register_mux_command(self, cmd, key, value, func, desc=None, when_not_ready=False):
         prev = self.mux_commands.get(cmd)
         if prev is None:
-            self.register_command(cmd, self.cmd_mux, desc=desc, when_not_ready=when_not_ready)
+            self.register_command(cmd, self._cmd_mux, desc=desc, when_not_ready=when_not_ready)
             self.mux_commands[cmd] = prev = (key, {})
         prev_key, prev_values = prev
         if prev_key != key:
@@ -130,12 +130,12 @@ class GCodeParser:
         self.position_with_transform = transform.get_position
     def stats(self, eventtime):
         return False, "gcodein=%d" % (self.bytes_read,)
-    def get_current_position(self):
+    def _get_current_position(self):
         p = [lp - bp for lp, bp in zip(self.last_position, self.base_position)]
         p[3] /= self.extruder.extrude_factor
         return p
     def get_status(self, eventtime):
-        move_position = self.get_current_position()
+        move_position = self._get_current_position()
         busy = self.is_processing_data
         try:
             extrude_factor = self.extruder.extrude_factor
@@ -163,18 +163,18 @@ class GCodeParser:
             'homing_ypos': self.homing_position[1],
             'homing_zpos': self.homing_position[2]
         }
-    def handle_shutdown(self):
+    def _handle_shutdown(self):
         if not self.is_printer_ready:
             return
         self.is_printer_ready = False
         self.gcode_handlers = self.base_gcode_handlers
-        self.dump_debug()
+        self._dump_debug()
         if self.is_fileinput:
             self.printer.request_exit('error_exit')
         self._respond_state("Shutdown")
-    def handle_disconnect(self):
+    def _handle_disconnect(self):
         self._respond_state("Disconnect")
-    def handle_ready(self):
+    def _handle_ready(self):
         self.is_printer_ready = True
         self.gcode_handlers = self.ready_gcode_handlers
         # Lookup printer components
@@ -187,11 +187,11 @@ class GCodeParser:
             self.toolhead.set_extruder(self.extruder)
         if self.is_fileinput and self.fd_handle is None:
             self.fd_handle = self.reactor.register_fd(self.fd,
-                                                      self.process_data)
+                                                      self._process_data)
         self._respond_state("Ready")
     def reset_last_position(self):
         self.last_position = self.position_with_transform()
-    def dump_debug(self):
+    def _dump_debug(self):
         out = []
         out.append("Dumping gcode input %d blocks" % (
             len(self.input_log),))
@@ -211,7 +211,7 @@ class GCodeParser:
         self.logger.info("\n".join(out))
     # Parse input into commands
     args_r = re.compile('([A-Z_]+|[A-Z*/])')
-    def process_commands(self, commands, need_ack=True):
+    def _process_commands(self, commands, need_ack=True):
         for line in commands:
             # Ignore comments and leading/trailing spaces
             line = origline = line.strip()
@@ -249,7 +249,7 @@ class GCodeParser:
                     raise
             self.ack()
     m112_r = re.compile('^(?:[nN][0-9]+)?\s*[mM]112(?:\s|$)')
-    def process_data(self, eventtime):
+    def _process_data(self, eventtime):
         # Read input, separate by newline, and add to pending_commands
         try:
             data = os.read(self.fd, 4096)
@@ -287,38 +287,38 @@ class GCodeParser:
         # Process commands
         self.is_processing_data = True
         self.pending_commands = []
-        self.process_commands(pending_commands)
+        self._process_commands(pending_commands)
         if self.pending_commands:
-            self.process_pending()
+            self._process_pending()
         self.is_processing_data = False
-    def process_pending(self):
+    def _process_pending(self):
         pending_commands = self.pending_commands
         while pending_commands:
             self.pending_commands = []
-            self.process_commands(pending_commands)
+            self._process_commands(pending_commands)
             pending_commands = self.pending_commands
         if self.fd_handle is None:
             self.fd_handle = self.reactor.register_fd(self.fd,
-                                                      self.process_data)
+                                                      self._process_data)
     def process_batch(self, commands):
         if self.is_processing_data:
             return False
         self.is_processing_data = True
         try:
-            self.process_commands(commands, need_ack=False)
+            self._process_commands(commands, need_ack=False)
         except error as e:
             if self.pending_commands:
-                self.process_pending()
+                self._process_pending()
             self.is_processing_data = False
             raise
         if self.pending_commands:
-            self.process_pending()
+            self._process_pending()
         self.is_processing_data = False
         return True
     def run_script_from_command(self, script):
         prev_need_ack = self.need_ack
         try:
-            self.process_commands(script.split('\n'), need_ack=False)
+            self._process_commands(script.split('\n'), need_ack=False)
         finally:
             self.need_ack = prev_need_ack
     def run_script(self, script):
@@ -415,7 +415,7 @@ class GCodeParser:
         r'(?P<cmd>[a-zA-Z_][a-zA-Z_]+)(?:\s+|$)'
         r'(?P<args>[^#*;]*?)'
         r'\s*(?:[#*;].*)?$')
-    def get_extended_params(self, params):
+    def _get_extended_params(self, params):
         m = self.extended_r.match(params['#original'])
         if m is None:
             # Not an "extended" command
@@ -429,7 +429,7 @@ class GCodeParser:
         except ValueError as e:
             raise error("Malformed command '%s'" % (params['#original'],))
     # Temperature wrappers
-    def get_temp(self, eventtime):
+    def _get_temp(self, eventtime):
         # Tn:XXX /YYY B:XXX /YYY
         out = []
         for key, e in self.printer.extruder_get().items():
@@ -451,13 +451,12 @@ class GCodeParser:
         while self.is_printer_ready and heater.check_busy(eventtime):
             print_time = self.toolhead.get_last_move_time()
             if self.auto_temp_report:
-                self.respond(self.get_temp(eventtime))
+                self.respond(self._get_temp(eventtime))
             eventtime = self.reactor.pause(eventtime + 1.)
-    def set_temp(self, params, is_bed=False, wait=False):
+    def _set_temp(self, params, is_bed=False, wait=False):
         if self.simulate_print:
             return
         temp = 0.
-        heater = None
         if "S" in params:
             temp = self.get_float('S', params, 0.)
         elif "R" in params:
@@ -483,7 +482,7 @@ class GCodeParser:
             raise error(str(e))
         if wait and temp:
             self.bg_temp(heater)
-    def set_fan_speed(self, speed, index):
+    def _set_fan_speed(self, speed, index):
         fan = self.printer.lookup_object('fan %d' % (index,), None)
         if fan is None:
             if speed and not self.is_fileinput:
@@ -535,7 +534,7 @@ class GCodeParser:
         self.reset_last_position()
         self.base_position[3] = self.last_position[3]
         self.run_script_from_command(self.extruder.get_activate_gcode(True))
-    def cmd_mux(self, params):
+    def _cmd_mux(self, params):
         key, values = self.mux_commands[params['#command']]
         if None in values:
             key_param = self.get_str(key, params, None)
@@ -658,7 +657,7 @@ class GCodeParser:
     cmd_M114_when_not_ready = True
     def cmd_M114(self, params):
         # Get Current Position
-        p = self.get_current_position()
+        p = self._get_current_position()
         self.respond("X:%.3f Y:%.3f Z:%.3f E:%.3f" % tuple(p))
     def cmd_M220(self, params):
         # Set speed factor override percentage
@@ -709,26 +708,26 @@ class GCodeParser:
     cmd_M105_when_not_ready = True
     def cmd_M105(self, params):
         # Get Extruder Temperature
-        self.ack(self.get_temp(self.reactor.monotonic()))
+        self.ack(self._get_temp(self.reactor.monotonic()))
     def cmd_M104(self, params):
         # Set Extruder Temperature
-        self.set_temp(params)
+        self._set_temp(params)
     def cmd_M109(self, params):
         # Set Extruder Temperature and Wait
-        self.set_temp(params, wait=True)
+        self._set_temp(params, wait=True)
     def cmd_M140(self, params):
         # Set Bed Temperature
-        self.set_temp(params, is_bed=True)
+        self._set_temp(params, is_bed=True)
     def cmd_M190(self, params):
         # Set Bed Temperature and Wait
-        self.set_temp(params, is_bed=True, wait=True)
+        self._set_temp(params, is_bed=True, wait=True)
     def cmd_M106(self, params):
         # Set fan speed
-        self.set_fan_speed(self.get_float('S', params, 255., minval=0.) / 255.,
-                           self.get_int('P', params, 0))
+        self._set_fan_speed(self.get_float('S', params, 255., minval=0.) / 255.,
+                            self.get_int('P', params, 0))
     def cmd_M107(self, params):
         # Turn fan off
-        self.set_fan_speed(0., self.get_int('P', params, 0))
+        self._set_fan_speed(0., self.get_int('P', params, 0))
     # G-Code miscellaneous commands
     cmd_M112_help = "Emergency shutdown"
     cmd_M112_when_not_ready = True
