@@ -39,7 +39,7 @@ class GCodeFilamentPause(object):
             self.logger.info("Load: '%s'" % self.script_load)
         self.resume_print_original = None
         self.last_position = gcode.last_position
-        self.absolutecoord = gcode.absolutecoord
+        self.absolute_coord = gcode.absolute_coord
 
     cmd_M600_help = "Alias for FILAMENT_CHANGE"
     cmd_FILAMENT_CHANGE_help = "Args: [E<pos>], [L<pos>], [X<pos>], [Y<pos>], [Z<pos>]"
@@ -60,14 +60,14 @@ class GCodeFilamentPause(object):
         run_script('M25 P0\n')
         self.printer.lookup_object('toolhead').wait_moves()
         # Store coordinate system
-        self.absolutecoord = gcode.absolutecoord
+        self.absolute_coord = gcode.absolute_coord
         # Store last head position
         self.last_position = gcode.last_position
         # Start unload procedure
         if self.script_unload:
             run_script(self.script_unload)
         else:
-            gcode.absolutecoord = True
+            gcode.absolute_coord = True
             retract_len = get_float('E', params, self.retract_len, minval=0.)
             self.len_unload = unload_len = get_float(
                 'L', params, self.len_load, minval=0.)
@@ -78,9 +78,9 @@ class GCodeFilamentPause(object):
                 run_script('G92 E0\nG1 E-%s F%u' % (
                     retract_len, self.retract_speed))
             if z_lift:
-                gcode.absolutecoord = False
+                gcode.absolute_coord = False
                 run_script('G1 Z%s F%s' % (z_lift, self.z_speed))
-                gcode.absolutecoord = True
+                gcode.absolute_coord = True
             move = " ".join(["G1", "F%u" % self.travel_speed,
                             'Y%f' % pos_y, 'X%f' % pos_x])
             run_script(move)
@@ -108,7 +108,7 @@ class GCodeFilamentPause(object):
             gcode.run_script_from_command('G1 Z%f F%s' % (
                 self.last_position[2], self.z_speed))
         # restore coordinate system
-        gcode.absolutecoord = self.absolutecoord
+        gcode.absolute_coord = self.absolute_coord
         # Restore original SD resume
         gcode.register_command('M24', self.resume_print_original)
         gcode.run_script_from_command("M24")

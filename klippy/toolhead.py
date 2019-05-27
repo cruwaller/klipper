@@ -314,10 +314,10 @@ class ToolHead:
         if self.idle_position:
             gcode = self.printer.lookup_object('gcode')
             self.wait_moves()
-            orig = gcode.absolutecoord
-            gcode.absolutecoord = True
+            orig = gcode.absolute_coord
+            gcode.absolute_coord = True
             gcode.run_script_from_command(self.idle_position)
-            gcode.absolutecoord = orig
+            gcode.absolute_coord = orig
     def get_estimated_print_time(self):
         return self.mcu.estimated_print_time(self.reactor.monotonic())
     # Print time tracking

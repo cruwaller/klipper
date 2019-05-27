@@ -1,5 +1,11 @@
 #     Install opencv for video streaming
 #         - $sudo apt-get install python-opencv
+#
+#  sudo update-rc.d -f octoprint remove
+#  sudo update-rc.d -f webcamd remove
+#
+#  cp /usr/lib/python2.7/dist-packages/cv* ~/klippy-env/lib/python2.7/site-packages/
+#  ~/klippy-env/bin/pip install numpy
 
 import threading
 

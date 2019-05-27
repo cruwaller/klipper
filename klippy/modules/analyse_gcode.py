@@ -23,7 +23,7 @@ def analyse_gcode_file(filepath):
         return ANALYSED_GCODE_FILES[filepath]
     elif os.path.join("gcode", filepath) in ANALYSED_GCODE_FILES:
         return ANALYSED_GCODE_FILES[filepath]
-    absolutecoord = True
+    absolute_coord = True
     last_position = .0
     try:
         with open(filepath, 'rb') as f:
@@ -145,14 +145,14 @@ def analyse_gcode_file(filepath):
                     gnum = int(params['G'])
                     if gnum == 0 or gnum == 1:
                         if "Z" in params:
-                            if absolutecoord:
+                            if absolute_coord:
                                 last_position = float(params['Z'])
                             else:
                                 last_position += float(params['Z'])
                     elif gnum == 90:
-                        absolutecoord = True
+                        absolute_coord = True
                     elif gnum == 91:
-                        absolutecoord = False
+                        absolute_coord = False
 
             info["height"] = last_position
             # first layer height

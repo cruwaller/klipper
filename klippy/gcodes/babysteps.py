@@ -16,19 +16,19 @@ class BabySteps(object):
     cmd_M290_help = "Babystepping. Args: [S<offset>] | [R]"
     def cmd_M290(self, params):
         gcode = self.gcode
-        absolutecoord = gcode.absolutecoord
+        absolute_coord = gcode.absolute_coord
         base_position = gcode.base_position
         last_position = gcode.last_position
         # Babystepping
         if 'S' in params:
             babysteps_to_apply = gcode.get_float('S', params)
-            if absolutecoord:
+            if absolute_coord:
                 base_position[self.z_axis_pos] += babysteps_to_apply
             else:
                 last_position[self.z_axis_pos] += babysteps_to_apply
             self.babysteps += babysteps_to_apply
         elif 'R' in params: # Reset
-            if absolutecoord:
+            if absolute_coord:
                 base_position[self.z_axis_pos] -= self.babysteps
             else:
                 last_position[self.z_axis_pos] -= self.babysteps
