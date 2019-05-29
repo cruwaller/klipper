@@ -168,6 +168,8 @@ Fields["PWM_AUTO"] = {
     "PWM_GRAD_AUTO":       0xff << 16
 }
 
+SignedFields = ["CUR_A", "CUR_B", "PWM_SCALE_AUTO"]
+
 FieldFormatters = {
     "I_scale_analog":   (lambda v: "1(ExtVREF)" if v else ""),
     "shaft":            (lambda v: "1(Reverse)" if v else ""),
@@ -175,8 +177,6 @@ FieldFormatters = {
     "uv_cp":            (lambda v: "1(Undervoltage!)" if v else ""),
     "SEL_A":            (lambda v: "%d(%s)" % (v, ["TMC222x", "TMC220x"][v])),
     "VERSION":          (lambda v: "%#x" % v),
-    "CUR_A":            (lambda v: str(field_helpers.decode_signed_int(v, 9))),
-    "CUR_B":            (lambda v: str(field_helpers.decode_signed_int(v, 9))),
     "MRES":             (lambda v: "%d(%dusteps)" % (v, 0x100 >> v)),
     "otpw":             (lambda v: "1(OvertempWarning!)" if v else ""),
     "ot":               (lambda v: "1(OvertempError!)" if v else ""),
@@ -186,7 +186,6 @@ FieldFormatters = {
     "s2vsb":            (lambda v: "1(LowSideShort_B!)" if v else ""),
     "ola":              (lambda v: "1(OpenLoad_A!)" if v else ""),
     "olb":              (lambda v: "1(OpenLoad_B!)" if v else ""),
-    "PWM_SCALE_AUTO":   (lambda v: str(field_helpers.decode_signed_int(v, 9)))
 }
 
 
@@ -298,7 +297,8 @@ class TMC2208(driverbase.DriverBase):
         # Setup basic register values
         self.ifcnt = None
         self.regs = collections.OrderedDict()
-        self.fields = field_helpers.FieldHelper(Fields, FieldFormatters, self.regs)
+        self.fields = field_helpers.FieldHelper(Fields, SignedFields, FieldFormatters,
+                                                self.regs)
         self.fields.set_field("pdn_disable", True)
         self.fields.set_field("mstep_reg_select", True)
         self.fields.set_field("multistep_filt", True)

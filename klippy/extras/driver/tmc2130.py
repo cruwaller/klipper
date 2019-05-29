@@ -8,8 +8,6 @@ from driverbase import TmcSpiDriver
 import field_helpers
 import pins
 
-decode_signed_int = field_helpers.decode_signed_int
-
 # **************************************************************************
 # Generic value mappings
 # **************************************************************************
@@ -224,6 +222,8 @@ Fields = {
     'LOST_STEPS': {'LOST_STEPS': 0xfffff}
 }
 
+SignedFields = ["CUR_A", "CUR_B", "sg_stall_value"]
+
 FieldFormatters = {
     # GCONF
     "external_ref":      (lambda v: "1(ExtVREF)" if v else ""),
@@ -243,8 +243,8 @@ FieldFormatters = {
     'DIR':       (lambda v: '1(HIGH)' if v else '0(LOW)'),
     'STEP':      (lambda v: '1(HIGH)' if v else '0(LOW)'),
     # MSCURACT
-    "CUR_A": (lambda v: decode_signed_int(v, 9)),
-    "CUR_B": (lambda v: decode_signed_int(v, 9)),
+    # "CUR_A",
+    # "CUR_B",
     # CHOPCONF
     'blank_time': (lambda v: "%d" % {v: k for k, v in blank_time_map.items()}[v]),
     "microsteps": (lambda v: "%d(%dusteps)" % (v, 0x100 >> v)),
@@ -260,7 +260,7 @@ FieldFormatters = {
     "olb":              (lambda v: "1(OpenLoad_B!)" if v else ""),
     'stst':             (lambda v: "1(StandStill)" if v else ""),
     # COOLCONF
-    'sg_stall_value':   (lambda v: "%s(SG)" % str(decode_signed_int(v, 7))),
+    # 'sg_stall_value',
     'sg_min':           (lambda v: "%d" % v if v else '0(disabled)'),
     'sg_step_width':    (lambda v: "%s" % {v: k for k, v in seup_t.items()}[v]),
     'sg_current_decrease': (lambda v: "%s" % {v: k for k, v in sedn_t.items()}[v]),
@@ -302,7 +302,7 @@ class VirtualEndstop:
 class TMC2130(TmcSpiDriver):
     def __init__(self, config, stepper_config):
         TmcSpiDriver.__init__(self, config, stepper_config,
-            Registers, Fields, FieldFormatters, max_current=1400.)
+            Registers, Fields, FieldFormatters, SignedFields, max_current=1400.)
         printer = config.get_printer()
         # Prepare virtual endstop support
         ppins = printer.lookup_object('pins')

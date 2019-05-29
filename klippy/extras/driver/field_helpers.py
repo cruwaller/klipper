@@ -13,15 +13,11 @@ import math
 def ffs(mask):
     return (mask & -mask).bit_length() - 1
 
-# Decode two's complement signed integer
-def decode_signed_int(val, bits):
-    if (val >> (bits - 1)) & 1:
-        return val - (1 << bits)
-    return val
-
 class FieldHelper:
-    def __init__(self, all_fields, field_formatters={}, registers=None):
+    def __init__(self, all_fields, signed_fields=[], field_formatters={},
+                 registers=None):
         self.all_fields = all_fields
+        self.signed_fields = {sf: 1 for sf in signed_fields}
         self.field_formatters = field_formatters
         self.registers = registers
         if self.registers is None:
@@ -39,7 +35,10 @@ class FieldHelper:
         if reg_value is None:
             reg_value = self.registers[reg_name]
         mask = self.all_fields[reg_name][field_name]
-        return (reg_value & mask) >> ffs(mask)
+        field_value = (reg_value & mask) >> ffs(mask)
+        if field_name in self.signed_fields and ((reg_value & mask) << 1) > mask:
+            field_value -= (1 << field_value.bit_length())
+        return field_value
     def set_field(self, field_name, field_value, reg_value=None, reg_name=None):
         # Returns register value with field bits filled with supplied value
         if reg_name is None:
@@ -59,20 +58,23 @@ class FieldHelper:
         maxval = mask >> ffs(mask)
         if maxval == 1:
             val = config.getboolean(config_name, default)
+        elif field_name in self.signed_fields:
+            val = config.getint(config_name, default,
+                minval=-(maxval // 2 + 1), maxval=maxval // 2)
         else:
             val = config.getint(config_name, default, minval=0, maxval=maxval)
         return self.set_field(field_name, val)
-    def pretty_format(self, reg_name, value):
+    def pretty_format(self, reg_name, reg_value):
         # Provide a string description of a register
         reg_fields = self.all_fields.get(reg_name, {})
         reg_fields = sorted([(mask, name) for name, mask in reg_fields.items()])
         fields = []
         for mask, field_name in reg_fields:
-            fval = (value & mask) >> ffs(mask)
-            sval = self.field_formatters.get(field_name, str)(fval)
+            field_value = self.get_field(field_name, reg_value, reg_name)
+            sval = self.field_formatters.get(field_name, str)(field_value)
             if sval and sval != "0":
                 fields.append(" %s=%s" % (field_name, sval))
-        return "%-11s %08x%s" % (reg_name + ":", value, "".join(fields))
+        return "%-11s %08x%s" % (reg_name + ":", reg_value, "".join(fields))
 
 ######################################################################
 # Config reading helpers

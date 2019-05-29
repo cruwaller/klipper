@@ -10,8 +10,6 @@ import field_helpers
 from mcu import error
 import chelper, pins
 
-decode_signed_int = field_helpers.decode_signed_int
-
 # **************************************************************************
 # Generic value mappings
 # **************************************************************************
@@ -347,6 +345,11 @@ Fields = {
     'LOST_STEPS': {'lost steps': 0xfffff}
 }
 
+SignedFields = [
+    'CUR_A', 'CUR_B', 'sg_stall_value',
+    'actual motor position', 'actual motor velocity', 'target position',
+    'encoder actual position', 'encoder latch position', ]
+
 FieldFormatters = {
     # GCONF
     'shaft_dir':          (lambda v: '1(Reverse)' if v else ''),
@@ -373,15 +376,8 @@ FieldFormatters = {
     'ramp_mode': (lambda v: "%s(%s)" % (
         v, {v: k for k, v in ramp_mode_t.items()}[v])),
     # RAMP GENERATOR
-    'actual motor position': (lambda v: str(decode_signed_int(v, 32))),
-    'actual motor velocity': (lambda v: str(decode_signed_int(v, 32))),
-    'target position':       (lambda v: str(decode_signed_int(v, 32))),
-    'encoder actual position': (lambda v: str(decode_signed_int(v, 32))),
     'enc_n_event': (lambda v: '1(event detected' if v else ''),
-    'encoder latch position': (lambda v: str(decode_signed_int(v, 32))),
     # MOTOR DRIVER REGISTER SET
-    'CUR_A': (lambda v: str(decode_signed_int(v, 9))),
-    'CUR_B': (lambda v: str(decode_signed_int(v, 9))),
     # DRV_STATUS
     'sg_result':        (lambda v: "%s(Current)" % v),
     'fsactive':         (lambda v: "1(Fullstep)" if v else ""),
@@ -405,7 +401,6 @@ FieldFormatters = {
     'vsense': (lambda v: "1(high res)" if v else "0(normal)"),
     # COOLCONF
     'sg_filter': (lambda v: "1(enabled)" if v else '0(disabled)'),
-    'sg_stall_value': (lambda v: "%s(SG)" % str(decode_signed_int(v, 7))),
     'sg_min': (lambda v: "%d" % v if v else '0(disabled)'),
     'sg_max': (lambda v: "%d" % v),
     # PWMCONF
@@ -434,7 +429,7 @@ class TMC51xx(TmcSpiDriver):
         self._home_cmd = None
         # init
         TmcSpiDriver.__init__(self, config, stepper_config,
-            Registers, Fields, FieldFormatters,
+            Registers, Fields, FieldFormatters, SignedFields,
             has_step_dir_pins=False, has_endstop=True, max_current=2000.)
         self.mcu.register_config_callback(self._build_config_cb)
         self._stepper_oid = stepper_oid = self.mcu.create_oid()

@@ -108,7 +108,7 @@ class SpiDriver(DriverBase):
 
 class TmcSpiDriver(SpiDriver):
     def __init__(self, config, stepper_config,
-                 registers, fields, field_formatters,
+                 registers, fields, field_formatters, signed_fields,
                  has_step_dir_pins=True, has_endstop=False,
                  max_current=1000.):
         SpiDriver.__init__(self, config, stepper_config,
@@ -121,7 +121,7 @@ class TmcSpiDriver(SpiDriver):
         # Create a register handler
         self.regs = collections.OrderedDict()
         self.fields = field_helpers.FieldHelper(
-            fields, field_formatters, self.regs)
+            fields, signed_fields, field_formatters, self.regs)
         # Read generic configuration
         self.sensor_less_homing = config.getboolean('sensor_less_homing', False)
         mode = { "spreadCycle" : False, "stealthChop" : True }
