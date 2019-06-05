@@ -4,7 +4,10 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math, logging, collections
-import bus, tmc2130
+import tmc2130_tmp as tmc2130
+import extras.bus as bus
+import driverbase
+import field_helpers
 
 vsense = 0.325
 GLOBAL_SCALER = 256
@@ -256,7 +259,7 @@ class TMC5160:
         self.name = config.get_name().split()[-1]
         # Setup mcu communication
         self.regs = collections.OrderedDict()
-        self.fields = tmc2130.FieldHelper(Fields, SignedFields, FieldFormatters,
+        self.fields = field_helpers.FieldHelper(Fields, SignedFields, FieldFormatters,
                                           self.regs)
         self.mcu_tmc = tmc2130.MCU_TMC_SPI(config, Registers, self.fields)
         self.get_register = self.mcu_tmc.get_register
@@ -282,7 +285,7 @@ class TMC5160:
         # Setup basic register values
         irun, ihold, self.sense_resistor = get_config_current(config)
         msteps, en_pwm, thresh = \
-            tmc2130.get_config_stealthchop(config, TMC_FREQUENCY)
+            field_helpers.get_config_stealthchop(config, TMC_FREQUENCY)
         set_config_field = self.fields.set_config_field
         #   CHOPCONF
         set_config_field(config, "toff", 3)
