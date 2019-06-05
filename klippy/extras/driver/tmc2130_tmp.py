@@ -170,10 +170,10 @@ class TMCCommandHelper:
         self.query_registers = None
         self.gcode = self.printer.lookup_object("gcode")
         self.gcode.register_mux_command(
-            "SET_TMC_FIELD", "STEPPER", self.name,
+            "SET_TMC_FIELD", "STEPPER", self.name.upper(),
             self.cmd_SET_TMC_FIELD, desc=self.cmd_SET_TMC_FIELD_help)
         self.gcode.register_mux_command(
-            "INIT_TMC", "STEPPER", self.name,
+            "INIT_TMC", "STEPPER", self.name.upper(),
             self.cmd_INIT_TMC, desc=self.cmd_INIT_TMC_help)
     def init_registers(self, print_time=0.):
         # Send registers
@@ -200,7 +200,7 @@ class TMCCommandHelper:
     def setup_register_dump(self, query_registers):
         self.query_registers = query_registers
         self.gcode.register_mux_command(
-            "DUMP_TMC", "STEPPER", self.name,
+            "DUMP_TMC", "STEPPER", self.name.upper(),
             self.cmd_DUMP_TMC, desc=self.cmd_DUMP_TMC_help)
     cmd_DUMP_TMC_help = "Read and display TMC stepper driver registers"
     def cmd_DUMP_TMC(self, params):
