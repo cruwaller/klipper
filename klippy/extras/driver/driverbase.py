@@ -150,6 +150,26 @@ class TmcSpiDriver(SpiDriver):
             self._init_driver()
 
     # **************************************************************************
+    # === register helpers ===
+    # **************************************************************************
+    def get_fields(self):
+        return self.fields
+    def get_register(self, reg_name):
+        reg = self.registers[reg_name]
+        self.spi.spi_send([reg, 0x00, 0x00, 0x00, 0x00])
+        if self.printer.get_start_args().get('debugoutput') is not None:
+            return 0
+        params = self.spi.spi_transfer([reg, 0x00, 0x00, 0x00, 0x00])
+        pr = bytearray(params['response'])
+        return (pr[1] << 24) | (pr[2] << 16) | (pr[3] << 8) | pr[4]
+    def set_register(self, reg_name, val, print_time=0.):
+        min_clock = self.spi.get_mcu().print_time_to_clock(print_time)
+        reg = self.registers[reg_name]
+        data = [(reg | 0x80) & 0xff, (val >> 24) & 0xff, (val >> 16) & 0xff,
+                (val >> 8) & 0xff, val & 0xff]
+        self.spi.spi_send(data, min_clock)
+
+    # **************************************************************************
     # === virtual declarations ===
     # **************************************************************************
     def dump_registers(self):
