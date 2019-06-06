@@ -101,6 +101,7 @@ class PrinterStepper:
         self.set_commanded_position = mcu_stepper.set_commanded_position
         self.get_mcu_position = mcu_stepper.get_mcu_position
         self.get_step_dist = mcu_stepper.get_step_dist
+        self.is_dir_inverted = mcu_stepper.is_dir_inverted
         # Homing finetune after enstop hit
         self.tune_after_homing = \
             config.getfloat('endstop_correction', None) # in mm
