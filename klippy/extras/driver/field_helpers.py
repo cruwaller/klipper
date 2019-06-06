@@ -227,19 +227,42 @@ class TMCCurrentHelper:
 # Config reading helpers
 ######################################################################
 
-def get_config_microsteps(config):
-    steps = {'256': 0, '128': 1, '64': 2, '32': 3, '16': 4,
-             '8': 5, '4': 6, '2': 7, '1': 8}
-    return config.getchoice('microsteps', steps)
+# Helper to configure and query the microstep settings
+class TMCMicrostepHelper:
+    def __init__(self, config, mcu_tmc):
+        self.mcu_tmc = mcu_tmc
+        self.fields = mcu_tmc.get_fields()
+        steps = {'256': 0, '128': 1, '64': 2, '32': 3, '16': 4,
+                 '8': 5, '4': 6, '2': 7, '1': 8}
+        mres = config.getchoice('microsteps', steps)
+        self.fields.set_field("MRES", mres)
+    def get_microsteps(self):
+        return 256 >> self.fields.get_field("MRES")
+    def get_phase(self):
+        field_name = "MSCNT"
+        if self.fields.lookup_register(field_name, None) is None:
+            # TMC2660 uses MSTEP
+            field_name = "MSTEP"
+        reg = self.mcu_tmc.get_register(self.fields.lookup_register(field_name))
+        mscnt = self.fields.get_field(field_name, reg)
+        return mscnt >> self.fields.get_field("MRES")
 
-def get_config_stealthchop(config, tmc_freq):
-    mres = get_config_microsteps(config)
+# Helper to configure "stealthchop" mode
+def TMCStealthchopHelper(config, mcu_tmc, tmc_freq):
+    fields = mcu_tmc.get_fields()
+    en_pwm_mode = False
     velocity = config.getfloat('stealthchop_threshold', 0., minval=0.)
-    if not velocity:
-        return mres, False, 0
-    stepper_name = " ".join(config.get_name().split()[1:])
-    stepper_config = config.getsection(stepper_name)
-    step_dist = stepper_config.getfloat('step_distance')
-    step_dist_256 = step_dist / (1 << mres)
-    threshold = int(tmc_freq * step_dist_256 / velocity + .5)
-    return mres, True, max(0, min(0xfffff, threshold))
+    if velocity:
+        stepper_name = " ".join(config.get_name().split()[1:])
+        stepper_config = config.getsection(stepper_name)
+        step_dist = stepper_config.getfloat('step_distance')
+        step_dist_256 = step_dist / (1 << fields.get_field("MRES"))
+        threshold = int(tmc_freq * step_dist_256 / velocity + .5)
+        fields.set_field("TPWMTHRS", max(0, min(0xfffff, threshold)))
+        en_pwm_mode = True
+    reg = fields.lookup_register("en_pwm_mode", None)
+    if reg is not None:
+        fields.set_field("en_pwm_mode", en_pwm_mode)
+    else:
+        # TMC2208 uses en_spreadCycle
+        fields.set_field("en_spreadCycle", not en_pwm_mode)

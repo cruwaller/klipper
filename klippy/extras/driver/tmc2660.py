@@ -233,20 +233,17 @@ class MCU_TMC2660_SPI:
 class TMC2660(driverbase.DriverBase):
     def __init__(self, config, stepper_config):
         driverbase.DriverBase.__init__(self, config, stepper_config)
-        self.printer = config.get_printer()
-        self.name = config.get_name().split()[1]
         # Setup mcu communication
         self.fields = field_helpers.FieldHelper(Fields, SignedFields, FieldFormatters)
         self.mcu_tmc = MCU_TMC2660_SPI(config, Registers, self.fields)
-        self.get_register = self.mcu_tmc.get_register
-        self.set_register = self.mcu_tmc.set_register
         # Register commands
         cmdhelper = tmc2130.TMCCommandHelper(config, self.mcu_tmc)
         cmdhelper.setup_register_dump(self.query_registers)
 
         # DRVCTRL
-        mres = self.microsteps
-        self.fields.set_field("MRES", mres)
+        mh = field_helpers.TMCMicrostepHelper(config, self.mcu_tmc)
+        self.get_microsteps = mh.get_microsteps
+        self.get_phase = mh.get_phase
         set_config_field = self.fields.set_config_field
         set_config_field(config, "DEDGE", 0)
         set_config_field(config, "INTPOL", True, 'interpolate')
@@ -283,13 +280,5 @@ class TMC2660(driverbase.DriverBase):
         self.fields.set_field("SDOFF", 0) # only step/dir mode supported
 
     def query_registers(self, print_time=0.):
-        return [(reg_name, self.get_register(reg_name))
+        return [(reg_name, self.mcu_tmc.get_register(reg_name))
                 for reg_name in ReadRegisters]
-
-    def get_microsteps(self):
-        return 256 >> self.fields.get_field("MRES")
-
-    def get_phase(self):
-        reg = self.get_register("READRSP@RDSEL0")
-        mscnt = self.fields.get_field("MSTEP", reg)
-        return mscnt >> self.fields.get_field("MRES")

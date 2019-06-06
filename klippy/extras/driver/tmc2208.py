@@ -4,7 +4,6 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import driverbase, field_helpers
-import tmc2130_tmp as tmc2130
 
 TMC_FREQUENCY=12000000.
 
@@ -322,20 +321,18 @@ class TMC2208(driverbase.DriverBase):
         # Setup mcu communication
         self.fields = field_helpers.FieldHelper(Fields, SignedFields, FieldFormatters)
         self.mcu_tmc = MCU_TMC_uart(config, Registers, self.fields)
-        self.get_register = self.mcu_tmc.get_register
-        self.set_register = self.mcu_tmc.set_register
         # Register commands
-        cmdhelper = tmc2130.TMCCommandHelper(config, self.mcu_tmc)
+        cmdhelper = field_helpers.TMCCommandHelper(config, self.mcu_tmc)
         cmdhelper.setup_register_dump(self.query_registers)
         # Setup basic register values
         self.fields.set_field("pdn_disable", True)
         self.fields.set_field("mstep_reg_select", True)
         self.fields.set_field("multistep_filt", True)
-        tmc2130.TMCCurrentHelper(config, self.mcu_tmc)
-        mres, en, thresh = field_helpers.get_config_stealthchop(config, TMC_FREQUENCY)
-        self.fields.set_field("MRES", mres)
-        self.fields.set_field("en_spreadCycle", not en)
-        self.fields.set_field("TPWMTHRS", thresh)
+        field_helpers.TMCCurrentHelper(config, self.mcu_tmc)
+        mh = field_helpers.TMCMicrostepHelper(config, self.mcu_tmc)
+        self.get_microsteps = mh.get_microsteps
+        self.get_phase = mh.get_phase
+        field_helpers.TMCStealthchopHelper(config, self.mcu_tmc, TMC_FREQUENCY)
         # Allow other registers to be set from the config
         set_config_field = self.fields.set_config_field
         set_config_field(config, "toff", 3)
@@ -355,7 +352,7 @@ class TMC2208(driverbase.DriverBase):
     def query_registers(self, print_time=0.):
         out = []
         for reg_name in ReadRegisters:
-            val = self.get_register(reg_name)
+            val = self.mcu_tmc.get_register(reg_name)
             # IOIN has different mappings depending on the driver type
             # (SEL_A field of IOIN reg)
             if reg_name == "IOIN":
@@ -363,8 +360,3 @@ class TMC2208(driverbase.DriverBase):
                 reg_name = "IOIN@TMC220x" if drv_type else "IOIN@TMC222x"
             out.append((reg_name, val))
         return out
-    def get_microsteps(self):
-        return 256 >> self.fields.get_field("MRES")
-    def get_phase(self):
-        mscnt = self.fields.get_field("MSCNT", self.get_register("MSCNT"))
-        return mscnt >> self.fields.get_field("MRES")
