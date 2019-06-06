@@ -269,7 +269,7 @@ class TMC5160:
         ppins = self.printer.lookup_object("pins")
         ppins.register_chip("tmc5160_" + self.name, self)
         # Register commands
-        cmdhelper = tmc2130.TMCCommandHelper(config, self.mcu_tmc)
+        cmdhelper = field_helpers.TMCCommandHelper(config, self.mcu_tmc)
         cmdhelper.setup_register_dump(self.query_registers)
         gcode = self.printer.lookup_object("gcode")
         gcode.register_mux_command(

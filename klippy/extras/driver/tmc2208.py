@@ -3,7 +3,6 @@
 # Copyright (C) 2018-2019  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import logging, collections
 import driverbase, field_helpers
 import tmc2130_tmp as tmc2130
 
@@ -321,28 +320,18 @@ class TMC2208(driverbase.DriverBase):
     def __init__(self, config, stepper_config):
         driverbase.DriverBase.__init__(self, config, stepper_config)
         # Setup mcu communication
-        self.regs = collections.OrderedDict()
-        self.fields = field_helpers.FieldHelper(Fields, SignedFields, FieldFormatters,
-                                                self.regs)
+        self.fields = field_helpers.FieldHelper(Fields, SignedFields, FieldFormatters)
         self.mcu_tmc = MCU_TMC_uart(config, Registers, self.fields)
         self.get_register = self.mcu_tmc.get_register
         self.set_register = self.mcu_tmc.set_register
         # Register commands
         cmdhelper = tmc2130.TMCCommandHelper(config, self.mcu_tmc)
         cmdhelper.setup_register_dump(self.query_registers)
-        gcode = self.printer.lookup_object("gcode")
-        gcode.register_mux_command(
-            "SET_TMC_CURRENT", "STEPPER", self.name.upper(),
-            self.cmd_SET_TMC_CURRENT, desc=self.cmd_SET_TMC_CURRENT_help)
         # Setup basic register values
         self.fields.set_field("pdn_disable", True)
         self.fields.set_field("mstep_reg_select", True)
         self.fields.set_field("multistep_filt", True)
-        vsense, irun, ihold, self.sense_resistor = \
-            field_helpers.get_config_current(config)
-        self.fields.set_field("vsense", vsense)
-        self.fields.set_field("IHOLD", ihold)
-        self.fields.set_field("IRUN", irun)
+        tmc2130.TMCCurrentHelper(config, self.mcu_tmc)
         mres, en, thresh = field_helpers.get_config_stealthchop(config, TMC_FREQUENCY)
         self.fields.set_field("MRES", mres)
         self.fields.set_field("en_spreadCycle", not en)
@@ -379,37 +368,3 @@ class TMC2208(driverbase.DriverBase):
     def get_phase(self):
         mscnt = self.fields.get_field("MSCNT", self.get_register("MSCNT"))
         return mscnt >> self.fields.get_field("MRES")
-    cmd_SET_TMC_CURRENT_help = "Set the current of a TMC2208 driver"
-    def cmd_SET_TMC_CURRENT(self, params):
-        gcode = self.printer.lookup_object('gcode')
-        vsense = bool(self.fields.get_field("vsense"))
-        if 'HOLDCURRENT' in params:
-            hold_current = gcode.get_float(
-                'HOLDCURRENT', params, above=0., maxval=2.)
-        else:
-            hold_current = field_helpers.bits_to_current(
-                    self.fields.get_field("IHOLD"),
-                    self.sense_resistor,
-                    vsense)
-        if 'CURRENT' in params:
-            run_current = gcode.get_float(
-                'CURRENT', params, minval=hold_current, maxval=2.)
-        else:
-            run_current = field_helpers.bits_to_current(
-                    self.fields.get_field("IRUN"),
-                    self.sense_resistor,
-                    vsense)
-        if 'HOLDCURRENT' in params or 'CURRENT' in params:
-            vsense_calc, irun, ihold = field_helpers.calc_current_config(run_current,
-                                              hold_current, self.sense_resistor)
-            self.printer.lookup_object('toolhead').wait_moves()
-            if vsense_calc != vsense:
-                self.fields.set_field("vsense", vsense_calc)
-                self.set_register("CHOPCONF", self.regs["CHOPCONF"])
-            self.fields.set_field("IHOLD", ihold)
-            self.fields.set_field("IRUN", irun)
-            self.set_register("IHOLD_IRUN", self.regs["IHOLD_IRUN"])
-        else:
-            gcode.respond_info(
-                "Run Current: %0.2fA Hold Current: %0.2fA"
-                % (run_current, hold_current))
