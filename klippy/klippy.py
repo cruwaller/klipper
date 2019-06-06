@@ -5,7 +5,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import sys, os, optparse, logging, time, collections, importlib
-import util, reactor, queuelogger, msgproto
+import util, reactor, queuelogger, msgproto, homing
 import gcode, configfile, pins, mcu, toolhead
 import gcodes
 
@@ -52,6 +52,7 @@ Printer is shutdown
 
 class Printer:
     config_error = configfile.error
+    command_error = homing.CommandError
     def __init__(self, input_fd, bglogger, start_args):
         self.logger = logging.getLogger('printer')
         self.bglogger = bglogger
