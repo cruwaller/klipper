@@ -143,23 +143,23 @@ class SelectReactor:
         self._g_dispatch = None
         self._greenlets = []
     # Timers
-    def _note_time(self, t):
-        nexttime = t.waketime
+    def _note_time(self, timer_handler):
+        nexttime = timer_handler.waketime
         if nexttime < self._next_timer:
             self._next_timer = nexttime
-    def update_timer(self, t, nexttime):
-        t.waketime = nexttime
-        self._note_time(t)
+    def update_timer(self, timer_handler, nexttime):
+        timer_handler.waketime = nexttime
+        self._note_time(timer_handler)
     def register_timer(self, callback, waketime = NEVER):
-        handler = ReactorTimer(callback, waketime)
+        timer_handler = ReactorTimer(callback, waketime)
         timers = list(self._timers)
-        timers.append(handler)
+        timers.append(timer_handler)
         self._timers = timers
-        self._note_time(handler)
-        return handler
-    def unregister_timer(self, handler):
+        self._note_time(timer_handler)
+        return timer_handler
+    def unregister_timer(self, timer_handler):
         timers = list(self._timers)
-        timers.pop(timers.index(handler))
+        timers.pop(timers.index(timer_handler))
         self._timers = timers
     def _check_timers(self, eventtime):
         if eventtime < self._next_timer:
@@ -241,11 +241,11 @@ class SelectReactor:
         return ReactorMutex(self, is_locked)
     # File descriptors
     def register_fd(self, fd, callback):
-        handler = ReactorFileHandler(fd, callback)
-        self._fds.append(handler)
-        return handler
-    def unregister_fd(self, handler):
-        self._fds.pop(self._fds.index(handler))
+        file_handler = ReactorFileHandler(fd, callback)
+        self._fds.append(file_handler)
+        return file_handler
+    def unregister_fd(self, file_handler):
+        self._fds.pop(self._fds.index(file_handler))
     def register_fd_thread(self, fd, func, args={}):
         return ReactorFileHandlerThread(self, fd, func, args)
     def unregister_fd_thread(self, handle):
@@ -281,16 +281,16 @@ class PollReactor(SelectReactor):
         self._fds = {}
     # File descriptors
     def register_fd(self, fd, callback):
-        handler = ReactorFileHandler(fd, callback)
+        file_handler = ReactorFileHandler(fd, callback)
         fds = self._fds.copy()
         fds[fd] = callback
         self._fds = fds
-        self._poll.register(handler, select.POLLIN | select.POLLHUP)
-        return handler
-    def unregister_fd(self, handler):
-        self._poll.unregister(handler)
+        self._poll.register(file_handler, select.POLLIN | select.POLLHUP)
+        return file_handler
+    def unregister_fd(self, file_handler):
+        self._poll.unregister(file_handler)
         fds = self._fds.copy()
-        del fds[handler.fd]
+        del fds[file_handler.fd]
         self._fds = fds
     # Main loop
     def _dispatch_loop(self):
@@ -315,16 +315,16 @@ class EPollReactor(SelectReactor):
         self._fds = {}
     # File descriptors
     def register_fd(self, fd, callback):
-        handler = ReactorFileHandler(fd, callback)
+        file_handler = ReactorFileHandler(fd, callback)
         fds = self._fds.copy()
         fds[fd] = callback
         self._fds = fds
         self._epoll.register(fd, select.EPOLLIN | select.EPOLLHUP)
-        return handler
-    def unregister_fd(self, handler):
-        self._epoll.unregister(handler.fd)
+        return file_handler
+    def unregister_fd(self, file_handler):
+        self._epoll.unregister(file_handler.fd)
         fds = self._fds.copy()
-        del fds[handler.fd]
+        del fds[file_handler.fd]
         self._fds = fds
     # Main loop
     def _dispatch_loop(self):
