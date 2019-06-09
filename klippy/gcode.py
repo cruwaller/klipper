@@ -32,6 +32,7 @@ class GCodeParser:
         self.input_log = collections.deque([], 50)
         # Command handling
         self.is_printer_ready = False
+        self.mutex = self.reactor.mutex()
         self.base_gcode_handlers = self.gcode_handlers = {}
         self.ready_gcode_handlers = {}
         self.mux_commands = {}
@@ -301,34 +302,20 @@ class GCodeParser:
                 return
         # Process commands
         self.is_processing_data = True
-        self.pending_commands = []
-        self._process_commands(pending_commands)
-        if self.pending_commands:
-            self._process_pending()
-        self.is_processing_data = False
-    def _process_pending(self):
-        pending_commands = self.pending_commands
         while pending_commands:
             self.pending_commands = []
-            self._process_commands(pending_commands)
+            with self.mutex:
+                self._process_commands(pending_commands)
             pending_commands = self.pending_commands
+        self.is_processing_data = False
         if self.fd_handle is None:
             self.fd_handle = self.reactor.register_fd(self.fd,
                                                       self._process_data)
     def process_batch(self, commands):
-        if self.is_processing_data:
+        if self.mutex.test():
             return False
-        self.is_processing_data = True
-        try:
+        with self.mutex:
             self._process_commands(commands, need_ack=False)
-        except self.error as e:
-            if self.pending_commands:
-                self._process_pending()
-            self.is_processing_data = False
-            raise
-        if self.pending_commands:
-            self._process_pending()
-        self.is_processing_data = False
         return True
     def run_script_from_command(self, script):
         prev_need_ack = self.need_ack
@@ -337,15 +324,8 @@ class GCodeParser:
         finally:
             self.need_ack = prev_need_ack
     def run_script(self, script):
-        commands = script.split('\n')
-        curtime = None
-        while 1:
-            res = self.process_batch(commands)
-            if res:
-                break
-            if curtime is None:
-                curtime = self.reactor.monotonic()
-            curtime = self.reactor.pause(curtime + 0.100)
+        with self.mutex:
+            self._process_commands(script.split('\n'), need_ack=False)
     # Response handling
     def write_resp(self, msg):
         os.write(self.fd, msg)
