@@ -311,12 +311,6 @@ class GCodeParser:
         if self.fd_handle is None:
             self.fd_handle = self.reactor.register_fd(self.fd,
                                                       self._process_data)
-    def process_batch(self, commands):
-        if self.mutex.test():
-            return False
-        with self.mutex:
-            self._process_commands(commands, need_ack=False)
-        return True
     def run_script_from_command(self, script):
         prev_need_ack = self.need_ack
         try:
@@ -326,6 +320,8 @@ class GCodeParser:
     def run_script(self, script):
         with self.mutex:
             self._process_commands(script.split('\n'), need_ack=False)
+    def get_mutex(self):
+        return self.mutex
     # Response handling
     def write_resp(self, msg):
         os.write(self.fd, msg)

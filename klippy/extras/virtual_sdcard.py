@@ -231,6 +231,7 @@ class VirtualSD:
             self.work_timer = None
             self.gcode.simulate_print = False
             return self.reactor.NEVER
+        gcode_mutex = self.gcode.get_mutex()
         partial_input = ""
         lines = []
         while not self.must_pause_work:
@@ -257,12 +258,13 @@ class VirtualSD:
                 lines.reverse()
                 self.reactor.pause(self.reactor.NOW)
                 continue
+            # Pause if any other request is pending in the gcode class
+            if gcode_mutex.test():
+                self.reactor.pause(self.reactor.monotonic() + 0.100)
+                continue
             # Dispatch command
             try:
-                res = self.gcode.process_batch([lines[-1]])
-                if not res:
-                    self.reactor.pause(self.reactor.monotonic() + 0.100)
-                    continue
+                self.gcode.run_script(lines[-1])
             except self.gcode.error as e:
                 self.logger.error("Error in g-code handling: %s" % e)
                 self.gcode.respond_error("Error: Virtual SD stop ok")
