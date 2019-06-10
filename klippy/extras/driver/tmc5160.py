@@ -3,11 +3,9 @@
 # Copyright (C) 2018-2019  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import math, logging, collections, pins
+import math, logging
 import tmc2130_tmp as tmc2130
-import extras.bus as bus
-import driverbase
-import field_helpers
+import tmc
 
 TMC_FREQUENCY=12000000.
 
@@ -292,19 +290,19 @@ class TMC5160CurrentHelper:
 class TMC5160:
     def __init__(self, config):
         # Setup mcu communication
-        self.fields = field_helpers.FieldHelper(Fields, SignedFields, FieldFormatters)
+        self.fields = tmc.FieldHelper(Fields, SignedFields, FieldFormatters)
         self.mcu_tmc = tmc2130.MCU_TMC_SPI(config, Registers, self.fields)
         # Allow virtual endstop to be created
         diag1_pin = config.get('diag1_pin', None)
-        tmc2130.TMCEndstopHelper(config, self.mcu_tmc, diag1_pin)
+        tmc.TMCEndstopHelper(config, self.mcu_tmc, diag1_pin)
         # Register commands
-        cmdhelper = field_helpers.TMCCommandHelper(config, self.mcu_tmc)
+        cmdhelper = tmc.TMCCommandHelper(config, self.mcu_tmc)
         cmdhelper.setup_register_dump(self.query_registers)
         # Setup basic register values
-        mh = field_helpers.TMCMicrostepHelper(config, self.mcu_tmc)
+        mh = tmc.TMCMicrostepHelper(config, self.mcu_tmc)
         self.get_microsteps = mh.get_microsteps
         self.get_phase = mh.get_phase
-        field_helpers.TMCStealthchopHelper(config, self.mcu_tmc, TMC_FREQUENCY)
+        tmc.TMCStealthchopHelper(config, self.mcu_tmc, TMC_FREQUENCY)
         #   CHOPCONF
         set_config_field = self.fields.set_config_field
         set_config_field(config, "toff", 3)
