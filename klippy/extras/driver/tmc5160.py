@@ -294,7 +294,6 @@ class TMC5160:
         set_config_field(config, "tpfd", 4)
         self.fields.set_field("mres", msteps)       # microsteps
         set_config_field(config, "intpol", True, "interpolate")
-        set_config_field(config, "dedge", 0)
         set_config_field(config, "diss2g", 0)
         set_config_field(config, "diss2vs", 0)
         #   COOLCONF
