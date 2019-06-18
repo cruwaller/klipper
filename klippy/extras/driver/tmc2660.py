@@ -163,7 +163,6 @@ class TMC2660(driverbase.DriverBase):
         # DRVCTRL
         mres = self.microsteps
         self.fields.set_field("MRES", mres)
-        set_config_field(config, "DEDGE", 0)
         set_config_field(config, "INTPOL", True, 'interpolate')
         # CHOPCONF
         set_config_field(config, "TBL", 2)
