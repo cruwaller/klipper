@@ -245,7 +245,6 @@ class TMC2660(driverbase.DriverBase):
         self.get_microsteps = mh.get_microsteps
         self.get_phase = mh.get_phase
         set_config_field = self.fields.set_config_field
-        set_config_field(config, "DEDGE", 0)
         set_config_field(config, "INTPOL", True, 'interpolate')
         # CHOPCONF
         set_config_field(config, "TBL", 2)
