@@ -433,8 +433,8 @@ class TMC51xx(TmcSpiDriver):
             has_step_dir_pins=False, has_endstop=True, max_current=2000.)
         self.mcu.register_config_callback(self._build_config_cb)
         self._stepper_oid = stepper_oid = self.mcu.create_oid()
-        self.mcu.register_msg(self._home_handle_end_stop_state,
-                              "stepper_tmc5x_home_status", stepper_oid)
+        self.mcu.register_response(self._home_handle_end_stop_state,
+                                   "stepper_tmc5x_home_status", stepper_oid)
         ffi_main, self._ffi_lib = chelper.get_ffi()
         self._stepqueue = ffi_main.gc(self._ffi_lib.stepcompress_alloc(stepper_oid),
                                       self._ffi_lib.stepcompress_free)

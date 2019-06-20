@@ -35,7 +35,7 @@ class SensorBase(object):
             self.mcu = mcu = spi.get_mcu()
             # Reader chip configuration
             self.oid = oid = mcu.create_oid()
-            mcu.register_msg(self._handle_thermocouple_result,
+            mcu.register_response(self._handle_thermocouple_result,
                 "thermocouple_result", oid)
             mcu.register_config_callback(self._build_config_cb)
         else:
