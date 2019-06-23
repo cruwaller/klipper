@@ -239,7 +239,7 @@ class TMC2660(driverbase.DriverBase):
         self.mcu_tmc = MCU_TMC2660_SPI(config, Registers, self.fields)
         # Register commands
         cmdhelper = tmc.TMCCommandHelper(config, self.mcu_tmc)
-        cmdhelper.setup_register_dump(self.query_registers)
+        cmdhelper.setup_register_dump(ReadRegisters)
 
         # DRVCTRL
         mh = tmc.TMCMicrostepHelper(config, self.mcu_tmc)
@@ -276,7 +276,3 @@ class TMC2660(driverbase.DriverBase):
         set_config_field(config, "SLPL", 0)
         set_config_field(config, "DISS2G", 0)
         set_config_field(config, "TS2G", 3)
-
-    def query_registers(self, print_time=0.):
-        return [(reg_name, self.mcu_tmc.get_register(reg_name))
-                for reg_name in ReadRegisters]
