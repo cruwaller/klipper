@@ -215,7 +215,8 @@ class MCU_endstop:
             params = self._completion.wait(curtime + 0.100)
             if params is not None:
                 # Homing completed successfully
-                self._mcu.register_response(None, "end_stop_state", self._oid)
+                self._mcu.register_response(self._handle_end_stop_state,
+                    "end_stop_state", self._oid, delete=True)
                 for s in self._steppers:
                     s.note_homing_end(did_trigger=True)
                 return
@@ -223,7 +224,8 @@ class MCU_endstop:
             last = self._mcu.estimated_print_time(self._last_sent_time)
             if last > home_end_time:
                 # Timeout - disable endstop checking
-                self._mcu.register_response(None, "end_stop_state", self._oid)
+                self._mcu.register_response(self._handle_end_stop_state,
+                    "end_stop_state", self._oid, delete=True)
                 for s in self._steppers:
                     s.note_homing_end()
                 self._home_cmd.send([self._oid, 0, 0, 0, 0, 0])
@@ -737,8 +739,8 @@ class MCU:
         return self._printer
     def get_name(self):
         return self._name
-    def register_response(self, cb, msg, oid=None):
-        self._serial.register_response(cb, msg, oid)
+    def register_response(self, cb, msg, oid=None, delete=False):
+        self._serial.register_response(cb, msg, oid, delete)
     def alloc_command_queue(self):
         return self._serial.alloc_command_queue()
     def lookup_command(self, msgformat, cq=None):
