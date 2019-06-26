@@ -49,9 +49,8 @@ class SerialReader:
             hdl = (params['#name'], params.get('oid'))
             try:
                 with self.lock:
-                    hdl = self.handlers.get(hdl, [self.handle_default])
-                    for _hdl in hdl:
-                        _hdl(params)
+                    hdl = self.handlers.get(hdl, self.handle_default)
+                    hdl(params)
             except:
                 self.logger.exception("Exception in serial callback")
     def _get_identify_data(self, timeout):
@@ -143,20 +142,12 @@ class SerialReader:
     def get_default_command_queue(self):
         return self.default_cmd_queue
     # Serial response callbacks
-    def register_response(self, callback, name, oid=None, delete=False):
-        key = (name, oid)
+    def register_response(self, callback, name, oid=None):
         with self.lock:
-            if delete and callback in self.handlers[key]:
-                self.handlers[key].remove(callback)
-                if not self.handlers[key]:
-                    del self.handlers[key]
-            elif callback is None:
-                del self.handlers[key]
+            if callback is None:
+                del self.handlers[name, oid]
             else:
-                try:
-                    self.handlers[key].append(callback)
-                except KeyError:
-                    self.handlers[key] = [callback]
+                self.handlers[name, oid] = callback
     # Command sending
     def raw_send(self, cmd, minclock, reqclock, cmd_queue):
         self.ffi_lib.serialqueue_send(
