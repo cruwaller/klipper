@@ -35,7 +35,6 @@ defs_stepcompress = """
         , double accel_factor_t);
     void stepcompress_free(struct stepcompress *sc);
     int stepcompress_reset(struct stepcompress *sc, uint64_t last_step_clock);
-    int stepcompress_set_homing(struct stepcompress *sc, uint64_t homing_clock);
     int stepcompress_queue_msg(struct stepcompress *sc
         , uint32_t *data, int len);
 
