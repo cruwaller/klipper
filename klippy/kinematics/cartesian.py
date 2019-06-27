@@ -77,10 +77,7 @@ class CartKinematics:
         # Move to homing position if defined
         homing_state.retract(hi.homing_pos, hi.travel_speed)
         # Perform homing
-        limit_speed = None
-        if axis == 2:
-            limit_speed = self.max_z_velocity
-        homing_state.home_rails([rail], forcepos, homepos, limit_speed)
+        homing_state.home_rails([rail], forcepos, homepos)
         # retract from endstop
         if 0. < hi.retract_after_home:
             # Retract
@@ -89,10 +86,7 @@ class CartKinematics:
                 movepos[axis] = hi.position_endstop - hi.retract_after_home
             else:
                 movepos[axis] = hi.position_endstop + hi.retract_after_home
-            homing_speed = hi.speed
-            if axis == 2:
-                homing_speed = min(homing_speed, limit_speed)
-            homing_state.retract(movepos, homing_speed)
+            homing_state.retract(movepos, hi.speed)
     def home(self, homing_state):
         # Each axis is homed independently and in order
         for axis in homing_state.get_axes():

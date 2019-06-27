@@ -5,7 +5,6 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging, math, collections
 
-HOMING_STEP_DELAY = 0.00000025
 HOMING_START_DELAY = 0.001
 ENDSTOP_SAMPLE_TIME = .000015
 ENDSTOP_SAMPLE_COUNT = 4
@@ -35,19 +34,11 @@ class Homing:
         self.toolhead.move(self._fill_coord(newpos), speed, check=check)
     def set_homed_position(self, pos):
         self.toolhead.set_position(self._fill_coord(pos))
-    def _get_homing_speed(self, speed, endstops):
-        # Round the requested homing speed so that it is an even
-        # number of ticks per step.
-        mcu_stepper = endstops[0][0].get_steppers()[0]
-        adjusted_freq = mcu_stepper.get_mcu().get_adjusted_freq()
-        dist_ticks = adjusted_freq * mcu_stepper.get_step_dist()
-        ticks_per_step = math.ceil(dist_ticks / speed)
-        return dist_ticks / ticks_per_step
     def _endstop_notify(self):
         self.endstops_pending -= 1
         if not self.endstops_pending:
             self.toolhead.signal_drip_mode_end()
-    def homing_move(self, movepos, endstops, speed, dwell_t=0.,
+    def homing_move(self, movepos, endstops, speed,
                     probe_pos=False, verify_movement=False,
                     init_home_funcs=[]):
         # Notify endstops of upcoming home
@@ -56,8 +47,6 @@ class Homing:
         for sensor_func in init_home_funcs:
             if sensor_func is not None:
                 sensor_func(enable=True)
-        if dwell_t:
-            self.toolhead.dwell(dwell_t, check_stall=False)
         # Start endstop checking
         print_time = self.toolhead.get_last_move_time()
         start_mcu_pos = [(s, name, s.get_mcu_position())
@@ -108,58 +97,49 @@ class Homing:
         for sensor_func in init_home_funcs:
             if sensor_func is not None:
                 sensor_func(enable=False)
-    def home_rails(self, rails, forcepos, movepos, limit_speed=None):
+    def home_rails(self, rails, forcepos, movepos):
         # Alter kinematics class to think printer is at forcepos
         homing_axes = [axis for axis in range(3) if forcepos[axis] is not None]
         forcepos = self._fill_coord(forcepos)
         movepos = self._fill_coord(movepos)
         self.toolhead.set_position(forcepos, homing_axes=homing_axes)
-        # Determine homing speed
+        # Perform first home
         endstops = [es for rail in rails for es in rail.get_endstops()]
         init_home_funcs = [f for rail in rails
                            for f in rail.get_homing_init_func()]
         hi = rails[0].get_homing_info()
-        max_velocity = self.toolhead.get_max_velocity()[0]
-        if limit_speed is not None and limit_speed < max_velocity:
-            max_velocity = limit_speed
-        homing_speed = min(hi.speed, max_velocity)
-        homing_speed = self._get_homing_speed(homing_speed, endstops)
-        second_homing_speed = min(hi.second_homing_speed, max_velocity)
-        # Calculate a CPU delay when homing a large axis
-        axes_d = [mp - fp for mp, fp in zip(movepos, forcepos)]
-        est_move_d = abs(axes_d[0]) + abs(axes_d[1]) + abs(axes_d[2])
-        est_steps = sum([est_move_d / s.get_step_dist()
-                         for es, n in endstops for s in es.get_steppers()])
-        dwell_t = est_steps * HOMING_STEP_DELAY
-        # Perform first home
-        self.homing_move(movepos, endstops, homing_speed, dwell_t=dwell_t,
-                         init_home_funcs=init_home_funcs)
+        self.homing_move(movepos, endstops, hi.speed,
+            init_home_funcs=init_home_funcs)
         # Perform second home
         if hi.retract_dist:
             # Retract
+            axes_d = [mp - fp for mp, fp in zip(movepos, forcepos)]
             move_d = math.sqrt(sum([d*d for d in axes_d[:3]]))
             retract_r = min(1., hi.retract_dist / move_d)
             retractpos = [mp - ad * retract_r
                           for mp, ad in zip(movepos, axes_d)]
-            self.toolhead.move(retractpos, homing_speed)
+            self.toolhead.move(retractpos, hi.speed)
             # Home again
             forcepos = [rp - ad * retract_r
                         for rp, ad in zip(retractpos, axes_d)]
             self.toolhead.set_position(forcepos)
-            self.homing_move(movepos, endstops, second_homing_speed,
+            self.homing_move(movepos, endstops, hi.second_homing_speed,
                              verify_movement=self.verify_retract,
                              init_home_funcs=init_home_funcs)
         # Apply endstop correction (basically for deltas)
         for rail in rails:
             rail.apply_endstop_correction()
+        # Signal home operation complete
+        ret = self.printer.send_event("homing:homed_rails", self, rails)
         # Apply homing offsets
         for rail in rails:
-            cp = rail.get_commanded_position()
-            rail.set_commanded_position(cp + rail.get_homed_offset())
-        adjustpos = self.toolhead.get_kinematics().calc_position()
-        for axis in homing_axes:
-            movepos[axis] = adjustpos[axis]
-        self.toolhead.set_position(movepos)
+            ret.append(rail.apply_homing_offset())
+        if any(ret):
+            # Apply any homing offsets
+            adjustpos = self.toolhead.get_kinematics().calc_position()
+            for axis in homing_axes:
+                movepos[axis] = adjustpos[axis]
+            self.toolhead.set_position(movepos)
     def home_axes(self, axes):
         self.changed_axes = axes
         try:
