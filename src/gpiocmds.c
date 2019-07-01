@@ -231,7 +231,8 @@ command_schedule_soft_pwm_out(uint32_t *args)
     }
     irq_enable();
 #if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-    printf("SoftPWM schedule event (value %u): ON %u, OFF %u, MAX %u\n", value, next_on_duration, next_off_duration, s->max_duration);
+    printf("SoftPWM schedule event: ON %u, OFF %u, MAX %u\n",
+           next_on_duration, next_off_duration, s->max_duration);
 #endif
 }
 DECL_COMMAND(command_schedule_soft_pwm_out,
