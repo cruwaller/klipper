@@ -17,7 +17,7 @@ class SensorBase(object):
                  sample_time  = SAMPLE_TIME_DEFAULT,
                  sample_count = SAMPLE_COUNT_DEFAULT,
                  report_time  = REPORT_TIME_DEFAULT,
-                 chip_type=None, config_cmd=None):
+                 chip_type=None, config_cmd=None, spi_mode=1):
         self.printer = config.get_printer()
         self.oid = None
         self.sample_time = sample_time
@@ -29,7 +29,7 @@ class SensorBase(object):
             # SPI configuration
             self.chip_type = chip_type
             self.spi = spi = bus.MCU_SPI_from_config(
-                config, 1, pin_option="sensor_pin", default_speed=4000000)
+                config, spi_mode, pin_option="sensor_pin", default_speed=4000000)
             if config_cmd is not None:
                 spi.spi_send(config_cmd, is_init=True)
             self.mcu = mcu = spi.get_mcu()

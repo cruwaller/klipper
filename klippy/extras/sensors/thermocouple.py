@@ -140,7 +140,8 @@ MAX31855_MULT = 0.25
 
 class MAX31855(SensorBase):
     def __init__(self, config, params):
-        SensorBase.__init__(self, config, sample_count=1, chip_type="MAX31855")
+        SensorBase.__init__(self, config, sample_count=1, chip_type="MAX31855",
+            spi_mode=0)
     def calc_temp(self, adc, fault=0):
         if adc & 0x1:
             self.fault("MAX31855 : Open Circuit")
@@ -168,7 +169,8 @@ MAX6675_MULT = 0.25
 
 class MAX6675(SensorBase):
     def __init__(self, config, params):
-        SensorBase.__init__(self, config, sample_count=1, chip_type="MAX6675")
+        SensorBase.__init__(self, config, sample_count=1, chip_type="MAX6675",
+            spi_mode=0)
     def calc_temp(self, adc, fault=0):
         if adc & 0x02:
             self.fault("MAX6675 : Device ID error")
