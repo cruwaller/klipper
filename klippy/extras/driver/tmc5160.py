@@ -3,7 +3,7 @@
 # Copyright (C) 2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import math, logging, collections
+import math, logging, collections, pins
 import tmc2130_tmp as tmc2130
 import extras.bus as bus
 import driverbase
