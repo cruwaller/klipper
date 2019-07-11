@@ -43,7 +43,7 @@ create_virtualenv()
     ${PYTHONDIR}/bin/pip install RPi.GPIO
 
     # Link/copy opencv required global system packages
-    ln -s /usr/lib/python2.7/dist-packages/numpy/ ${PYTHONDIR}/lib/python2.7/site-packages/
+    ln -sfn /usr/lib/python2.7/dist-packages/numpy/ ${PYTHONDIR}/lib/python2.7/site-packages/
     cp /usr/lib/python2.7/dist-packages/cv.* ${PYTHONDIR}/lib/python2.7/site-packages/
 }
 
