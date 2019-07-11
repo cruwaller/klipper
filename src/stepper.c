@@ -244,8 +244,9 @@ command_queue_step(uint32_t *args)
     if (m->count == 1 && (m->flags || flags & SF_LAST_RESET))
         // count=1 moves after a reset or dir change can have small intervals
         flags |= SF_NO_NEXT_CHECK;
-    s->flags = flags & ~SF_LAST_RESET;
+    flags &= ~SF_LAST_RESET;
     if (s->count) {
+        s->flags = flags;
         if (s->first)
             *s->plast = m;
         else
@@ -254,6 +255,7 @@ command_queue_step(uint32_t *args)
     } else if (flags & SF_NEED_RESET) {
         move_free(m);
     } else {
+        s->flags = flags;
         s->first = m;
         stepper_load_next(s, s->next_step_time + m->interval);
         sched_add_timer(&s->time);
