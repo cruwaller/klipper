@@ -3,9 +3,9 @@
 # Copyright (C) 2018  Petri Honkala <cruwaller@gmail.com>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import struct, types, collections
+import struct, types
 import bus
-import driver.field_helpers as field_helpers
+import driver.tmc as field_helpers
 
 AS5047D_READ  = 0x4000
 AS5047D_WRITE = 0x0000
@@ -134,9 +134,7 @@ class AS5047D:
         self.name = name = config.get_name().split()[-1]
         self.logger = self.printer.get_logger('encoder.' + name)
         # Registers
-        self.regs = collections.OrderedDict()
-        self.fields = field_helpers.FieldHelper(
-            Fields, FieldFormatters, self.regs)
+        self.fields = field_helpers.FieldHelper(Fields, FieldFormatters)
         set_field = self.fields.set_field
         # settings1
         mode = config.getchoice('mode', {'abi': 0, 'uvw': 1}, default='abi')
@@ -279,7 +277,7 @@ class AS5047D:
     def ready_handler(self):
         if not self.mcu.is_shutdown():
             # configure encoder
-            for reg_name, val in self.regs.items():
+            for reg_name, val in self.fields.registers.items():
                 self.write(reg_name, val)
     # ============ SPI ===============
     conv32 = struct.Struct('>I').pack # uint32

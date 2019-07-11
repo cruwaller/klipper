@@ -5,7 +5,6 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import driverbase
-import field_helpers
 
 import math, logging
 import extras.bus as bus, tmc

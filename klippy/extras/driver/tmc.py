@@ -27,6 +27,10 @@ class FieldHelper:
                                    for f in fields }
     def lookup_register(self, field_name, default=None):
         return self.field_to_register.get(field_name, default)
+    def set_reg_value(self, reg_name, new_value):
+        self.registers[reg_name] = new_value
+    def get_reg_value(self, reg_name):
+        return self.registers.get(reg_name, 0)
     def get_field(self, field_name, reg_value=None, reg_name=None):
         # Returns value of the register field
         if reg_name is None:

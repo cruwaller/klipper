@@ -5,7 +5,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import extras.bus as bus
 from mcu import error
-import field_helpers
+import tmc
 import binascii, types, struct, math, collections
 
 ######################################################################
@@ -120,7 +120,7 @@ class TmcSpiDriver(SpiDriver):
         self.vsense = 0
         # Create a register handler
         self.regs = collections.OrderedDict()
-        self.fields = field_helpers.FieldHelper(
+        self.fields = tmc.FieldHelper(
             fields, signed_fields, field_formatters, self.regs)
         # Read generic configuration
         self.sensor_less_homing = config.getboolean('sensor_less_homing', False)

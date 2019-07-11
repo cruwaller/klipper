@@ -6,7 +6,6 @@
 
 import math
 from driverbase import TmcSpiDriver
-import field_helpers
 from mcu import error
 import chelper, pins
 
