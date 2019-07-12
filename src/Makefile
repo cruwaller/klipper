@@ -7,5 +7,4 @@ src-$(CONFIG_HAVE_GPIO_SPI) += spicmds.c thermocouple.c stepper_tmc51xx.c
 src-$(CONFIG_HAVE_GPIO_I2C) += i2ccmds.c
 src-$(CONFIG_HAVE_GPIO_HARD_PWM) += pwmcmds.c
 src-$(CONFIG_HAVE_GPIO_BITBANGING) += \
-    tmcuart.c spi_software.c
-
+    tmcuart.c spi_software.c neopixel.c
