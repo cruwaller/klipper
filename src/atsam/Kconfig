@@ -32,6 +32,11 @@ choice
         select MACH_SAM4E
 endchoice
 
+config BOARD_OULWARE
+    depends on MACH_SAM3X8E
+    bool "OULWare PrinterController v1.5 or newer"
+    default n
+
 config MACH_SAM3X
     bool
 config MACH_SAM4
@@ -57,14 +62,15 @@ config CLOCK_FREQ
 
 config USBSERIAL
     bool "Use USB for communication (instead of serial)"
-    default y
+    default n
 config SERIAL
     depends on !USBSERIAL
     bool
     default y
 
 config RPI_SERIAL
-    bool "Use RPi serial instead of USB"
+    depends on !USBSERIAL
+    bool "Use RPi GPIO serial"
     default n
 config RPI_RESET_PIN
     depends on RPI_SERIAL
@@ -74,5 +80,9 @@ config RPI_ERASE_PIN
     depends on RPI_SERIAL
     int "Erase RPi GPIO pin (BCM)"
     default 8
+
+config INITIAL_PINS
+    depends on BOARD_OULWARE
+    default "!PC14"
 
 endif
