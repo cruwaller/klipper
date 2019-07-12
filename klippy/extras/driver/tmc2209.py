@@ -3,7 +3,8 @@
 # Copyright (C) 2019  Stephan Oelze <stephan.oelze@gmail.com>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import tmc2208, tmc2130, tmc, tmc_uart
+import driverbase
+import tmc2208, tmc2130_tmp as tmc2130, tmc, tmc_uart
 
 TMC_FREQUENCY=12000000.
 
@@ -53,8 +54,9 @@ FieldFormatters = dict(tmc2208.FieldFormatters)
 # TMC2209 printer object
 ######################################################################
 
-class TMC2209:
-    def __init__(self, config):
+class TMC2209(driverbase.DriverBase):
+    def __init__(self, config, stepper_config):
+        driverbase.DriverBase.__init__(self, config, stepper_config)
         # Setup mcu communication
         self.fields = tmc.FieldHelper(Fields, tmc2208.SignedFields,
                                       FieldFormatters)

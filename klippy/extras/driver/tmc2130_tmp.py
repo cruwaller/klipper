@@ -3,6 +3,7 @@
 # Copyright (C) 2018-2019  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+import driverbase
 import math, logging
 import extras.bus as bus
 import tmc
@@ -204,8 +205,9 @@ class MCU_TMC_SPI:
 # TMC2130 printer object
 ######################################################################
 
-class TMC2130:
-    def __init__(self, config):
+class TMC2130(driverbase.DriverBase):
+    def __init__(self, config, stepper_config):
+        driverbase.DriverBase.__init__(self, config, stepper_config)
         # Setup mcu communication
         self.fields = tmc.FieldHelper(Fields, SignedFields, FieldFormatters)
         self.mcu_tmc = MCU_TMC_SPI(config, Registers, self.fields)

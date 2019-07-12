@@ -4,18 +4,26 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
-from driverbase import DriverBase
-from tmc2130    import TMC2130
-from tmc2208    import TMC2208
-from tmc2660    import TMC2660
-from tmc51xx    import TMC51xx
+import driverbase
+import tmc2130
+import tmc51xx
+import tmc2130_tmp
+import tmc2208
+import tmc2209
+import tmc2660
+import tmc5160
 
 DRV_MAPPING = {
-    'TMC2130' : TMC2130,
-    'TMC2208' : TMC2208, 'TMC2224' : TMC2208,
-    'TMC2660' : TMC2660,
-    'TMC5130' : TMC51xx,
-    'TMC5160' : TMC51xx,
+    'TMC2130': tmc2130.TMC2130,
+    'TMC5130_SPI': tmc51xx.TMC51xx,
+    'TMC5160_SPI': tmc51xx.TMC51xx,
+    # Original versions
+    'TMC2130_ORIG': tmc2130_tmp.TMC2130,
+    'TMC2208': tmc2208.TMC2208,
+    'TMC2224': tmc2208.TMC2208,
+    'TMC2660': tmc2660.TMC2660,
+    'TMC2209': tmc2209.TMC2209,
+    'TMC5160': tmc5160.TMC5160,
 }
 
 def load_driver(stepper_config):
@@ -41,7 +49,7 @@ def load_driver(stepper_config):
                     _type = 'TMC5160'
             else:
                 _type = _type.upper()
-    func = DRV_MAPPING.get(_type, DriverBase)
+    func = DRV_MAPPING.get(_type, driverbase.DriverBase)
     driver = func(driver_config, stepper_config)
     if section:
         stepper_config.get_printer().add_object(section, driver)

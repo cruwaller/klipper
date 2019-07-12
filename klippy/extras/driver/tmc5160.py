@@ -3,6 +3,7 @@
 # Copyright (C) 2018-2019  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+import driverbase
 import math, logging
 import tmc2130_tmp as tmc2130
 import tmc
@@ -287,8 +288,9 @@ class TMC5160CurrentHelper:
 # TMC5160 printer object
 ######################################################################
 
-class TMC5160:
-    def __init__(self, config):
+class TMC5160(driverbase.DriverBase):
+    def __init__(self, config, stepper_config):
+        driverbase.DriverBase.__init__(self, config, stepper_config)
         # Setup mcu communication
         self.fields = tmc.FieldHelper(Fields, SignedFields, FieldFormatters)
         self.mcu_tmc = tmc2130.MCU_TMC_SPI(config, Registers, self.fields)

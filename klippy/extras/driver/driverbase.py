@@ -38,6 +38,7 @@ class DriverBase(object):
             if self.microsteps is None:
                 raise config.error('Cannot detect proper step distance!!')
             self.calculate_steps(stepper_config)
+        self.logger.info("Driver '%s' base loaded", self.name)
     def calculate_steps(self, config):
         motor_deg = config.getfloat('motor_step_angle', above=0.)
         # Calculate base on settings
@@ -95,8 +96,8 @@ class SpiDriver(DriverBase):
     def get_oid(self):
         return self._oid
     # ============ SPI ===============
-    def spi_send(self, data):
-        self.spi.spi_send(data)
+    def spi_send(self, data, min_clock=0):
+        self.spi.spi_send(data, min_clock)
     def spi_transfer(self, data):
         params = self.spi.spi_transfer(data)
         return list(bytearray(params['response']))
@@ -118,6 +119,7 @@ class TmcSpiDriver(SpiDriver):
         self.max_current = max_current
         self.registers = registers
         self.vsense = 0
+        self.mutex = self.printer.get_reactor().mutex()
         # Create a register handler
         self.regs = collections.OrderedDict()
         self.fields = tmc.FieldHelper(
@@ -156,10 +158,11 @@ class TmcSpiDriver(SpiDriver):
         return self.fields
     def get_register(self, reg_name):
         reg = self.registers[reg_name]
-        self.spi.spi_send([reg, 0x00, 0x00, 0x00, 0x00])
-        if self.printer.get_start_args().get('debugoutput') is not None:
-            return 0
-        params = self.spi.spi_transfer([reg, 0x00, 0x00, 0x00, 0x00])
+        with self.mutex:
+            self.spi.spi_send([reg, 0x00, 0x00, 0x00, 0x00])
+            if self.printer.get_start_args().get('debugoutput') is not None:
+                return 0
+            params = self.spi.spi_transfer([reg, 0x00, 0x00, 0x00, 0x00])
         pr = bytearray(params['response'])
         return (pr[1] << 24) | (pr[2] << 16) | (pr[3] << 8) | pr[4]
     def set_register(self, reg_name, val, print_time=0.):
@@ -167,7 +170,8 @@ class TmcSpiDriver(SpiDriver):
         reg = self.registers[reg_name]
         data = [(reg | 0x80) & 0xff, (val >> 24) & 0xff, (val >> 16) & 0xff,
                 (val >> 8) & 0xff, val & 0xff]
-        self.spi.spi_send(data, min_clock)
+        with self.mutex:
+            self.spi.spi_send(data, min_clock)
 
     # **************************************************************************
     # === virtual declarations ===
@@ -256,8 +260,9 @@ class TmcSpiDriver(SpiDriver):
                 cmd, mode))
         cmd &= 0x7F # Makesure the MSB is 0
         read_cmd = [cmd, 0, 0, 0, 0]
-        self.spi_send(read_cmd)
-        values = self.spi_transfer(read_cmd)
+        with self.mutex:
+            self.spi_send(read_cmd)
+            values = self.spi_transfer(read_cmd)
         # convert list of bytes to number
         val    = 0
         status = 0
@@ -287,7 +292,7 @@ class TmcSpiDriver(SpiDriver):
     | A 8bit |      32bit data                   |
     |  ADDR  |   D    |   D    |   D    |   D    |
     '''
-    def _command_write(self, cmd, val=None): # 40bits always = 5 x 8bit!
+    def _command_write(self, cmd, val=None, print_time=0.): # 40bits always = 5 x 8bit!
         if val is not None:
             # cmd, mode = self.registers.get(cmd, (cmd, '')) # map string to value
             cmd, mode = self.registers.get(cmd)
@@ -302,7 +307,9 @@ class TmcSpiDriver(SpiDriver):
             self.logger.debug("==>> cmd 0x%02X : 0x%s" % (
                 cmd, binascii.hexlify(bytearray(val))))
             cmd |= 0x80 # Make sure command has write bit set
-            self.spi_send([cmd] + val)
+            min_clock = self.spi.get_mcu().print_time_to_clock(print_time)
+            with self.mutex:
+                self.spi_send([cmd] + val, min_clock)
 
     def _calc_rms_current(self,
                           current = None,
