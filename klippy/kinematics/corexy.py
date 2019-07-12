@@ -9,8 +9,9 @@ import stepper, homing
 class CoreXYKinematics:
     name = "coreXY"
     def __init__(self, toolhead, config):
+        self.printer = config.get_printer()
         self.toolhead = toolhead
-        self.logger = config.get_printer().logger.getChild(self.name)
+        self.logger = self.printer.logger.getChild(self.name)
         # Setup axis rails
         self.rails = [ stepper.PrinterRail(config.getsection('stepper_x')),
                        stepper.PrinterRail(config.getsection('stepper_y')),
