@@ -485,11 +485,15 @@ class MCU:
         rmethods = [None, 'arduino', 'command', 'rpi_usb', 'hostgpio']
         self._restart_method = config.getchoice(
             'restart_method', rmethods, None)
+        if self._restart_method != 'hostgpio' and \
+                self._serialport in ['/dev/ttyS0', '/dev/ttyAMA0']:
+            self.logger.warning("Restart method changed to 'hostgpio'")
+            self._restart_method = 'hostgpio'
         if baud == 0:
             self._restart_method = 'command'
         elif self._restart_method == 'hostgpio':
             pin_params = self._printer.lookup_object('pins').lookup_pin(
-                config.get('reset_pin'), can_invert=True)
+                config.get('reset_pin', '!host:GPIO22'), can_invert=True)
             self.hostgpio_rst = pin_params['chip'].setup_pin(
                 'digital_out', pin_params)
         self._reset_cmd = self._config_reset_cmd = None
