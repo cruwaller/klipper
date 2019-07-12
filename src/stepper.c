@@ -36,7 +36,7 @@ enum { MF_DIR=1<<0 };
 
 struct stepper {
     struct timer time;
-    struct end_stop *endstop;
+    struct endstop *endstop;
     uint32_t interval;
     int16_t add;
 #if CONFIG_STEP_DELAY <= 0
@@ -180,8 +180,8 @@ stepper_event(struct timer *t)
         return SF_RESCHEDULE;
     }
     if (likely(s->flags & ES_CHECK_ENDSTOP)) {
-        extern uint_fast8_t end_stop_checkpin(struct end_stop *e);
-        if (unlikely(end_stop_checkpin(s->endstop)))
+        extern uint_fast8_t endstop_checkpin(struct endstop *e);
+        if (unlikely(endstop_checkpin(s->endstop)))
             return SF_DONE; // Stop immediately
     }
     return stepper_load_next(s, min_next_time);
@@ -367,7 +367,7 @@ DECL_SHUTDOWN(stepper_shutdown);
  * HOMING
  ****************************************/
 void
-stepper_set_endstop(struct end_stop *e, uint8_t oid)
+stepper_set_endstop(struct endstop *e, uint8_t oid)
 {
     struct stepper *s = stepper_oid_lookup(oid);
     s->endstop = e;
