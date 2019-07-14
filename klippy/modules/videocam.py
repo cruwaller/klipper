@@ -1,8 +1,7 @@
 #  sudo update-rc.d -f octoprint remove
 #  sudo update-rc.d -f webcamd remove
 
-import os, time
-import logging
+import os
 import requests
 import subprocess
 import threading
@@ -28,7 +27,7 @@ class VideoStreamerHelper:
         self.logger = config.get_printer().logger.getChild("VideoStreamerHelper")
         resolution = config.get('resolution', default="640x480")
         if "x" not in resolution:
-            raise config.error("Invalid resolution format! ")
+            raise config.error("Invalid resolution format!")
         resolution = resolution.split('x')
         width = config.getint('resolution_width',
             default=int(resolution[0]), above=0)
@@ -69,9 +68,12 @@ class VideoStreamerHelper:
 class VideoCamera(object):
     def __init__(self, config):
         self.get_url = lambda : SNAPSHOT_DEFAULT
-        if config.get('path', None) is not None:
-            self.helper = VideoStreamerHelper(config)
-            self.get_url = self.helper.get_url
+        if config.has_section('videocam'):
+            config = config.getsection('videocam')
+            # keep backward compatible
+            if config.get('path', None) is not None:
+                self.helper = VideoStreamerHelper(config)
+                self.get_url = self.helper.get_url
     def get_frame(self):
         try:
             r = requests.get(self.get_url(), timeout=2.)
@@ -82,18 +84,5 @@ class VideoCamera(object):
         return self.get_frame()
 
 
-class VideoCameraDummy(object):
-    def __init__(self):
-        pass
-    def __del__(self):
-        pass
-    def get_frame(self):
-        return ""
-    def get_pic(self):
-        return ""
-
-
 def load_config(config):
-    if config.has_section('videocam'):
-        return VideoCamera(config.getsection('videocam'))
-    return VideoCameraDummy()
+    return VideoCamera(config)
