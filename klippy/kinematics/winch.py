@@ -7,6 +7,7 @@ import stepper, mathutil
 
 class WinchKinematics:
     def __init__(self, toolhead, config):
+        self.printer = config.get_printer()
         # Setup steppers at each anchor
         self.steppers = []
         self.anchors = []
@@ -49,6 +50,7 @@ class WinchKinematics:
         for s in self.steppers:
             s.motor_enable(print_time, 1)
         self.need_motor_enable = False
+        self.printer.send_event('motor_state', 'on')
     def check_move(self, move):
         # XXX - boundary checks and speed limits not implemented
         pass

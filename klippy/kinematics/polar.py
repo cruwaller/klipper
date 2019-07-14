@@ -8,6 +8,7 @@ import stepper, homing
 
 class PolarKinematics:
     def __init__(self, toolhead, config):
+        self.printer = config.get_printer()
         # Setup axis steppers
         stepper_bed = stepper.PrinterStepper(config.getsection('stepper_bed'))
         rail_arm = stepper.PrinterRail(config.getsection('stepper_arm'))
@@ -90,15 +91,20 @@ class PolarKinematics:
             s.motor_enable(print_time, 0)
         self.need_motor_enable = True
     def _check_motor_enable(self, print_time, move):
+        enabled = 0
         if move.axes_d[0] or move.axes_d[1]:
             self.steppers[0].motor_enable(print_time, 1)
             self.rails[0].motor_enable(print_time, 1)
+            enabled |= 1
         if move.axes_d[2]:
             self.rails[1].motor_enable(print_time, 1)
+            enabled |= 1
         need_motor_enable = not self.steppers[0].is_motor_enabled()
         for rail in self.rails:
             need_motor_enable |= not rail.is_motor_enabled()
         self.need_motor_enable = need_motor_enable
+        if enabled:
+            self.printer.send_event('motor_state', 'on')
     def check_move(self, move):
         end_pos = move.end_pos
         xy2 = end_pos[0]**2 + end_pos[1]**2
