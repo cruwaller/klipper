@@ -17,26 +17,19 @@ fi
 echo ""
 echo "Disabling serial console..."
 
-pi_version=0
-serial="/dev/ttyAMA0"
-if [[ -e /dev/ttyS0 && -e /dev/ttyAMA0 ]]; then
-    # RPi 3 or newer
-    pi_version=1
-    serial="/dev/ttyS0"
+version="$(cat /proc/device-tree/model |grep 'Pi 3')"
+serial="ttyS0"
+if [[ "${version}" == "" ]]; then
+    serial="ttyAMA0"
 fi
 
 # Disabling the Console
 sudo sed -i 's/ console=serial0,115200 / /g' /boot/cmdline.txt
-if [[ $pi_version -eq 1 ]]; then
-    sudo systemctl stop serial-getty@ttyS0.service
-    sudo systemctl disable serial-getty@ttyS0.service
-else
-    sudo systemctl stop serial-getty@ttyAMA0.service
-    sudo systemctl disable serial-getty@ttyAMA0.servicefi
-fi
+sudo systemctl stop serial-getty@${serial}.service
+sudo systemctl disable serial-getty@${serial}.service
 
 # Enable UART
-add=$(grep enable_uart /boot/config.txt)
+add="$(grep enable_uart /boot/config.txt)"
 if [[ "${add}" == "" ]]; then
     /bin/sh -c "cat >> /boot/config.txt" <<EOF
 
@@ -49,5 +42,5 @@ EOF
 fi
 
 echo "  ...ready."
-echo "  Now you can use RPi GPIO serial using ${serial}"
+echo "  Now you can use RPi GPIO serial using /dev/${serial}"
 echo ""
