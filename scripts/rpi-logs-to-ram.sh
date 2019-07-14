@@ -2,9 +2,6 @@
 # This script locate critical logging folders into RAM to
 # save SD card for writing
 
-# Force script to exit if an error occurs
-set -e
-
 if [[ ${EUID} -ne 0 ]]; then
     echo "This script must run as root"
     exit -1
@@ -25,4 +22,3 @@ EOF
 else
     echo "  already done."
 fi
-echo ""

@@ -1,9 +1,6 @@
 #!/bin/bash
 # This script enable RPi gpio serial and remove it from kernel
 
-# Force script to exit if an error occurs
-set -e
-
 if [[ ${EUID} -ne 0 ]]; then
     echo "This script must run as root"
     exit -1
@@ -22,11 +19,13 @@ serial="ttyS0"
 if [[ "${version}" == "" ]]; then
     serial="ttyAMA0"
 fi
+echo "    serial: ${serial}"
 
 # Disabling the Console
 sudo sed -i 's/ console=serial0,115200 / /g' /boot/cmdline.txt
 sudo systemctl stop serial-getty@${serial}.service
 sudo systemctl disable serial-getty@${serial}.service
+echo "    console disabled"
 
 # Enable UART
 add="$(grep enable_uart /boot/config.txt)"
@@ -40,7 +39,7 @@ enable_uart=1
 
 EOF
 fi
-
+echo "    config.txt modified"
 echo "  ...ready."
 echo "  Now you can use RPi GPIO serial using /dev/${serial}"
 echo ""
