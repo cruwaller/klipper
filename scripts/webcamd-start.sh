@@ -16,25 +16,29 @@ DESC="Webcam daemon"
 NAME="webcamd"
 DEFAULTS_FILE=/etc/default/webcamd
 PIDFILE=/var/run/webcamd.pid
+LOGFILE=/tmp/webcamd.log
 
 . /lib/lsb/init-functions
 
 # Read defaults file
 [ -r $DEFAULTS_FILE ] && . $DEFAULTS_FILE
 
-if [ -z "${WEBCAM_ENABLED}" -o "${WEBCAMENABLED}" != "1" ]; then
+if [ -z "$WEBCAM_ENABLED" -o "$WEBCAM_ENABLED" != "1" ]; then
    log_warning_msg "Not starting $NAME, disabled in $DEFAULTS_FILE."
    exit 0
 fi
 
-WEBCAM_ARGS='-i "input_uvc.so -n -r ${WEBCAM_RESOLUTION} -f ${WEBCAM_FPS} -d ${WEBCAM_DEV}" -o "output_http.so -p ${WEBCAM_PORT}"'
+WEBCAM_DIR=$(dirname $WEBCAM_EXEC)
+# input args
+WEBCAM_ARGS="-i \"${WEBCAM_DIR}/input_uvc.so -n -r ${WEBCAM_RESOLUTION} -f ${WEBCAM_FPS} -d ${WEBCAM_DEV}\""
+# output args
+WEBCAM_ARGS="${WEBCAM_ARGS} -o \"${WEBCAM_DIR}/output_http.so -p ${WEBCAM_PORT}\""
 
 case "$1" in
 start)  log_daemon_msg "Starting" $NAME
-        start-stop-daemon --start --quiet --exec $WEBCAM_EXEC \
-                          --background --pidfile $PIDFILE --make-pidfile \
-                          --chuid $WEBCAM_USER --user $WEBCAM_USER \
-                          -- $WEBCAM_ARGS
+        start-stop-daemon --start --background --no-close --quiet --pidfile $PIDFILE --make-pidfile \
+                          --startas /bin/bash --chuid $WEBCAM_USER --user $WEBCAM_USER \
+                          -- -c "exec $WEBCAM_EXEC $WEBCAM_ARGS" >> $LOGFILE 2>&1
         log_end_msg $?
         ;;
 stop)   log_daemon_msg "Stopping" $NAME

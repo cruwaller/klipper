@@ -7,7 +7,7 @@
 #     sudo apt-get install --yes git
 #
 
-tgt_dir="${HOME}/mjpg-streamer"
+MJPG_INSTALL_DIR="${HOME}/mjpg-streamer"
 
 prepare_install()
 {
@@ -25,24 +25,24 @@ prepare_install()
     report_status "Running apt-get update..."
     sudo apt-get update
     report_status "Running apt-get upgrade..."
-    sudo apt-get upgrade
+    sudo apt-get -y upgrade
     touch ${HOME}/.klipper_prepare_done
 }
 
 install_mjpg_streamer()
 {
-    if [ ! -d ${tgt_dir} ]; then
+    if [ ! -d ${MJPG_INSTALL_DIR} ]; then
         report_status "Installing mjpg-streamer dependencies..."
         sudo apt-get install --yes cmake
         sudo apt-get install --yes libjpeg8-dev
         [ $? -ne 0 ] && sudo apt-get install --yes libjpeg62-turbo-dev
         report_status "Download mjpg-streamer..."
-        git clone https://github.com/jacksonliam/mjpg-streamer.git ${tgt_dir}
+        git clone https://github.com/jacksonliam/mjpg-streamer.git ${MJPG_INSTALL_DIR}
     else
-        git --git-dir=${tgt_dir}/.git pull
+        git --git-dir=${MJPG_INSTALL_DIR}/.git pull
     fi
     report_status "Building mjpg-streamer..."
-    make -C ${tgt_dir}/mjpg-streamer-experimental
+    make -C ${MJPG_INSTALL_DIR}/mjpg-streamer-experimental
 }
 
 install_mjpg_streamer_script()
@@ -65,7 +65,7 @@ WEBCAM_ENABLED=1
 
 WEBCAM_USER=$USER
 
-WEBCAM_EXEC=${tgt_dir}/mjpg-streamer-experimental/mjpg_streamer
+WEBCAM_EXEC=${MJPG_INSTALL_DIR}/mjpg-streamer-experimental/mjpg_streamer
 
 WEBCAM_PORT=8080
 
@@ -111,4 +111,4 @@ install_mjpg_streamer
 install_mjpg_streamer_script
 install_mjpg_streamer_defaults
 start_mjpg_streamer
-./${SRCDIR}/scripts/install-octopi.sh
+${SRCDIR}/scripts/install-octopi.sh
