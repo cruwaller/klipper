@@ -642,13 +642,8 @@ class TMC51xx(TmcSpiDriver):
     def query_endstop(self, print_time):
         #self.fields.set_reg_value('RAMP_STAT',
         #    self._command_read('RAMP_STAT'))
-        self.fields.set_reg_value('IOIN',
-            self._command_read('IOIN'))
-    def query_endstop_wait(self):
+        self.fields.set_reg_value('IOIN', self._command_read('IOIN'))
         get_field = self.fields.get_field
-        #return (get_field('status_sg') or
-        #        get_field('status_stop_r') or
-        #        get_field('status_stop_l'))
         return get_field('REFR_DIR') or get_field('REFL_STEP')
     def _home_handle_end_stop_state(self, params):
         """
