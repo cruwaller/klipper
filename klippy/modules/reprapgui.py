@@ -632,24 +632,33 @@ class RepRapGuiModule(object):
         self.logger_tornado.debug(" ".join(values))
 
     def Tornado_execute(self, config, application):
-        port = http_port = config.getint('http', default=80)
-        https_port = config.getint('https', None)
+        port = config.getint('http', default=80)
         ssl_options = None
-
-        if https_port is not None:
-            port = https_port
-            ssl_options = {
-                "certfile": os.path.normpath(os.path.expanduser(config.get('cert'))),
-                "keyfile": os.path.normpath(os.path.expanduser(config.get('key'))),
-            }
-            self.logger.debug("HTTPS port %s" % (https_port,))
-        else:
-            self.logger.debug("HTTP port %s" % (http_port,))
+        cert = config.get('cert', None)
+        key = config.get('key', None)
+        if cert is not None and key is not None:
+            cert = os.path.normpath(os.path.expanduser(cert))
+            key = os.path.normpath(os.path.expanduser(key))
+            self.logger.debug("cert: %s", cert)
+            self.logger.debug("key: %s", key)
+            if os.path.exists(cert) and os.path.exists(key):
+                https_port = config.getint('https', None)
+                if https_port is not None:
+                    port = https_port
+                ssl_options = {
+                    "certfile": cert,
+                    "keyfile": key,
+                }
+            else:
+                self.logger.warning("cert or key file is missing!")
+        self.logger.info("Server port %s (SSL %s)" % (
+            port, ssl_options is not None))
 
         http_server = tornado.httpserver.HTTPServer(application,
                                                     ssl_options=ssl_options)
         http_server.listen(port)
         tornado.ioloop.IOLoop.current().start()
+        self.logger.warning("Something went wrong, server exited!")
 
     resp = ""
     resp_rcvd = False
