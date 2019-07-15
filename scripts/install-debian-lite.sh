@@ -39,6 +39,7 @@ install_mjpg_streamer()
         report_status "Download mjpg-streamer..."
         git clone https://github.com/jacksonliam/mjpg-streamer.git ${MJPG_INSTALL_DIR}
     else
+        sudo /etc/init.d/webcamd stop
         git --git-dir=${MJPG_INSTALL_DIR}/.git pull
     fi
     report_status "Building mjpg-streamer..."
