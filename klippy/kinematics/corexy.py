@@ -143,6 +143,10 @@ class CoreXYKinematics:
             rail_y.step_itersolve(cmove)
         if axes_d[2]:
             rail_z.step_itersolve(cmove)
+    def get_status(self):
+        return {'homed_axes': "".join([a
+                    for a, (l, h) in zip("XYZ", self.limits) if l <= h])
+        }
     def is_homed(self):
         ret = [1, 1, 1]
         if self.toolhead.sw_limit_check_enabled is True:
