@@ -620,7 +620,7 @@ def main():
     f = open(incmdfile, 'rb')
     data = f.read()
     f.close()
-    for req in data.split('\0'):
+    for req in data.split('\n'):
         req = req.lstrip()
         if not req:
             continue
