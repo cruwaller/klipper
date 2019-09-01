@@ -333,6 +333,9 @@ def main():
         "Python: %s" % (repr(sys.version),)])
     if bglogger is not None:
         logging.info(versions)
+    elif not options.debugoutput:
+        logging.warning("No log file specified!"
+                        " Severe timing issues may result!")
 
     # Start Printer() class
     while 1:
