@@ -35,7 +35,7 @@ class TemperatureFan:
         if config.get('pin', None) is not None or not chamber:
             self.fan = fan.PrinterFan(config, default_shutdown_speed=1.)
             self.max_speed = config.getfloat('max_speed', 1., above=0., maxval=1.)
-            self.min_speed = config.getfloat('min_speed', 0.3, above=0., maxval=1.)
+            self.min_speed = config.getfloat('min_speed', 0.3, minval=0., maxval=1.)
             self.target_temp_conf = config.getfloat(
                 'target_temp', 40. if self.max_temp > 40. else self.max_temp,
                 minval=self.min_temp, maxval=self.max_temp)
