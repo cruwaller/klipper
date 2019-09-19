@@ -4,9 +4,9 @@
 # Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import sys, os, optparse, logging, time, collections, importlib
+import sys, os, optparse, logging, time, threading, collections, importlib
 import util, reactor, queuelogger, msgproto, homing
-import gcode, configfile, pins, mcu, toolhead
+import gcode, configfile, pins, heater, mcu, toolhead
 import gcodes
 
 # Include extras path to search dir
@@ -171,7 +171,7 @@ class Printer:
         self._extruders = {}
         all_sections = config.get_prefix_sections('')
         # Create printer components
-        for m in [pins, mcu]:
+        for m in [pins, heater, mcu]:
             m.add_printer_objects(config)
         for section_config in all_sections:
             self.try_load_module(config, section_config.get_name())
@@ -355,7 +355,6 @@ def main():
 
     if res == 'error_exit':
         sys.exit(-1)
-
 
 if __name__ == '__main__':
     util.fix_sigint()

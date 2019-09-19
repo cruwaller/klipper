@@ -603,14 +603,12 @@ class MCU:
             self.logger.info("Sending MCU '%s' printer configuration...",
                          self._name)
             for c in self._config_cmds:
-                # self.logger.debug("CONFIG ==> %s" % c)
                 self._serial.send(c)
         elif config_crc != prev_crc:
             self._check_restart("CRC mismatch")
             raise error("MCU '%s' CRC does not match config" % (self._name,))
         # Transmit init messages
         for c in self._init_cmds:
-            # self.logger.debug("INIT ==> %s" % c)
             self._serial.send(c)
     def _send_get_config(self):
         get_config_cmd = self.lookup_command("get_config")
@@ -782,7 +780,7 @@ class MCU:
     def _restart_via_command(self):
         if ((self._reset_cmd is None and self._config_reset_cmd is None)
             or not self._clocksync.is_active()):
-            self.logger.info("Unable to issue reset command on MCU '%s'", 
+            self.logger.info("Unable to issue reset command on MCU '%s'",
                              self._name)
             return
         if self._reset_cmd is None:

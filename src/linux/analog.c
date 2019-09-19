@@ -17,11 +17,9 @@
 #if (CONFIG_SIMULATOR == 1)
 #include <stdio.h>
 extern int SIMULATOR_MODE;
-#endif
 
 DECL_CONSTANT("ADC_MAX", CONFIG_ADC_MAX_VALUE); // Assume 12bit adc
 
-#if (CONFIG_SIMULATOR == 1)
 #if (CONFIG_SIM_MACH_atmega2560 || CONFIG_SIM_MACH_atmega2560_8)
 #define GPIO(PORT, NUM) (((PORT)-'A') * 8 + (NUM))
 DECL_ENUMERATION_RANGE("pin", "PA0", GPIO('A', 0), 8);
@@ -63,9 +61,11 @@ DECL_ENUMERATION_RANGE("pin", "GPIO164", 64, 32);
 #error "Simulator config is not supported!"
 #endif
 
-#else
+#else // CONFIG_SIMULATOR == 1
+DECL_CONSTANT("ADC_MAX", 4095); // Assume 12bit adc
+
 DECL_ENUMERATION_RANGE("pin", "analog0", 0, 8);
-#endif
+#endif // CONFIG_SIMULATOR == 1
 
 #define IIO_PATH "/sys/bus/iio/devices/iio:device0/in_voltage%d_raw"
 
@@ -141,29 +141,29 @@ gpio_adc_cancel_sample(struct gpio_adc g)
     (void)g;
 }
 
-
+#if (CONFIG_SIMULATOR == 1)
 /********************************************************************************/
 
 struct gpio_out gpio_out_setup(uint8_t pin, uint8_t val) {
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+#if (CONFIG_MACH_LINUX == 1)
     //printf("gpio_out_setup: pin %d value %u\n", pin, val);
 #endif
     return (struct gpio_out){.fd = pin, .val = val};
 }
 void gpio_out_toggle_noirq(struct gpio_out g) {
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+#if (CONFIG_MACH_LINUX == 1)
     //printf("gpio_out_toggle_noirq: pin %d\n", g.fd);
 #endif
     (void)g;
 }
 void gpio_out_toggle(struct gpio_out g) {
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+#if (CONFIG_MACH_LINUX == 1)
     //printf("gpio_out_toggle: pin %d\n", g.fd);
 #endif
     (void)g;
 }
 void gpio_out_write(struct gpio_out g, uint8_t val) {
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+#if (CONFIG_MACH_LINUX == 1)
     //printf("gpio_out_write: pin %d value %u\n", g.fd, val);
 #endif
     (void)g;
@@ -178,13 +178,13 @@ gpio_out_reset(struct gpio_out g, uint8_t val)
 /********************************************************************************/
 
 struct gpio_in gpio_in_setup(uint8_t pin, int8_t pull_up) {
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+#if (CONFIG_MACH_LINUX == 1)
     //printf("gpio_in_setup: pin %d pull_up %u\n", pin, pull_up);
 #endif
     return (struct gpio_in){.fd = pin, .val = !pull_up};
 }
 uint8_t gpio_in_read(struct gpio_in g) {
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+#if (CONFIG_MACH_LINUX == 1)
     //printf("gpio_in_read: pin %d value %u\n", g.fd, g.val);
 #endif
     return g.val; //(g.fd & 1);
@@ -196,3 +196,5 @@ gpio_in_reset(struct gpio_in g, int8_t pull_up)
 }
 
 /********************************************************************************/
+#endif /* (CONFIG_SIMULATOR == 1) */
+

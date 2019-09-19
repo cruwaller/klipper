@@ -134,7 +134,6 @@ class CoreXYKinematics:
     def move(self, print_time, move):
         if self.need_motor_enable:
             self._check_motor_enable(print_time, move)
-
         axes_d = move.axes_d
         cmove = move.cmove
         rail_x, rail_y, rail_z = self.rails

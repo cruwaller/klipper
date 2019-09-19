@@ -51,7 +51,6 @@ def lookup_enable_pin(ppins, pin_list):
         return enable_list[0]
     return StepperMultiEnablePin(enable_list)
 
-
 def lookup_endstop_pin(ppins, pin):
     if pin is None:
         raise ppins.error("Endstop requires pin")
@@ -351,7 +350,6 @@ class PrinterRail:
     def motor_enable(self, print_time, enable=0):
         for stepper in self.steppers:
             stepper.motor_enable(print_time, enable)
-
 
 # Wrapper for dual stepper motor support
 def LookupMultiRail(config):

@@ -31,11 +31,8 @@ $(OUT)klipper.elf.hex: $(OUT)klipper.elf
 ifneq ($(CONFIG_AVRDUDE_UPLOADSPEED),)
   uploadSpeed = -b$(CONFIG_AVRDUDE_UPLOADSPEED)
 endif
-STTYFARG := $(shell stty --help 2>&1 | \
-  grep -q 'illegal option' && echo -f || echo -F)
 
 flash: $(OUT)klipper.elf.hex
 	@echo "  Flashing $< to $(FLASH_DEVICE) via avrdude"
 	$(Q)if [ -z $(FLASH_DEVICE) ]; then echo "Please specify FLASH_DEVICE"; exit 1; fi
-#	$(Q)stty $(STTYFARG) $(FLASH_DEVICE) hupcl
-	$(Q)avrdude -p$(CONFIG_MCU) -c$(CONFIG_AVRDUDE_PROTOCOL) -P"$(FLASH_DEVICE)" -D -U"flash:w:$(<):i" $(uploadSpeed)	
+	$(Q)avrdude -p$(CONFIG_MCU) -c$(CONFIG_AVRDUDE_PROTOCOL) -P"$(FLASH_DEVICE)" -D -U"flash:w:$(<):i" $(uploadSpeed)

@@ -3,14 +3,14 @@ out
 *.pyc
 .config
 .config.old
+klippy/.version
+
 *.map
 *.pdf
 *.log
 *.elf
 *.bin
-
 lib/hub-ctrl/hub-ctrl
 .idea
-klippy/.version
 lib/bossac/bin
 lib/bossac/obj

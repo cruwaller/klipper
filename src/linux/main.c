@@ -15,11 +15,13 @@
 #include "internal.h" // console_setup
 #include "sched.h" // sched_main
 
-DECL_CONSTANT_STR("MCU", CONFIG_MCU);
-
 #if (CONFIG_SIMULATOR == 1)
+DECL_CONSTANT_STR("MCU", CONFIG_MCU);
 int SIMULATOR_MODE = CONFIG_SIMULATOR;
+#else
+DECL_CONSTANT_STR("MCU", "linux");
 #endif
+
 
 /****************************************************************
  * Real-time setup

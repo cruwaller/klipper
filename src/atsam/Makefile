@@ -44,9 +44,6 @@ $(OUT)klipper.bin: $(OUT)klipper.elf
 	@echo "  Creating bin file $@"
 	$(Q)$(OBJCOPY) -O binary $< $@
 
-STTYFARG := $(shell stty --help 2>&1 | \
-  grep -q 'illegal option' && echo -f || echo -F)
-
 # Flash rules
 lib/bossac/bin/bossac:
 	@echo "  Building bossac"
@@ -70,4 +67,3 @@ flash: $(OUT)klipper.bin lib/bossac/bin/bossac
 	$(Q)lib/bossac/bin/bossac --usb-port=0 -p "$(FLASH_DEVICE)" -a -e -w $< -v -b
 	$(Q)lib/bossac/bin/bossac -p "$(FLASH_DEVICE)" -b -R > /dev/null 2>&1 || true
 endif
-

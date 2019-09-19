@@ -52,12 +52,11 @@ class PrinterExtruder:
         self.need_motor_enable = True
         self.extrude_pos = 0.
         self.raw_filament = 0.
-        self.extrude_factor = config.getfloat(
-            'extrusion_factor', 1.0, minval=0.1)
+        self.extrude_factor = config.getfloat('extrusion_factor', 1.0, minval=0.1)
         # Setup iterative solver
-        ffi_main, self.ffi_lib = chelper.get_ffi()
-        self.cmove = ffi_main.gc(self.ffi_lib.move_alloc(), self.ffi_lib.free)
-        self.extruder_move_fill = self.ffi_lib.extruder_move_fill
+        ffi_main, ffi_lib = chelper.get_ffi()
+        self.cmove = ffi_main.gc(ffi_lib.move_alloc(), ffi_lib.free)
+        self.extruder_move_fill = ffi_lib.extruder_move_fill
         self.stepper.setup_itersolve('extruder_stepper_alloc')
         # Setup SET_PRESSURE_ADVANCE command
         gcode = self.printer.lookup_object('gcode')
@@ -69,8 +68,7 @@ class PrinterExtruder:
             gcode.register_mux_command("SET_PRESSURE_ADVANCE", "EXTRUDER", key,
                                        self.cmd_SET_PRESSURE_ADVANCE,
                                        desc=self.cmd_SET_PRESSURE_ADVANCE_help)
-        self.logger.debug("index={}, heater={}".
-                          format(self.index, self.heater.name))
+        self.logger.debug("index=%d, heater=%s" % (self.index, self.heater.name))
     def get_index(self):
         return self.index
     def get_status(self, eventtime):
@@ -89,8 +87,6 @@ class PrinterExtruder:
         return self.deactivate_gcode.render()
     def stats(self, eventtime):
         return self.heater.stats(eventtime)
-    def setup_accel_order(self, accel_order):
-        self.ffi_lib.move_set_accel_order(self.cmove, accel_order)
     def motor_off(self, print_time):
         self.stepper.motor_enable(print_time, 0)
         self.need_motor_enable = True
@@ -212,6 +208,7 @@ class PrinterExtruder:
                 if extra_decel_d < 0.:
                     axis_d += extra_decel_d
                     extra_decel_v = extra_decel_d / decel_t
+
         # Generate steps
         self.extruder_move_fill(
             self.cmove, print_time, accel_t, cruise_t, decel_t, start_pos,
@@ -247,10 +244,9 @@ class PrinterExtruder:
 # Dummy extruder class used when a printer has no extruder at all
 class DummyExtruder:
     index = -1
+    extrude_factor = 1.
     def set_active(self, print_time, is_active):
         return 0.
-    def setup_accel_order(self, accel_order):
-        pass
     def motor_off(self, move_time):
         pass
     def check_move(self, move):
@@ -263,9 +259,30 @@ class DummyExtruder:
 
 def add_printer_objects(config):
     printer = config.get_printer()
+    """
+    for i in range(99):
+        section = 'extruder%d' % (i,)
+        if not config.has_section(section):
+            if not i and config.has_section('extruder'):
+                pe = PrinterExtruder(config.getsection('extruder'), 0)
+                printer.add_object('extruder0', pe)
+                continue
+            break
+        pe = PrinterExtruder(config.getsection(section), i)
+        printer.add_object(section, pe)
+    """
     if config.has_section('extruder'):
         raise printer.config_error("Extruder section must contain index!")
     else:
         extruders = config.get_prefix_sections('extruder')
-        for s in extruders:
-            printer.extruder_add( PrinterExtruder(s) )
+        for _config in extruders:
+            printer.extruder_add(PrinterExtruder(_config))
+
+def get_printer_extruders(printer):
+    out = []
+    for i in range(99):
+        extruder = printer.lookup_object('extruder%d' % (i,), None)
+        if extruder is None:
+            break
+        out.append(extruder)
+    return out

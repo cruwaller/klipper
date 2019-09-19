@@ -270,7 +270,6 @@ class GCodeParser:
         except os.error:
             logging.exception("Read g-code")
             return
-        # self.logger.debug("DATA: %s" % repr(data))
         self.input_log.append((eventtime, data))
         self.bytes_read += len(data)
         lines = data.split('\n')
@@ -501,6 +500,12 @@ class GCodeParser:
             # Tn command has to be handled specially
             self.cmd_Tn(params)
             return
+        elif cmd.startswith("M117 "):
+            # Handle M117 gcode with numeric and special characters
+            handler = self.gcode_handlers.get("M117", None)
+            if handler is not None:
+                handler(params)
+                return
         self.respond_info('Unknown command:"%s"' % (cmd,))
     def cmd_Tn(self, params):
         # Select Tool

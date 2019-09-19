@@ -3,7 +3,7 @@
 # Copyright (C) 2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import os, errno
+import os, logging
 
 class VirtualSD:
 
@@ -26,11 +26,6 @@ class VirtualSD:
         # Register commands
         self.gcode = printer.lookup_object('gcode')
         self.gcode.register_command('M21', None)
-        for cmd in ['M0', 'M20', 'M21', 'M23', 'M24', 'M25', 'M26', 'M27',
-                    'M32', 'M37', 'M98']:
-            self.gcode.register_command(cmd, getattr(self, 'cmd_' + cmd))
-        for cmd in ['M28', 'M29', 'M30']:
-            self.gcode.register_command(cmd, self.cmd_error)
         self.gcode.register_command('SD_SET_PATH',
             self.cmd_SD_SET_PATH)
         self.last_gco_sender = None
@@ -46,6 +41,11 @@ class VirtualSD:
             return None
     def handle_ready(self):
         self.toolhead = self.printer.lookup_object('toolhead')
+        for cmd in ['M0', 'M20', 'M21', 'M23', 'M24', 'M25', 'M26', 'M27',
+                    'M32', 'M37', 'M98']:
+            self.gcode.register_command(cmd, getattr(self, 'cmd_' + cmd))
+        for cmd in ['M28', 'M29', 'M30']:
+            self.gcode.register_command(cmd, self.cmd_error)
     def handle_shutdown(self):
         if self.work_timer is not None:
             self.must_pause_work = True
@@ -123,8 +123,7 @@ class VirtualSD:
         self.gcode.respond("SD card ok")
     def cmd_M23(self, params):
         # Select SD file
-        is_abs_path = bool(self.gcode.get_int(
-            'IS_ABS', params, default=0))
+        is_abs_path = bool(self.gcode.get_int('IS_ABS', params, default=0))
         if self.work_timer is not None:
             raise self.gcode.error("SD busy")
         if self.current_file is not None:
@@ -148,7 +147,7 @@ class VirtualSD:
             f.seek(0, os.SEEK_END)
             fsize = f.tell()
             f.seek(0)
-        except IOError:
+        except:
             self.logger.exception("virtual_sdcard file open")
             raise self.gcode.error("Unable to open file")
         self.gcode.respond("File opened:%s Size:%d" % (filename, fsize))
@@ -173,8 +172,7 @@ class VirtualSD:
             self.work_handler, self.reactor.NOW)
     def cmd_M25(self, params):
         # Pause SD print
-        pause = self.gcode.get_int(
-            'P', params, default=1, minval=0, maxval=1)
+        pause = self.gcode.get_int('P', params, default=1, minval=0, maxval=1)
         self.do_pause(pause)
     def cmd_M26(self, params):
         # Set SD position
@@ -274,8 +272,7 @@ class VirtualSD:
                 self.logger.exception("virtual_sdcard dispatch")
                 break
             self.file_position += len(lines.pop()) + 1
-        self.logger.info("Exiting SD card print (position %d)",
-                         self.file_position)
+        self.logger.info("Exiting SD card print (position %d)", self.file_position)
         self.work_timer = None
         return self.reactor.NEVER
 

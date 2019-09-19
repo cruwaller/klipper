@@ -39,6 +39,8 @@ class DriverBase(object):
                 raise config.error('Cannot detect proper step distance!!')
             self.calculate_steps(stepper_config)
         self.logger.info("Driver '%s' base loaded", self.name)
+        self.logger.debug("step_dist:%s, inv_step_dist:%s" % (self.step_dist,
+            self.inv_step_dist))
     def calculate_steps(self, config):
         motor_deg = config.getfloat('motor_step_angle', above=0.)
         # Calculate base on settings

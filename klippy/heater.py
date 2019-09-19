@@ -1,9 +1,9 @@
 # Printer heater support
 #
-# Copyright (C) 2016,2017  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import threading
+import logging, threading
 import extras.sensors as sensors
 
 ######################################################################
@@ -21,7 +21,7 @@ class error(Exception):
     pass
 
 
-class PrinterHeater:
+class Heater:
     error = error
     def get_name(self):
         return self.name
@@ -79,7 +79,7 @@ class PrinterHeater:
         self.control = algo(self, config)
         # Setup output heater pin
         heater_pin = config.get('heater_pin')
-        ppins = printer.lookup_object('pins')
+        ppins = self.printer.lookup_object('pins')
         if algo is ControlBangBang and self.max_power == 1.:
             self.mcu_pwm = ppins.setup_pin('digital_out', heater_pin)
         else:
@@ -109,6 +109,11 @@ class PrinterHeater:
         self.protect_runaway_disabled = False
         self.heating_start_time = 0.
         self.heating_end_time = None
+
+        self.gcode.register_mux_command(
+            "SET_HEATER_TEMPERATURE", "HEATER", self.name,
+            self.cmd_SET_HEATER_TEMPERATURE,
+            desc=self.cmd_SET_HEATER_TEMPERATURE_help)
 
         for _name in [name.replace(" ", "_").upper(), str(self.index)]:
             gcode.register_mux_command("TEMP_PROTECTION", "HEATER", _name,
@@ -367,6 +372,11 @@ class PrinterHeater:
         if self.heating_end_time is None:
             return 0.
         return self.heating_end_time - self.heating_start_time
+    cmd_SET_HEATER_TEMPERATURE_help = "Sets a heater temperature"
+    def cmd_SET_HEATER_TEMPERATURE(self, params):
+        print_time = self.printer.lookup_object('toolhead').get_last_move_time()
+        temp = self.gcode.get_float('TARGET', params, 0.)
+        self.set_temp(print_time, temp)
 
 
 ######################################################################
@@ -411,7 +421,6 @@ class ControlPID:
         self.Ki = config.getfloat('pid_Ki') / PID_PARAM_BASE
         self.Kd = config.getfloat('pid_Kd') / PID_PARAM_BASE
         self.logger.debug("PID: Kp %s, Ki %s, Kd %s", self.Kp, self.Ki, self.Kd)
-        #self.min_deriv_time = config.getfloat('pid_deriv_time', 2., above=0.)
         self.min_deriv_time = heater.get_smooth_time()
         self.imax = config.getfloat('pid_integral_max', self.heater_max_power,
                                     minval=0.)
@@ -477,11 +486,10 @@ class ControlPID:
                 or abs(self.prev_temp_deriv) > PID_SETTLE_SLOPE)
 
 
-def load_config(config):
-    raise config.get_printer().config_error(
-        "Naming without index (bed or [0-9]+) is not allowed")
+######################################################################
+# Sensor and heater lookup
+######################################################################
 
-'''
 class PrinterHeaters:
     def __init__(self, config):
         self.printer = config.get_printer()
@@ -506,8 +514,7 @@ class PrinterHeaters:
         sensor = self.setup_sensor(config)
         # Create heater
         self.heaters[heater_name] = heater = Heater(config, sensor)
-        if gcode_id is not None:
-            self.gcode_id_to_sensor[gcode_id] = heater
+        self.register_sensor(config, heater, gcode_id)
         return heater
     def lookup_heater(self, heater_name):
         if heater_name == 'extruder':
@@ -527,6 +534,15 @@ class PrinterHeaters:
         return self.sensor_factories[sensor_type](config)
     def get_gcode_sensors(self):
         return self.gcode_id_to_sensor.items()
+    def register_sensor(self, config, psensor, gcode_id=None):
+        if gcode_id is None:
+            gcode_id = config.get('gcode_id', None)
+            if gcode_id is None:
+                return
+        if gcode_id in self.gcode_id_to_sensor:
+            raise self.printer.config_error(
+                "G-Code sensor id %s already registered" % (gcode_id,))
+        self.gcode_id_to_sensor[gcode_id] = psensor
     def turn_off_all_heaters(self, print_time):
         for heater in self.heaters.values():
             heater.set_temp(print_time, 0.)
@@ -534,7 +550,14 @@ class PrinterHeaters:
     def cmd_TURN_OFF_HEATERS(self, params):
         print_time = self.printer.lookup_object('toolhead').get_last_move_time()
         self.turn_off_all_heaters(print_time)
-'''
+
+def add_printer_objects(config):
+    config.get_printer().add_object('heater', PrinterHeaters(config))
+
+
+def load_config(config):
+    raise config.get_printer().config_error(
+        "Naming without index (bed or [0-9]+) is not allowed")
 
 def load_config_prefix(config):
-    return PrinterHeater(config)
+    return Heater(config)

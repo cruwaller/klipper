@@ -12,7 +12,7 @@
 #include "sched.h" // sched_shutdown
 
 static const uint8_t adc_pins[] PROGMEM = {
-#if CONFIG_MACH_atmega168 || CONFIG_MACH_atmega168p || CONFIG_MACH_atmega328 || CONFIG_MACH_atmega328p
+#if CONFIG_MACH_atmega168 || CONFIG_MACH_atmega328 || CONFIG_MACH_atmega328p
     GPIO('C', 0), GPIO('C', 1), GPIO('C', 2), GPIO('C', 3),
     GPIO('C', 4), GPIO('C', 5), GPIO('E', 0), GPIO('E', 1),
 #elif CONFIG_MACH_atmega644p || CONFIG_MACH_atmega1284p

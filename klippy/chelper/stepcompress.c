@@ -11,7 +11,7 @@
 // add parameters such that 'count' pulses occur, with each step event
 // calculating the next step event time using:
 //  next_wake_time = last_wake_time + interval; interval += add
-// This code is writtin in C (instead of python) for processing
+// This code is written in C (instead of python) for processing
 // efficiency - the repetitive integer math is vastly faster in C.
 
 #include <stddef.h> // offsetof
@@ -193,10 +193,9 @@ compress_bisect_add(struct stepcompress *sc)
             break;
         add = maxadd - (maxadd - minadd) / 4;
     }
-    if (zerocount + zerocount/16 >= bestcount) {
+    if (zerocount + zerocount/16 >= bestcount)
         // Prefer add=0 if it's similar to the best found sequence
         return (struct step_move){ zerointerval, zerocount, 0 };
-    }
     return (struct step_move){ bestinterval, bestcount, bestadd };
 }
 

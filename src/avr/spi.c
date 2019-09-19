@@ -13,7 +13,7 @@
 
 DECL_ENUMERATION("spi_bus", "spi", 0);
 
-#if CONFIG_MACH_atmega168 || CONFIG_MACH_atmega168p || CONFIG_MACH_atmega328 || CONFIG_MACH_atmega328p
+#if CONFIG_MACH_atmega168 || CONFIG_MACH_atmega328 || CONFIG_MACH_atmega328p
 static const uint8_t MISO = GPIO('B', 4), MOSI = GPIO('B', 3);
 static const uint8_t SCK = GPIO('B', 5), SS = GPIO('B', 2);
 DECL_CONSTANT_STR("BUS_PINS_spi", "PB4,PB3,PB5");

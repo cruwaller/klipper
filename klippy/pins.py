@@ -46,13 +46,13 @@ Sanguino_analog = [
 ]
 
 Arduino_Due = [
-    "PA8" , "PA9" , "PB25", "PC28", "PA29", "PC25", "PC24", "PC23", "PC22", "PC21",
-    "PA28", "PD7" , "PD8" , "PB27", "PD4" , "PD5" , "PA13", "PA12", "PA11", "PA10",
-    "PB12", "PB13", "PB26", "PA14", "PA15", "PD0" , "PD1" , "PD2" , "PD3" , "PD6" ,
-    "PD9" , "PA7" , "PD10", "PC1" , "PC2" , "PC3" , "PC4" , "PC5" , "PC6" , "PC7" ,
-    "PC8" , "PC9" , "PA19", "PA20", "PC19", "PC18", "PC17", "PC16", "PC15", "PC14",
-    "PC13", "PC12", "PB21", "PB14", "PA16", "PA24", "PA23", "PA22", "PA6" , "PA4" ,
-    "PA3" , "PA2" , "PB17", "PB18", "PB19", "PB20", "PB15", "PB16", "PA1" , "PA0" ,
+    "PA8", "PA9", "PB25", "PC28", "PA29", "PC25", "PC24", "PC23", "PC22","PC21",
+    "PA28", "PD7", "PD8", "PB27", "PD4", "PD5", "PA13", "PA12", "PA11", "PA10",
+    "PB12", "PB13", "PB26", "PA14", "PA15", "PD0", "PD1", "PD2", "PD3", "PD6",
+    "PD9", "PA7", "PD10", "PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7",
+    "PC8", "PC9", "PA19", "PA20", "PC19", "PC18", "PC17", "PC16", "PC15","PC14",
+    "PC13", "PC12", "PB21", "PB14", "PA16", "PA24", "PA23", "PA22", "PA6","PA4",
+    "PA3", "PA2", "PB17", "PB18", "PB19", "PB20", "PB15", "PB16", "PA1", "PA0",
     "PA17", "PA18", "PC30", "PA21", "PA25", "PA26", "PA27", "PA28", "PB23"
 ]
 Arduino_Due_analog = [
@@ -223,13 +223,6 @@ class PrinterPins:
             chip_name, pin = [s.strip() for s in desc.split(':', 1)]
         if chip_name not in self.chips:
             raise error("Unknown pin chip name '%s'" % (chip_name,))
-        '''
-        if ':' in pin:
-            # virtual config, mcu is also defined, call again
-            params = self.lookup_pin(pin, can_invert, can_pullup, share_type)
-            params['virtual_chip'] = self.chips[chip_name]
-            return params
-        '''
         if [c for c in '^~!: ' if c in pin]:
             format = ""
             if can_pullup:

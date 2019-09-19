@@ -32,7 +32,7 @@ class HomingOverride:
         if no_axis:
             override = True
         else:
-            # check if we home an axis which needs the override
+            # check if we home an axsis which needs the override
             override = False
             for axis in self.axes:
                 if axis in params:

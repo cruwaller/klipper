@@ -24,24 +24,12 @@ src-$(CONFIG_SERIAL) += lpc176x/serial.c generic/serial_irq.c
 
 # Build the additional bin output file
 target-y += $(OUT)klipper.bin
-target-y += $(OUT)klipper.hex
 
 $(OUT)klipper.bin: $(OUT)klipper.elf
 	@echo "  Creating bin file $@"
 	$(Q)$(OBJCOPY) -O binary $< $@
 
-<<<<<<< HEAD
-$(OUT)klipper.hex: $(OUT)klipper.elf
-	@echo "  Creating hex file $@"
-	$(Q)$(OBJCOPY) -R .stack -O ihex $< $@
-
-$(OUT)klipper.disasm: $(OUT)klipper.elf
-	@echo "  Creating disasm file $@"
-	$(Q)$(OBJDUMP)  -d -f -M reg-names-std --demangle $< > $@
-
-=======
 # Flash rules
->>>>>>> 1022729... lpc176x: Update code to use armcm_boot mechanism
 flash: $(OUT)klipper.bin
 	@echo "  Flashing $< to $(FLASH_DEVICE)"
 	$(Q)$(PYTHON) ./scripts/flash_usb.py -t lpc176x -d "$(FLASH_DEVICE)" $(if $(NOSUDO),--no-sudo) $(OUT)klipper.bin

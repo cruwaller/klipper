@@ -170,23 +170,12 @@ Fields["PWM_AUTO"] = {
 
 SignedFields = ["CUR_A", "CUR_B", "PWM_SCALE_AUTO"]
 
-FieldFormatters = {
-    "I_scale_analog":   (lambda v: "1(ExtVREF)" if v else ""),
-    "shaft":            (lambda v: "1(Reverse)" if v else ""),
-    "drv_err":          (lambda v: "1(ErrorShutdown!)" if v else ""),
-    "uv_cp":            (lambda v: "1(Undervoltage!)" if v else ""),
+FieldFormatters = dict(tmc2130.FieldFormatters)
+FieldFormatters.update({
     "SEL_A":            (lambda v: "%d(%s)" % (v, ["TMC222x", "TMC220x"][v])),
-    "VERSION":          (lambda v: "%#x" % v),
-    "MRES":             (lambda v: "%d(%dusteps)" % (v, 0x100 >> v)),
-    "otpw":             (lambda v: "1(OvertempWarning!)" if v else ""),
-    "ot":               (lambda v: "1(OvertempError!)" if v else ""),
-    "s2ga":             (lambda v: "1(ShortToGND_A!)" if v else ""),
-    "s2gb":             (lambda v: "1(ShortToGND_B!)" if v else ""),
     "s2vsa":            (lambda v: "1(LowSideShort_A!)" if v else ""),
     "s2vsb":            (lambda v: "1(LowSideShort_B!)" if v else ""),
-    "ola":              (lambda v: "1(OpenLoad_A!)" if v else ""),
-    "olb":              (lambda v: "1(OpenLoad_B!)" if v else ""),
-}
+})
 
 
 ######################################################################
@@ -233,3 +222,6 @@ class TMC2208(driverbase.DriverBase):
             drv_type = self.fields.get_field("SEL_A", val)
             reg_name = "IOIN@TMC220x" if drv_type else "IOIN@TMC222x"
         return reg_name, val
+
+def load_config_prefix(config):
+    return TMC2208(config)

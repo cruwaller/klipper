@@ -1,6 +1,6 @@
-// Communicating with an SPI device via linux spidev
+// Very basic shift-register support via a Linux SPI device
 //
-// Copyright (C) 2017  Kevin O'Connor <kevin@koconnor.net>
+// Copyright (C) 2017-2018  Kevin O'Connor <kevin@koconnor.net>
 //
 // This file may be distributed under the terms of the GNU GPLv3 license.
 #include "autoconf.h"
@@ -124,3 +124,17 @@ spi_transfer(struct spi_config config, uint8_t receive_data
     (void)config, (void)len, (void)data;
 #endif
 }
+
+// Dummy versions of gpio_out functions
+#if (!CONFIG_SIMULATOR)
+struct gpio_out
+gpio_out_setup(uint8_t pin, uint8_t val)
+{
+    shutdown("gpio_out_setup not supported");
+}
+
+void
+gpio_out_write(struct gpio_out g, uint8_t val)
+{
+}
+#endif

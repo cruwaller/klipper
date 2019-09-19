@@ -122,6 +122,7 @@ FieldFormatters = {
     "STST": (lambda v: "1(Standstill detected!)" if v else ""),
 }
 
+
 ######################################################################
 # TMC stepper current config helper
 ######################################################################
@@ -284,3 +285,6 @@ class TMC2660(driverbase.DriverBase):
         set_config_field(config, "SLPL", 0)
         set_config_field(config, "DISS2G", 0)
         set_config_field(config, "TS2G", 3)
+
+def load_config_prefix(config):
+    return TMC2660(config)

@@ -41,14 +41,11 @@ choice
         bool "atmega328"
     config MACH_atmega168
         bool "atmega168"
-    config MACH_atmega168p
-        bool "atmega168p"
 endchoice
 
 config MCU
     string
     default "atmega168" if MACH_atmega168
-    default "atmega168p" if MACH_atmega168p
     default "atmega328" if MACH_atmega328
     default "atmega328p" if MACH_atmega328p
     default "atmega1284p" if MACH_atmega1284p
@@ -84,7 +81,7 @@ choice
     prompt "Processor speed" if LOW_LEVEL_OPTIONS
     config AVR_FREQ_20000000
         bool "20Mhz"
-        depends on MACH_atmega168 || MACH_atmega168p || MACH_atmega328 || MACH_atmega328p || MACH_atmega644p || MACH_atmega1284p
+        depends on MACH_atmega168 || MACH_atmega328 || MACH_atmega328p || MACH_atmega644p || MACH_atmega1284p
     config AVR_FREQ_16000000
         bool "16Mhz"
     config AVR_FREQ_8000000
