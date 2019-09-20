@@ -57,6 +57,7 @@ class GCodeParser:
         self.position_with_transform = (lambda: [0., 0., 0., 0.])
         self.need_ack = False
         self.toolhead = self.extruder = None
+        self.heaters = None
         self.axis2pos = {'X': 0, 'Y': 1, 'Z': 2, 'E': 3}
         self.simulate_print = False
         self.auto_temp_report = True
@@ -84,9 +85,9 @@ class GCodeParser:
             if cmd in self.base_gcode_handlers:
                 del self.base_gcode_handlers[cmd]
             return
-        #if cmd in self.ready_gcode_handlers:
-        #    raise self.printer.config_error(
-        #        "gcode command %s already registered" % (cmd,))
+        if cmd in self.ready_gcode_handlers:
+            raise self.printer.config_error(
+                "gcode command %s already registered" % (cmd,))
         if not (len(cmd) >= 2 and not cmd[0].isupper() and cmd[1].isdigit()):
             origfunc = func
             func = lambda params: origfunc(self._get_extended_params(params))
@@ -127,6 +128,11 @@ class GCodeParser:
         return old_transform
     def stats(self, eventtime):
         return False, "gcodein=%d" % (self.bytes_read,)
+    def _get_extrude_factor(self):
+        try:
+            return self.extruder.get_extrude_factor()
+        except AttributeError:
+            return 0.
     def _action_emergency_stop(self, msg="action_emergency_stop"):
         self.printer.invoke_shutdown("Shutdown due to %s" % (msg,))
         return ""
@@ -138,7 +144,7 @@ class GCodeParser:
         return ""
     def _get_gcode_position(self):
         p = [lp - bp for lp, bp in zip(self.last_position, self.base_position)]
-        p[3] /= self.extruder.extrude_factor
+        p[3] /= self._get_extrude_factor()
         return p
     def _get_gcode_speed(self):
         return self.speed / self.speed_factor
@@ -147,14 +153,10 @@ class GCodeParser:
     def get_status(self, eventtime):
         move_position = self._get_gcode_position()
         busy = self.is_processing_data
-        try:
-            extrude_factor = self.extruder.extrude_factor
-        except AttributeError:
-            extrude_factor = 0.
         return {
             'speed_factor': self._get_gcode_speed_override(),
             'speed': self._get_gcode_speed(),
-            'extrude_factor': extrude_factor,
+            'extrude_factor': self._get_extrude_factor(),
             'abs_extrude': self.absolute_extrude,
             'busy': busy,
             'move_xpos': move_position[0],
@@ -192,6 +194,7 @@ class GCodeParser:
         self.is_printer_ready = True
         self.gcode_handlers = self.ready_gcode_handlers
         # Lookup printer components
+        self.heaters = self.printer.lookup_object('heater')
         self.toolhead = self.printer.lookup_object('toolhead')
         if self.move_transform is None:
             self.move_with_transform = self.toolhead.move
@@ -211,17 +214,13 @@ class GCodeParser:
             len(self.input_log),))
         for eventtime, data in self.input_log:
             out.append("Read %f: %s" % (eventtime, repr(data)))
-        try:
-            extrude_factor = self.extruder.extrude_factor
-        except AttributeError:
-            extrude_factor = 0.
         out.append(
             "gcode state: absolute_coord=%s absolute_extrude=%s"
             " base_position=%s last_position=%s homing_position=%s"
             " speed_factor=%s extrude_factor=%s speed=%s" % (
                 self.absolute_coord, self.absolute_extrude,
                 self.base_position, self.last_position, self.homing_position,
-                self.speed_factor, extrude_factor, self.speed))
+                self.speed_factor, self._get_extrude_factor(), self.speed))
         self.logger.info("\n".join(out))
     # Parse input into commands
     args_r = re.compile('([A-Z_]+|[A-Z*/])')
@@ -420,15 +419,10 @@ class GCodeParser:
     def _get_temp(self, eventtime):
         # Tn:XXX /YYY B:XXX /YYY
         out = []
-        for key, e in self.printer.extruder_get().items():
-            heater = e.get_heater()
-            if heater is not None:
-                cur, target = heater.get_temp(eventtime)
-                out.append("T%d:%.1f /%.1f" % (e.get_index(), cur, target))
-        heater = self.printer.lookup_object('heater bed', None)
-        if heater is not None:
-            cur, target = heater.get_temp(eventtime)
-            out.append("B:%.1f /%.1f" % (cur, target))
+        if self.heaters is not None:
+            for gcode_id, sensor in sorted(self.heaters.get_gcode_sensors()):
+                cur, target = sensor.get_temp(eventtime)
+                out.append("%s:%.1f /%.1f" % (gcode_id, cur, target))
         if not out:
             return "T:0"
         return " ".join(out)
@@ -558,10 +552,7 @@ class GCodeParser:
                         # value relative to base coordinate position
                         self.last_position[pos] = v + self.base_position[pos]
             if 'E' in params and not self.simulate_print:
-                try:
-                    v = float(params['E']) * self.extruder.extrude_factor
-                except AttributeError:
-                    v = 0.
+                v = float(params['E']) * self._get_extrude_factor()
                 if not self.absolute_coord or not self.absolute_extrude:
                     # value relative to position of last move
                     self.last_position[3] += v
@@ -589,12 +580,11 @@ class GCodeParser:
     def cmd_G28(self, params):
         # Move to origin
         axes = []
-        homing_order = self.toolhead.homing_order
-        for axis in homing_order:
+        for axis in 'XYZ':
             if axis in params:
                 axes.append(self.axis2pos[axis])
         if not axes:
-            axes = [self.axis2pos[axis] for axis in homing_order]
+            axes = [0, 1, 2]
         homing_state = homing.Homing(self.printer)
         if self.is_fileinput:
             homing_state.set_no_verify_retract()
@@ -633,10 +623,7 @@ class GCodeParser:
                     for a, p in self.axis2pos.items() if a in params }
         for p, offset in offsets.items():
             if p == 3:
-                try:
-                    offset *= self.extruder.extrude_factor
-                except AttributeError:
-                    pass
+                offset *= self._get_extrude_factor()
             self.base_position[p] = self.last_position[p] - offset
         if not offsets:
             self.base_position = list(self.last_position)
@@ -665,9 +652,9 @@ class GCodeParser:
             extr = self.printer.extruder_get(index)
         if extr is not None:
             last_e_pos = self.last_position[3]
-            e_value = (last_e_pos - self.base_position[3]) / extr.extrude_factor
+            e_value = (last_e_pos - self.base_position[3]) / extr.get_extrude_factor()
             self.base_position[3] = last_e_pos - e_value * new_extrude_factor
-            extr.extrude_factor = new_extrude_factor
+            extr.set_extrude_factor(new_extrude_factor)
     cmd_SET_GCODE_OFFSET_help = \
         "Set a virtual offset to positions. " \
         "args: [X|Y|Z_ADJUST=offset]"
@@ -709,7 +696,8 @@ class GCodeParser:
             'last_position': list(self.last_position),
             'homing_position': list(self.homing_position),
             'speed': self.speed, 'speed_factor': self.speed_factor,
-            'extrude_factor': self.extrude_factor,
+            'extrude_factor': self._get_extrude_factor(),
+            'extruder': self.extruder,
         }
     cmd_RESTORE_GCODE_STATE_help = "Restore a previously saved G-Code state"
     def cmd_RESTORE_GCODE_STATE(self, params):
@@ -724,7 +712,8 @@ class GCodeParser:
         self.homing_position = list(state['homing_position'])
         self.speed = state['speed']
         self.speed_factor = state['speed_factor']
-        self.extrude_factor = state['extrude_factor']
+        self.extruder = state['extruder']
+        self.extruder.set_extrude_factor(state['extrude_factor'])
         # Restore the relative E position
         e_diff = self.last_position[3] - state['last_position'][3]
         self.base_position[3] += e_diff

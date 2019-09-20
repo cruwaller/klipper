@@ -4,7 +4,6 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import fan
-import extras.sensors as sensors
 
 KELVIN_TO_CELCIUS = -273.15
 MAX_FAN_TIME = 5.0
@@ -22,12 +21,12 @@ class TemperatureFan:
         self.logger = self.printer.get_logger(self.name)
         min_temp = config.getfloat('min_temp', minval=KELVIN_TO_CELCIUS, default=None)
         max_temp = config.getfloat('max_temp', above=min_temp, default=None)
-        self.sensor = sensors.load_sensor(
-            config.getsection('sensor %s' % config.get('sensor')))
+        self.sensor = self.printer.lookup_object('heater').setup_sensor(config)
         self.sensor.setup_minmax(min_temp, max_temp)
         self.min_temp, self.max_temp = self.sensor.get_min_max_temp()
         self.sensor.setup_callback(self.temperature_callback)
-        self.speed_delay = self.sensor.get_report_delta()
+        self.printer.lookup_object('heater').register_sensor(config, self)
+        self.speed_delay = self.sensor.get_report_time_delta()
         self.last_temp = 0.
         self.last_temp_time = 0.
         self.target_temp = 0.

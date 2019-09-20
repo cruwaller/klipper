@@ -4,7 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math, logging
-from heater import PID_PARAM_BASE
+import heater
 
 class PIDCalibrate:
     def __init__(self, config):
@@ -17,24 +17,15 @@ class PIDCalibrate:
     cmd_PID_CALIBRATE_help = "Run PID calibration test. " \
                              "args: HEATER=name TARGET=temp [COUNT=]"
     def cmd_PID_CALIBRATE(self, params):
-        heater_name = self.gcode.get_str('HEATER', params).lower()
+        heater_name = self.gcode.get_str('HEATER', params)
         target = self.gcode.get_float('TARGET', params)
         count = self.gcode.get_int('COUNT', params, 12)
         write_file = self.gcode.get_int('WRITE_FILE', params, 0)
+        pheater = self.printer.lookup_object('heater')
         try:
-            if 'extruder' in heater_name:
-                heater = self.printer.extruder_get(
-                    int(heater_name[8:])).get_heater()
-            elif 'heater_bed' == heater_name:
-                heater = self.printer.lookup_object('heater bed')
-            else:
-                heater = self.printer.lookup_object(
-                    'heater %s' % heater_name)
-        except ValueError:
-            raise self.gcode.error("Error: extruder index is missing!")
-        except (AttributeError, self.printer.config_error):
-            raise self.gcode.error("Error: Heater not found! Check heater name and try again")
-        heater_name = heater.get_name()
+            heater = pheater.lookup_heater(heater_name)
+        except self.printer.config_error as e:
+            raise self.gcode.error(str(e))
         print_time = self.printer.lookup_object('toolhead').get_last_move_time()
         calibrate = ControlAutoTune(heater, target, self.logger, count)
         old_control = heater.set_control(calibrate)
@@ -64,7 +55,7 @@ class PIDCalibrate:
 TUNE_PID_DELTA = 5.0
 
 class ControlAutoTune:
-    def __init__(self, heater, target, logger, count=12):
+    def __init__(self, heater, target, logger, count):
         self.logger = logger
         self.count = count
         self.heater = heater
@@ -134,7 +125,7 @@ class ControlAutoTune:
         # Use Ziegler-Nichols method to generate PID parameters
         Ti = 0.5 * Tu
         Td = 0.125 * Tu
-        Kp = 0.6 * Ku * PID_PARAM_BASE
+        Kp = 0.6 * Ku * heater.PID_PARAM_BASE
         Ki = Kp / Ti
         Kd = Kp * Td
         self.logger.info("Autotune: raw=%f/%f Ku=%f Tu=%f  Kp=%f Ki=%f Kd=%f",

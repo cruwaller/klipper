@@ -84,9 +84,10 @@ class Printer:
         return self.state_message
     def extruder_add(self, extr):
         extruders = self._extruders
-        if extr.index in extruders:
+        index = extr.get_index()
+        if index in extruders:
             raise self.config_error("Extruders cannot have same index!")
-        extruders[extr.index] = extr
+        extruders[index] = extr
     def extruder_get(self, index=None, default=sentinel):
         extruders = self._extruders
         if index is None:

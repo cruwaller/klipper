@@ -192,7 +192,6 @@ class MoveQueue:
             # Enough moves have been queued to reach the target flush time.
             self.flush(lazy=True)
 
-
 STALL_TIME = 0.100
 
 DRIP_SEGMENT_TIME = 0.050
@@ -232,7 +231,6 @@ class ToolHead:
         self.config_square_corner_velocity = self.square_corner_velocity
         self.junction_deviation = 0.
         self._calc_junction_deviation()
-        self.homing_order = config.get('homing_order', 'XYZ').upper()
         self.require_home_after_motor_off = config.getboolean(
             'require_home_after_motor_off', True)
         self.sw_limit_check_enabled = config.getboolean(
@@ -268,42 +266,19 @@ class ToolHead:
         try:
             mod = importlib.import_module('kinematics.' + kin_name)
             self.kin = mod.load_kinematics(self, config)
-        except config.error:
+        except config.error as e:
             raise
-        except self.printer.lookup_object('pins').error:
+        except self.printer.lookup_object('pins').error as e:
             raise
         except:
             msg = "Error loading kinematics '%s'" % (kin_name,)
             self.logger.exception(msg)
             raise config.error(msg)
-        # Pause/Idle position
-        self.idle_position = idle_position = \
-            config.get('idle_position', default=None)
-        if idle_position is None:
-            idle_x = config.getfloat("idle_position_x", default=.0)
-            idle_y = config.getfloat("idle_position_y", default=.0)
-            idle_z_lift = config.getfloat("idle_position_z_lift", default=.4)
-            idle_travel_s = min(60. * self.config_max_velocity,
-                                config.getint("idle_position_travel_speed", default=6000))
-            moves = []
-            if idle_z_lift:
-                moves.append("G91\nG1 Z%s F%s\nG90" % (idle_z_lift, idle_travel_s))
-            moves.append("G1 X%s Y%s F%s" % (idle_x, idle_y, idle_travel_s))
-            self.idle_position = "\n".join(moves)
-            self.logger.info("Idle position: X:%s Y:%s Zlift:%s" % (
-                idle_x, idle_y, idle_z_lift))
-        self.logger.info("Idle position command: '%s'" %
-            self.idle_position.replace("\n", ", "))
         # SET_VELOCITY_LIMIT command
         gcode = self.printer.lookup_object('gcode')
         gcode.register_command('SET_VELOCITY_LIMIT',
                                self.cmd_SET_VELOCITY_LIMIT,
                                desc=self.cmd_SET_VELOCITY_LIMIT_help)
-        gcode.register_command('IDLE_POSITION', self.move_to_idle_pos,
-                               desc="Move head to defined idle position")
-        # Register TURN_OFF_HEATERS command
-        gcode.register_command("TURN_OFF_HEATERS", self.cmd_TURN_OFF_HEATERS,
-                               desc=self.cmd_TURN_OFF_HEATERS_help)
         # gcode.register_command('M204', self.cmd_M204)
         # Load some default modules
         self.printer.try_load_module(config, "idle_timeout")
@@ -313,16 +288,16 @@ class ToolHead:
         self.logger.info("max_accel: %s" % (self.max_accel,))
         self.logger.info("max_accel_to_decel: %s" % (self.max_accel_to_decel,))
         self.logger.info("junction_deviation: %s" % (self.junction_deviation,))
-    def move_to_idle_pos(self, *args):
-        if self.idle_position:
-            gcode = self.printer.lookup_object('gcode')
-            self.wait_moves()
-            orig = gcode.absolute_coord
-            gcode.absolute_coord = True
-            gcode.run_script_from_command(self.idle_position)
-            gcode.absolute_coord = orig
     def get_estimated_print_time(self):
         return self.mcu.estimated_print_time(self.reactor.monotonic())
+    def get_print_time(self):
+        return self.print_time - self.last_print_start_time
+    def motor_heater_off(self):
+        self.motor_off()
+        print_time = self.get_last_move_time()
+        self.printer.lookup_object("heater").turn_off_all_heaters(print_time)
+        for n, fan in self.printer.lookup_objects('fan'):
+            fan.set_speed(print_time, 0.0)
     # Print time tracking
     def update_move_time(self, movetime):
         self.print_time += movetime
@@ -442,18 +417,11 @@ class ToolHead:
         self.get_last_move_time()
         self.update_move_time(delay)
         self._check_stall()
-    def motor_heater_off(self):
-        self.motor_off()
-        print_time = self.get_last_move_time()
-        for n, h in self.printer.lookup_objects("heater"):
-            h.set_temp(print_time, 0.0)
-        for n, fan in self.printer.lookup_objects('fan'):
-            fan.set_speed(print_time, 0.0)
     def motor_off(self):
         self.dwell(STALL_TIME)
         last_move_time = self.get_last_move_time()
         self.kin.motor_off(last_move_time)
-        for key, ext in self.printer.extruder_get().items():
+        for ext in kinematics.extruder.get_printer_extruders(self.printer):
             ext.motor_off(last_move_time)
         self.printer.send_event("toolhead:motor_off", last_move_time)
         self.dwell(STALL_TIME)
@@ -508,7 +476,7 @@ class ToolHead:
             smove.limit_speed(speed, move_accel)
             self.move_queue.add_move(smove)
             self.move_queue.flush()
-        except DripModeEndSignal:
+        except DripModeEndSignal as e:
             self.move_queue.reset()
         # Return to "Flushed" state
         self._full_flush()
@@ -539,8 +507,6 @@ class ToolHead:
                  'estimated_print_time': estimated_print_time,
                  'position': homing.Coord(*self.commanded_pos),
                  'printing_time': print_time - last_print_start_time }
-    def get_print_time(self):
-        return self.print_time - self.last_print_start_time
     def _handle_request_restart(self, print_time):
         self.motor_off()
     def _handle_shutdown(self):
@@ -602,11 +568,6 @@ class ToolHead:
             return
         self.max_accel = min(accel, self.config_max_accel)
         self._calc_junction_deviation()
-    cmd_TURN_OFF_HEATERS_help = "Turn off all heaters"
-    def cmd_TURN_OFF_HEATERS(self, params):
-        print_time = self.get_last_move_time()
-        for n, h in self.printer.lookup_objects("heater"):
-            h.set_temp(print_time, 0.0)
 
 def add_printer_objects(config):
     config.get_printer().add_object('toolhead', ToolHead(config))

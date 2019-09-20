@@ -4,7 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging, threading
-import extras.sensors as sensors
+
 
 ######################################################################
 # Heater
@@ -20,76 +20,18 @@ DEBUG_TARGET = 25.
 class error(Exception):
     pass
 
-
-class Heater:
-    error = error
-    def get_name(self):
-        return self.name
-    def get_index(self):
-        return self.index
-    def __init__(self, config):
-        self.printer = printer = config.get_printer()
+class HeaterProtect:
+    def __init__(self, config, heater):
+        self.printer = printer = heater.printer
+        self.heater = heater
+        self.gcode = gcode = heater.printer.lookup_object('gcode')
+        #register events
         printer.register_event_handler("klippy:shutdown",
                                        self._handle_shutdown)
         printer.register_event_handler("klippy:disconnect",
                                        self._handle_shutdown)
         printer.register_event_handler("klippy:ready",
                                        self._handle_ready)
-        printer.register_event_handler("gcode:request_restart", self._turn_off)
-        self.gcode = gcode = printer.lookup_object('gcode')
-        self.name = name = config.get_name()
-        try:
-            self.index = int(name[7:])
-        except ValueError:
-            self.index = -1  # Mark to bed
-        self.logger = printer.get_logger(name)
-        sensor_name = config.get('sensor')
-        self.logger.debug("Name: '%s', index: %s, sensor: '%s'" % (
-            name, self.index, sensor_name))
-        # Setup sensor
-        self.sensor = sensor = sensors.load_sensor(
-            config.getsection('sensor %s' % sensor_name))
-        min_temp = config.getfloat('min_temp', minval=KELVIN_TO_CELCIUS,
-                                   default=None)
-        max_temp = config.getfloat('max_temp', above=min_temp,
-                                   default=None)
-        sensor.setup_minmax(min_temp, max_temp)
-        self.min_temp, self.max_temp = sensor.get_min_max_temp()
-        self.logger.debug("Temperature range: min %.2f, max %.2f" % (
-            self.min_temp, self.max_temp))
-        sensor.setup_callback(self.temperature_callback)
-        self.pwm_delay = sensor.get_report_delta()
-        # Setup temperature checks
-        self.min_extrude_temp = 170.  # Set by the extruder
-        self.min_extrude_temp_disabled = False
-        is_fileoutput = printer.get_start_args().get('debugoutput') is not None
-        self.can_extrude = self.min_extrude_temp <= self.min_temp or is_fileoutput
-        self.max_power = config.getfloat('max_power', 1., above=0., maxval=1.)
-        self.smooth_time = config.getfloat('smooth_time', 2., above=0.)
-        self.inv_smooth_time = 1. / self.smooth_time
-        self.lock = threading.Lock()
-        self.last_temp = self.smoothed_temp = self.target_temp = 0.
-        self.last_temp_time = 0.
-        # pwm caching
-        self.next_pwm_time = 0.
-        self.last_pwm_value = 0.
-        # Setup control algorithm sub-class
-        algos = {'watermark': ControlBangBang, 'pid': ControlPID}
-        algo = config.getchoice('control', algos)
-        self.control = algo(self, config)
-        # Setup output heater pin
-        heater_pin = config.get('heater_pin')
-        ppins = self.printer.lookup_object('pins')
-        if algo is ControlBangBang and self.max_power == 1.:
-            self.mcu_pwm = ppins.setup_pin('digital_out', heater_pin)
-        else:
-            self.mcu_pwm = ppins.setup_pin('pwm', heater_pin)
-            pwm_cycle_time = config.getfloat(
-                'pwm_cycle_time', 0.100, above=0., maxval=self.pwm_delay)
-            self.mcu_pwm.setup_cycle_time(pwm_cycle_time)
-        self.mcu_pwm.setup_max_duration(MAX_HEAT_TIME)
-        # Load additional modules
-        printer.try_load_module(config, "pid_calibrate")
         # heat check timer
         self.protection_period_heat = \
             config.getfloat('protect_period_heat', 10.0, above=0.0, maxval=120.0)
@@ -107,18 +49,19 @@ class Heater:
         self.protection_timer = self.reactor.register_timer(self._check_heating)
         self.protection_last_temp = 9999.
         self.protect_runaway_disabled = False
-        self.heating_start_time = 0.
-        self.heating_end_time = None
-
-        self.gcode.register_mux_command(
-            "SET_HEATER_TEMPERATURE", "HEATER", self.name,
-            self.cmd_SET_HEATER_TEMPERATURE,
-            desc=self.cmd_SET_HEATER_TEMPERATURE_help)
-
-        for _name in [name.replace(" ", "_").upper(), str(self.index)]:
+        for _name in [heater.get_name(), str(heater.get_index())]:
             gcode.register_mux_command("TEMP_PROTECTION", "HEATER", _name,
                                        self.cmd_TEMP_PROTECTION,
                                        desc=self.cmd_TEMP_PROTECTION_help)
+    def set_runaway(self, disabled=False):
+        self.protect_runaway_disabled = disabled
+    def start(self):
+        self.protect_state = None
+        self.reactor.update_timer(self.protection_timer,
+                                  self.reactor.NOW)
+    def stop(self):
+        self.reactor.update_timer(self.protection_timer,
+                                  self.reactor.NEVER)
     cmd_TEMP_PROTECTION_help = "agrs: HEATER= [HYSTERESIS_IDLE=] [HYSTERESIS_COOLING=] " \
                                "[PERIOD_HEAT=] [HYSTERESIS_HEAT=] " \
                                "[PERIOD_RUNAWAY=] [HYSTERESIS_RUNAWAY=]"
@@ -149,9 +92,7 @@ class Heater:
             'HYSTERESIS_IDLE', params, self.protect_hyst_idle,
             above=0.0, maxval=60.)
         # Star timer again
-        self.protect_state = None
-        self.reactor.update_timer(self.protection_timer,
-                                  self.reactor.NOW)
+        self.start()
         self.gcode.respond_info(
             "Idle hysteresis %.2fC, Cooling hysteresis %.2fC\n"
             "Heating: period %.2fs, hysteresis %.2fC\n"
@@ -163,19 +104,15 @@ class Heater:
         self.reactor.update_timer(self.protection_timer,
                                   self.reactor.NEVER)
     def _handle_ready(self):
-        if not self.sensor.get_mcu().is_shutdown():
-            # Start checking
-            self.protect_state = None
-            self.reactor.update_timer(self.protection_timer,
-                                      self.reactor.NOW)
-    def _turn_off(self, print_time):
-        self.set_temp(print_time, 0)
+        if not self.heater.sensor.get_mcu().is_shutdown() and \
+           not self.heater.mcu_pwm.get_mcu().is_shutdown():
+            self.start()
     protect_state = None
     def _check_heating(self, eventtime):
         next_time = 15.0  # next 15sec from now for idle
-        with self.lock:
-            current_temp = self.last_temp
-            target_temp = self.target_temp
+        with self.heater.lock:
+            current_temp = self.heater.last_temp
+            target_temp = self.heater.target_temp
         # initiate protection
         if self.protect_state is None or self.protection_last_temp == 0:
             if target_temp == 0:
@@ -242,26 +179,109 @@ class Heater:
         #                  (eventtime, self.protect_state, current_temp, target_temp))
         return eventtime + next_time
     def __protect_error(self, errorstr):
-        self.set_temp(0, 0)
+        self.heater.logger.error(errorstr)
+        self.heater.set_temp(0, 0)
         self.printer.request_exit('shutdown')
+        # self.printer.invoke_shutdown(msg + HINT_THERMAL)
+
+class Heater:
+    error = error
+    def get_name(self):
+        return self.name
+    def get_index(self):
+        return self.index
+    def __init__(self, config, sensor, index=None):
+        self.printer = printer = config.get_printer()
+        printer.register_event_handler("gcode:request_restart", self._turn_off)
+        self.gcode = printer.lookup_object('gcode')
+        name = config.get_name()
+        self.name = name.replace(' ', '_')
+        self.index = index = config.getint("index", index)
+        if "bed" in name:
+            self.index = -1 # bed is always -1
+        elif index is None:
+            try:
+                if 'extruder' in name:
+                    self.index = int(name.replace('extruder', '').strip())
+                else:
+                    self.index = int(name.replace('heater', '').strip())
+            except ValueError:
+                self.index = config.getint("index")
+        self.logger = printer.get_logger(self.name)
+        self.heating_start_time = 0.
+        self.heating_end_time = None
+        self.temp_debug = 0.
+        self.sensor = sensor
+        min_temp = config.getfloat('min_temp', minval=KELVIN_TO_CELCIUS, default=None)
+        max_temp = config.getfloat('max_temp', above=min_temp, default=None)
+        sensor.setup_minmax(min_temp, max_temp)
+        self.min_temp, self.max_temp = sensor.get_min_max_temp()
+        self.logger.debug(
+            "Heater index: %s, temperature range: min %.2f, max %.2f" % (
+                self.index, self.min_temp, self.max_temp))
+        sensor.setup_callback(self.temperature_callback)
+        self.pwm_delay = sensor.get_report_time_delta()
+        # Setup temperature checks
+        self.set_min_extrude_temp(170., False, True)
+        self.max_power = config.getfloat('max_power', 1., above=0., maxval=1.)
+        self.smooth_time = config.getfloat('smooth_time', 2., above=0.)
+        self.inv_smooth_time = 1. / self.smooth_time
+        self.lock = threading.Lock()
+        self.last_temp = self.smoothed_temp = self.target_temp = 0.
+        self.last_temp_time = 0.
+        # pwm caching
+        self.next_pwm_time = 0.
+        self.last_pwm_value = 0.
+        # Setup control algorithm sub-class
+        algos = {'watermark': ControlBangBang, 'pid': ControlPID}
+        algo = config.getchoice('control', algos)
+        self.control = algo(self, config)
+        # Setup output heater pin
+        heater_pin = config.get('heater_pin')
+        ppins = self.printer.lookup_object('pins')
+        if algo is ControlBangBang and self.max_power == 1.:
+            self.mcu_pwm = ppins.setup_pin('digital_out', heater_pin)
+        else:
+            self.mcu_pwm = ppins.setup_pin('pwm', heater_pin)
+            pwm_cycle_time = config.getfloat(
+                'pwm_cycle_time', 0.100, above=0., maxval=self.pwm_delay)
+            self.mcu_pwm.setup_cycle_time(pwm_cycle_time)
+        self.mcu_pwm.setup_max_duration(MAX_HEAT_TIME)
+        # Load additional modules
+        # self.printer.try_load_module(config, "verify_heater %s" % (name,))
+        self.printer.try_load_module(config, "pid_calibrate")
+        self.protect = HeaterProtect(config, self)
+        # register gcode commands
+        for key in [self.get_name(), str(self.get_index())]:
+            self.gcode.register_mux_command(
+                "SET_HEATER_TEMPERATURE", "HEATER", key,
+                self.cmd_SET_HEATER_TEMPERATURE,
+                desc=self.cmd_SET_HEATER_TEMPERATURE_help)
+    def _turn_off(self, print_time):
+        self.set_temp(print_time, 0)
     def get_min_extrude_status(self):
         stat = "prevented"
         if self.min_extrude_temp_disabled:
             stat = "allowed"
         return stat, self.min_extrude_temp
-    def set_min_extrude_temp(self, temp, disable=None):
+    def set_min_extrude_temp(self, temp, disable=None, init=False):
         if disable is not None:
             self.min_extrude_temp_disabled = disable
         if temp is None:
             return
-        if self.max_temp < temp:
+        if self.max_temp < temp and not init:
             raise self.error("min_extrude_temp {} is not between min_temp {} and max_temp {}!"
                              .format(temp, self.min_temp, self.max_temp))
         self.min_extrude_temp = temp
-        is_fileoutput = self.printer.get_start_args().get('debugoutput') is not None
+        is_fileoutput = (self.printer.get_start_args().get('debugoutput')
+                         is not None)
         self.can_extrude = ((self.min_extrude_temp <= self.min_temp) or
                             self.min_extrude_temp_disabled or
                             is_fileoutput)
+    def get_heating_time(self):
+        if self.heating_end_time is None:
+            return 0.
+        return self.heating_end_time - self.heating_start_time
     def set_pwm(self, read_time, value):
         if self.target_temp <= 0.:
             value = 0.
@@ -276,9 +296,8 @@ class Heater:
                           self.name, value, pwm_time,
                           self.last_temp, self.last_temp_time, self.target_temp)
         self.mcu_pwm.set_pwm(pwm_time, value)
-    temp_debug = 0.
     def temperature_callback(self, read_time, temp):
-        '''
+        #'''
         # >>>>> DEBUG DEBUG DEBUG >>>>>
         if self.target_temp:
             if self.last_pwm_value:
@@ -310,8 +329,7 @@ class Heater:
                 self.heating_start_time = read_time
             elif temp >= self.target_temp:
                 self.heating_end_time = read_time
-        #self.logger.debug("read_time=%.3f read_value=%f temperature=%f",
-        #                  read_time, read_value, temp)
+        # self.logger.debug("read_time=%.3f temperature=%f", read_time, temp)
     # External commands
     def get_pwm_delay(self):
         return self.pwm_delay
@@ -323,13 +341,10 @@ class Heater:
         if degrees and (degrees < self.min_temp or degrees > self.max_temp):
             raise error("Requested temperature (%.1f) out of range (%.1f:%.1f)"
                         % (degrees, self.min_temp, self.max_temp))
-        self.protect_runaway_disabled = auto_tune
+        self.protect.set_runaway(auto_tune)
         with self.lock:
             self.target_temp = degrees
-        # Init temp protection for next read
-        self.protect_state = None
-        self.reactor.update_timer(self.protection_timer,
-                                  self.reactor.NOW)
+        self.protect.start()
         if degrees:
             self.heating_end_time = self.heating_start_time = None
     def get_temp(self, eventtime):
@@ -368,10 +383,6 @@ class Heater:
             target_temp = self.target_temp
             smoothed_temp = self.smoothed_temp
         return {'temperature': smoothed_temp, 'target': target_temp}
-    def get_heating_time(self):
-        if self.heating_end_time is None:
-            return 0.
-        return self.heating_end_time - self.heating_start_time
     cmd_SET_HEATER_TEMPERATURE_help = "Sets a heater temperature"
     def cmd_SET_HEATER_TEMPERATURE(self, params):
         print_time = self.printer.lookup_object('toolhead').get_last_move_time()
@@ -430,7 +441,7 @@ class ControlPID:
         self.prev_temp_deriv = 0.
         self.prev_temp_integ = 0.
         self.gcode = gcode = config.get_printer().lookup_object('gcode')
-        for name in [heater.name.replace(" ", "_").upper(), str(heater.index)]:
+        for name in [heater.get_name(), str(heater.get_index())]:
             gcode.register_mux_command("SET_PID_PARAMS", "HEATER", name,
                                        self.cmd_SET_PID_PARAMS,
                                        desc=self.cmd_SET_PID_PARAMS_help)
@@ -490,6 +501,9 @@ class ControlPID:
 # Sensor and heater lookup
 ######################################################################
 
+class sentinel:
+    pass
+
 class PrinterHeaters:
     def __init__(self, config):
         self.printer = config.get_printer()
@@ -508,18 +522,40 @@ class PrinterHeaters:
         heater_name = config.get_name().split()[-1]
         if heater_name == 'extruder':
             heater_name = 'extruder0'
+        elif heater_name == 'heater_bed':
+            heater_name = 'heater bed'
+        elif 'extruder' not in heater_name:
+            # config [heater 0] case
+            heater_name = 'heater ' + heater_name
+        # Check if heater already exist
         if heater_name in self.heaters:
-            raise config.error("Heater %s already registered" % (heater_name,))
+            heater = self.heaters[heater_name]
+            self.register_sensor(config, heater, gcode_id)
+            return heater
+            # raise config.error("Heater %s already registered" % (heater_name,))
         # Setup sensor
-        sensor = self.setup_sensor(config)
+        sensor = config.get("sensor", None)
+        if sensor is not None:
+            sensor = self.setup_sensor(config.getsection('sensor %s' % sensor))
+        else:
+            sensor = self.setup_sensor(config)
         # Create heater
-        self.heaters[heater_name] = heater = Heater(config, sensor)
+        heater = Heater(config, sensor)
+        self.heaters[heater_name] = heater
         self.register_sensor(config, heater, gcode_id)
         return heater
-    def lookup_heater(self, heater_name):
+    def lookup_heater(self, heater_name, default=sentinel):
+        heater_name = heater_name.split()[-1]
         if heater_name == 'extruder':
             heater_name = 'extruder0'
+        elif heater_name == 'heater_bed':
+            heater_name = 'heater bed'
+        elif 'extruder' not in heater_name:
+            # config [heater 0] case
+            heater_name = 'heater ' + heater_name
         if heater_name not in self.heaters:
+            if default is not sentinel:
+                return default
             raise self.printer.config_error(
                 "Unknown heater '%s'" % (heater_name,))
         return self.heaters[heater_name]
@@ -527,6 +563,7 @@ class PrinterHeaters:
         self.printer.try_load_module(config, "thermistor")
         self.printer.try_load_module(config, "adc_temperature")
         self.printer.try_load_module(config, "spi_temperature")
+        name = config.get_name().replace('sensor', '').strip()
         sensor_type = config.get('sensor_type')
         if sensor_type not in self.sensor_factories:
             raise self.printer.config_error(
@@ -550,14 +587,8 @@ class PrinterHeaters:
     def cmd_TURN_OFF_HEATERS(self, params):
         print_time = self.printer.lookup_object('toolhead').get_last_move_time()
         self.turn_off_all_heaters(print_time)
+    def get_heaters(self):
+        return self.heaters
 
 def add_printer_objects(config):
     config.get_printer().add_object('heater', PrinterHeaters(config))
-
-
-def load_config(config):
-    raise config.get_printer().config_error(
-        "Naming without index (bed or [0-9]+) is not allowed")
-
-def load_config_prefix(config):
-    return Heater(config)

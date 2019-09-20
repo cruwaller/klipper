@@ -81,12 +81,12 @@ class MCU_SPI:
             "spi_send oid=%c data=%*s", cq=self.cmd_queue)
         self.spi_transfer_cmd = self.mcu.lookup_command(
             "spi_transfer oid=%c data=%*s", cq=self.cmd_queue)
-    def spi_send(self, data, minclock=0, reqclock=0, is_init=True):
+    def spi_send(self, data, minclock=0, reqclock=0):
         if self.spi_send_cmd is None:
             # Send setup message via mcu initialization
             data_msg = "".join(["%02x" % (x,) for x in data])
             self.mcu.add_config_cmd("spi_send oid=%d data=%s" % (
-                self.oid, data_msg), is_init=is_init)
+                self.oid, data_msg), is_init=True)
             return
         self.spi_send_cmd.send([self.oid, data],
                                minclock=minclock, reqclock=reqclock)

@@ -5,6 +5,23 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging, bisect
 
+def check_min_max_values(obj, min_temp, max_temp):
+    # Set heaters min and max temperatures
+    if min_temp is None:
+        min_temp = obj.min_temp
+    if min_temp < obj.min_temp:
+        raise obj.printer.config_error(
+            "Requsted min temp %s below sensor's lowest %s" % (
+                min_temp, obj.min_temp))
+    if max_temp is None:
+        max_temp = obj.max_temp
+    if max_temp > obj.max_temp:
+        raise obj.printer.config_error(
+            "Requested max temp %s over sensor's maximum %s" % (
+                max_temp, obj.max_temp))
+    obj.min_temp = min_temp
+    obj.max_temp = max_temp
+
 
 ######################################################################
 # Interface between MCU adc and heater temperature callbacks
@@ -22,6 +39,8 @@ class PrinterADCtoTemperature:
         ppins = config.get_printer().lookup_object('pins')
         self.mcu_adc = ppins.setup_pin('adc', config.get('sensor_pin'))
         self.mcu_adc.setup_adc_callback(REPORT_TIME, self.adc_callback)
+        self.min_temp = config.getfloat('min_temp', minval=0., default=0.)
+        self.max_temp = config.getfloat('max_temp', above=self.min_temp, default=0.)
     def setup_callback(self, temperature_callback):
         self.temperature_callback = temperature_callback
     def get_report_time_delta(self):
@@ -30,10 +49,16 @@ class PrinterADCtoTemperature:
         temp = self.adc_convert.calc_temp(read_value)
         self.temperature_callback(read_time + SAMPLE_COUNT * SAMPLE_TIME, temp)
     def setup_minmax(self, min_temp, max_temp):
-        adc_range = [self.adc_convert.calc_adc(t) for t in [min_temp, max_temp]]
+        # Set heaters min and max temperatures
+        check_min_max_values(self, min_temp, max_temp)
+        adc_range = [self.adc_convert.calc_adc(t) for t in [self.min_temp, self.max_temp]]
         self.mcu_adc.setup_minmax(SAMPLE_TIME, SAMPLE_COUNT,
                                   minval=min(adc_range), maxval=max(adc_range),
                                   range_check_count=RANGE_CHECK_COUNT)
+    def get_min_max_temp(self):
+        return self.min_temp, self.max_temp
+    def get_mcu(self):
+        return self.mcu_adc.get_mcu()
 
 
 ######################################################################

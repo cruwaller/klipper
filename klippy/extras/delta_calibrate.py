@@ -309,7 +309,7 @@ class DeltaCalibrate:
         # Perform analysis if requested
         if 'CALIBRATE' in params:
             action = self.gcode.get_str('CALIBRATE', params)
-            actions = {'extended': 1, 'EXTENDED': 1}
+            actions = {'extended': 1}
             if action not in actions:
                 raise self.gcode.error("Unknown calibrate action")
             self.do_extended_calibration()

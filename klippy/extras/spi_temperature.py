@@ -6,6 +6,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math
 import bus
+import adc_temperature
 
 
 ######################################################################
@@ -31,8 +32,12 @@ class SensorBase:
         mcu.register_response(self._handle_spi_response,
                               "thermocouple_result", oid)
         mcu.register_config_callback(self._build_config)
+        self.min_temp = config.getfloat('min_temp', minval=0., default=0.)
+        self.max_temp = config.getfloat('max_temp', above=self.min_temp, default=0.)
     def setup_minmax(self, min_temp, max_temp):
-        adc_range = [self.calc_adc(min_temp), self.calc_adc(max_temp)]
+        # Set heaters min and max temperatures
+        adc_temperature.check_min_max_values(self, min_temp, max_temp)
+        adc_range = [self.calc_adc(self.min_temp), self.calc_adc(self.max_temp)]
         self.min_sample_value = min(adc_range)
         self.max_sample_value = max(adc_range)
     def setup_callback(self, cb):
@@ -58,6 +63,10 @@ class SensorBase:
         self._callback(last_read_time, temp)
     def fault(self, msg):
         self.printer.invoke_async_shutdown(msg)
+    def get_min_max_temp(self):
+        return self.min_temp, self.max_temp
+    def get_mcu(self):
+        return self.mcu
 
 
 ######################################################################

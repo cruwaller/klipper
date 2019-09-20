@@ -90,4 +90,5 @@ class HeaterCheck:
         return self.printer.get_reactor().NEVER
 
 def load_config_prefix(config):
-    return HeaterCheck(config)
+    if config.has_section(config.get_name()):
+        return HeaterCheck(config)

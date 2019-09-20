@@ -94,13 +94,10 @@ class VirtualSD:
         return float(self.file_position) / self.file_size
     def is_active(self):
         return self.work_timer is not None
-    def do_pause(self, park_pos=1):
+    def do_pause(self):
         if self.work_timer is not None:
             self.must_pause_work = True
             self.printer.send_event('vsd:status', 'pause')
-            # Move head to parking position after pause
-            if park_pos:
-                self.printer.lookup_object('toolhead').move_to_idle_pos()
     # G-Code commands
     def cmd_error(self, params):
         raise self.gcode.error("SD write not supported")
@@ -155,9 +152,6 @@ class VirtualSD:
         self.current_file = f
         self.file_position = 0
         self.file_size = fsize
-        # Reset extruders filament counters
-        for i, e in self.printer.extruder_get().items():
-            e.raw_filament = 0.
         self.printer.send_event('vsd:status', 'loaded')
         self.simulate_print = False
     def cmd_M24(self, params):
@@ -172,8 +166,7 @@ class VirtualSD:
             self.work_handler, self.reactor.NOW)
     def cmd_M25(self, params):
         # Pause SD print
-        pause = self.gcode.get_int('P', params, default=1, minval=0, maxval=1)
-        self.do_pause(pause)
+        self.do_pause()
     def cmd_M26(self, params):
         # Set SD position
         if self.work_timer is not None:

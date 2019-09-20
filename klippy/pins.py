@@ -84,7 +84,6 @@ Adafruit_GrandCentral_analog = [
 
 Arduino_from_mcu = {
     "atmega168": (Arduino_standard, Arduino_analog_standard),
-    "atmega168p": (Arduino_standard, Arduino_analog_standard),
     "atmega328": (Arduino_standard, Arduino_analog_standard),
     "atmega328p": (Arduino_standard, Arduino_analog_standard),
     "atmega644p": (Sanguino, Sanguino_analog),

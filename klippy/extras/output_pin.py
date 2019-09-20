@@ -36,7 +36,7 @@ class PrinterOutputPin:
             self.mcu_pin.setup_start_value(self.last_value, shutdown_value)
             pin_name = config.get_name().split()[1]
             self.gcode = self.printer.lookup_object('gcode')
-            self.gcode.register_mux_command("SET_PIN", "PIN", pin_name.upper(),
+            self.gcode.register_mux_command("SET_PIN", "PIN", pin_name,
                                             self.cmd_SET_PIN,
                                             desc=self.cmd_SET_PIN_help)
     def get_status(self, eventtime):

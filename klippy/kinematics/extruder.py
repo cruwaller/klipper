@@ -10,15 +10,26 @@ EXTRUDE_DIFF_IGNORE = 1.02
 
 
 class PrinterExtruder:
-    def __init__(self, config):
-        self.name = config.get_name()
-        self.index = int(self.name[8:])
+    def __init__(self, config, extruder_num=None):
         self.printer = printer = config.get_printer()
+        printer.register_event_handler('vsd:status', self._sd_status)
+        self.name = config.get_name()
+        if extruder_num is None:
+            extruder_num = int(self.name.replace('extruder', '').strip())
+        self.extruder_num = extruder_num
         self.logger = printer.logger.getChild(self.name)
-        self.heater = printer.lookup_object(config.get('heater'))
-        self.heater.set_min_extrude_temp(config.getfloat('min_extrude_temp',
-                                                         170.0))
-        self.stepper = stepper.PrinterStepper(config, self.logger)
+        shared_heater = config.get('shared_heater', None)
+        pheater = self.printer.lookup_object('heater')
+        gcode_id = 'T%d' % (extruder_num,)
+        shared_heater = config.get('heater', shared_heater)
+        if shared_heater is None:
+            self.heater = pheater.setup_heater(config, gcode_id)
+        else:
+            self.heater = pheater.setup_heater(
+                config.getsection(shared_heater), gcode_id)
+        self.heater.set_min_extrude_temp(
+            config.getfloat('min_extrude_temp', 170.0))
+        self.stepper = stepper.PrinterStepper(config)
         self.nozzle_diameter = config.getfloat('nozzle_diameter', above=0.)
         filament_diameter = config.getfloat(
             'filament_diameter', minval=self.nozzle_diameter)
@@ -29,7 +40,7 @@ class PrinterExtruder:
             'max_extrude_cross_section', def_max_cross_section, above=0.)
         self.max_extrude_ratio = max_cross_section / self.filament_area
         self.logger.info("Extruder max_extrude_ratio=%.6f", self.max_extrude_ratio)
-        self.toolhead = toolhead = printer.lookup_object('toolhead')
+        toolhead = self.printer.lookup_object('toolhead')
         max_velocity, max_accel = toolhead.get_max_velocity()
         self.max_e_velocity = config.getfloat(
             'max_extrude_only_velocity', max_velocity * def_max_extrude_ratio
@@ -64,13 +75,15 @@ class PrinterExtruder:
             gcode.register_mux_command("SET_PRESSURE_ADVANCE", "EXTRUDER", None,
                                        self.cmd_default_SET_PRESSURE_ADVANCE,
                                        desc=self.cmd_SET_PRESSURE_ADVANCE_help)
-        for key in [self.name.upper(), str(self.index)]:
-            gcode.register_mux_command("SET_PRESSURE_ADVANCE", "EXTRUDER", key,
-                                       self.cmd_SET_PRESSURE_ADVANCE,
+        for key in [self.name, str(extruder_num)]:
+            gcode.register_mux_command("SET_PRESSURE_ADVANCE", "EXTRUDER",
+                                       key, self.cmd_SET_PRESSURE_ADVANCE,
                                        desc=self.cmd_SET_PRESSURE_ADVANCE_help)
-        self.logger.debug("index=%d, heater=%s" % (self.index, self.heater.name))
-    def get_index(self):
-        return self.index
+        self.logger.debug("index=%d, heater=%s" % (extruder_num, self.heater.name))
+    def _sd_status(self, status):
+        if status == 'loaded':
+            # Reset filament counter
+            self.raw_filament = 0.
     def get_status(self, eventtime):
         return dict(
             self.get_heater().get_status(eventtime),
@@ -236,14 +249,17 @@ class PrinterExtruder:
         gcode.respond_info(msg, log=False)
     def get_max_velocity(self):
         return self.max_e_velocity, self.max_e_accel
+    def set_extrude_factor(self, factor):
+        self.extrude_factor = factor
     def get_extrude_factor(self, procent=False):
         if procent:
             return self.extrude_factor * 100.
         return self.extrude_factor
+    def get_index(self):
+        return self.extruder_num
 
 # Dummy extruder class used when a printer has no extruder at all
 class DummyExtruder:
-    index = -1
     extrude_factor = 1.
     def set_active(self, print_time, is_active):
         return 0.
@@ -256,10 +272,11 @@ class DummyExtruder:
         return move.max_cruise_v2
     def lookahead(self, moves, flush_count, lazy):
         return flush_count
+    def get_index(self):
+        return -99
 
 def add_printer_objects(config):
     printer = config.get_printer()
-    """
     for i in range(99):
         section = 'extruder%d' % (i,)
         if not config.has_section(section):
@@ -269,16 +286,11 @@ def add_printer_objects(config):
                 continue
             break
         pe = PrinterExtruder(config.getsection(section), i)
-        printer.add_object(section, pe)
-    """
-    if config.has_section('extruder'):
-        raise printer.config_error("Extruder section must contain index!")
-    else:
-        extruders = config.get_prefix_sections('extruder')
-        for _config in extruders:
-            printer.extruder_add(PrinterExtruder(_config))
+        printer.extruder_add(pe)
+        # printer.add_object(section, pe)
 
 def get_printer_extruders(printer):
+    return printer.extruder_get().values()
     out = []
     for i in range(99):
         extruder = printer.lookup_object('extruder%d' % (i,), None)

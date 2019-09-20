@@ -8,22 +8,20 @@ import fan
 PIN_MIN_TIME = 0.100
 
 class PrinterHeaterFan:
-    logger = None
     def __init__(self, config):
         self.printer = config.get_printer()
         self.printer.register_event_handler("klippy:ready", self.handle_ready)
         self.heater_name = config.get("heater")
         self.heater_temp = config.getfloat("heater_temp")
+        self.enable_if_target = config.getboolean("on_if_target_set", False)
         self.heaters = []
         self.fan = fan.PrinterFan(config, default_shutdown_speed=1.)
         self.mcu = self.fan.mcu_fan.get_mcu()
         self.fan_speed = config.getfloat("fan_speed", 1., minval=0., maxval=1.)
     def handle_ready(self):
-        self.heaters = [self.printer.lookup_object(n.strip())
+        pheater = self.printer.lookup_object('heater')
+        self.heaters = [pheater.lookup_heater(n.strip())
                         for n in self.heater_name.split(',')]
-        self.logger = self.fan.logger = self.printer.logger.getChild(
-            self.fan.name.replace(" ", "_"))
-        self.logger.debug("heater = {}".format(self.heater_name))
         reactor = self.printer.get_reactor()
         reactor.register_timer(self.callback, reactor.NOW)
     def get_status(self, eventtime):
@@ -32,7 +30,8 @@ class PrinterHeaterFan:
         power = 0.
         for heater in self.heaters:
             current_temp, target_temp = heater.get_temp(eventtime)
-            if target_temp or current_temp > self.heater_temp:
+            if ((self.enable_if_target and target_temp) or
+                    current_temp > self.heater_temp):
                 power = self.fan_speed
         print_time = self.mcu.estimated_print_time(eventtime) + PIN_MIN_TIME
         self.fan.set_speed(print_time, power)

@@ -452,9 +452,9 @@ class CommandWrapper:
             raise error(str(e))
 
 class MCU:
-    hostgpio_rst = None
     error = error
     def __init__(self, config, clocksync):
+        self.hostgpio_rst = None
         self._printer = config.get_printer()
         self._clocksync = clocksync
         self._reactor = self._printer.get_reactor()
@@ -619,7 +619,7 @@ class MCU:
             raise error("MCU '%s' error during config: %s" % (
                 self._name, self._shutdown_msg))
         if config_params['is_shutdown']:
-            self._printer.request_exit('firmware_restart')
+            # self._printer.request_exit('firmware_restart')
             raise error("Can not update MCU '%s' config as it is shutdown" % (
                 self._name,))
         return config_params
@@ -705,10 +705,7 @@ class MCU:
     def create_oid(self):
         self._oid_count += 1
         return self._oid_count - 1
-    def register_config_callback(self, cb, prio=False):
-        if prio:
-            self._config_callbacks.insert(0, cb)
-            return
+    def register_config_callback(self, cb):
         self._config_callbacks.append(cb)
     def add_config_cmd(self, cmd, is_init=False):
         if is_init:

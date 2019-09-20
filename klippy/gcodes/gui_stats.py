@@ -1,5 +1,5 @@
 import time, util, json, os, re
-
+import kinematics.extruder
 
 class ParseError(Exception):
     pass
@@ -9,6 +9,7 @@ class GuiStats:
     def __init__(self, config):
         self.printer = printer = config.get_printer()
         self.logger = printer.logger.getChild("gui_stats")
+        self.logger.info("GuiStats config: %s" % config.get_name())
         # required modules
         self.reactor = printer.get_reactor()
         self.gcode = gcode = printer.lookup_object('gcode')
@@ -194,6 +195,7 @@ class GuiStats:
         return config
 
     def get_status_stats(self, _type=1):
+        pheater = self.printer.lookup_object('heater')
         toolhead = self.toolhead
         states = {
             False : 0,
@@ -203,9 +205,9 @@ class GuiStats:
         curr_pos = toolhead.get_position()
         fans     = [ fan.last_fan_value * 100.0 for n, fan in
                      self.printer.lookup_objects("fan") ]
-        heatbed  = self.printer.lookup_object('heater bed', None)
-        _heaters = [h for n, h in self.printer.lookup_objects("heater")]
-        #total_htrs = len(_heaters) + 1
+        heatbed  = pheater.lookup_heater('heater bed', None)
+        #_heaters = pheater.get_heaters().values()
+        ##total_htrs = len(_heaters) + 1
         _extrs   = self.printer.extruder_get()
 
         # _type == 1 is always included
@@ -218,7 +220,7 @@ class GuiStats:
                          for i, e in _extrs.items()],
                 "xyz": curr_pos[:3],
             },
-            "currentTool": curr_extruder.index,
+            "currentTool": curr_extruder.get_index(),
             "params": {
                 "atxPower": 0,
                 "fanPercent": fans,
@@ -239,7 +241,7 @@ class GuiStats:
         #    status_block['sensors']['probeValue'] = probeValue
         #    status_block['sensors']['probeSecondary'] = [probe_x, probe_y]
 
-        heatbed_add = 1 if heatbed is not None else 0
+        heatbed_add = (heatbed is not None)
         num_extruders = len(_extrs)
         total_heaters = num_extruders + heatbed_add
         htr_current = [.0] * total_heaters
@@ -344,10 +346,10 @@ class GuiStats:
             tools = []
             for key, extr in _extrs.items():
                 values = {
-                    "number"   : extr.index,
+                    "number"   : extr.get_index(),
                     "name"     : extr.name,
-                    "heaters"  : [ extr.heater.index + 1 ],
-                    "drives"   : [ 3+extr.index ],
+                    "heaters"  : [ extr.heater.get_index() + 1 ],
+                    "drives"   : [ 3+extr.get_index() ],
                     #"filament" : "N/A",
                 }
                 tools.append(values)
