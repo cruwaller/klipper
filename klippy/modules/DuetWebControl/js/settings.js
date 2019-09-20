@@ -36,7 +36,7 @@ var settings = {
 	showFanRPM: false,				// show fan RPM in sensors
 
 	logSuccess: false,				// log all sucessful G-Codes in the console
-	uppercaseGCode: true,			// convert G-Codes to upper-case before sending them
+	uppercaseGCode: false,			// convert G-Codes to upper-case before sending them
 
 	doTfree: true,					// tool
 	doTpre: true,					// change
