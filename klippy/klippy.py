@@ -148,7 +148,9 @@ class Printer:
             init_func = 'load_config_prefix'
         init_func = getattr(mod, init_func, None)
         if init_func is not None:
-            self.objects[section] = init_func(config.getsection(section))
+            module = init_func(config.getsection(section))
+            if module is not None:
+                self.objects[section] = module
         return self.objects.get(section, None)
     def _try_load_extensions(self, folder, func, config):
         files = os.listdir(os.path.join(os.path.dirname(__file__), folder))
