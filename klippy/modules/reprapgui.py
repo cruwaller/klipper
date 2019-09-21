@@ -591,6 +591,8 @@ class RepRapGuiModule(object):
                     tornado.web.url(r'/login', LoginHandler,
                                     {"path": htmlroot}, name="login"),
                     tornado.web.url(r'/logout', LogoutHandler, name="logout"),
+                    tornado.web.url(r"/(.*\.ico)", tornado.web.StaticFileHandler,
+                                    {"path": htmlroot}),
                     tornado.web.url(r"/(.*\.xml)", tornado.web.StaticFileHandler,
                                     {"path": htmlroot}),
                     tornado.web.url(r"/fonts/(.*)", tornado.web.StaticFileHandler,
