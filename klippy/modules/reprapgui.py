@@ -353,7 +353,7 @@ class rrHandler(tornado.web.RequestHandler):
                             "name" : os.path.relpath(filepath, path),
                             "size" : os.path.getsize(filepath),
                             "date" : time.strftime("%Y-%m-%dT%H:%M:%S",
-                                                   time.gmtime(os.path.getmtime(filepath))),
+                                                   time.localtime(os.path.getmtime(filepath))),
                         }
                         respdata["files"].append(data)
                     elif os.path.isdir(filepath):
@@ -362,7 +362,7 @@ class rrHandler(tornado.web.RequestHandler):
                             "name" : os.path.relpath(filepath, path),
                             "size" : os.path.getsize(filepath),
                             "date" : time.strftime("%Y-%m-%dT%H:%M:%S",
-                                                   time.gmtime(os.path.getmtime(filepath))),
+                                                   time.localtime(os.path.getmtime(filepath))),
                         }
                         respdata["files"].append(data)
 
@@ -375,7 +375,7 @@ class rrHandler(tornado.web.RequestHandler):
                         "name": KLIPPER_CFG_NAME,
                         "size": os.path.getsize(cfg_file),
                         "date": time.strftime("%Y-%m-%dT%H:%M:%S",
-                                              time.gmtime(os.path.getmtime(cfg_file))),
+                                              time.localtime(os.path.getmtime(cfg_file))),
                     })
                     logfile = self.printer.get_start_arg('logfile', None)
                     if logfile is not None:
@@ -384,7 +384,7 @@ class rrHandler(tornado.web.RequestHandler):
                             "name": KLIPPER_LOG_NAME,
                             "size": os.path.getsize(logfile),
                             "date": time.strftime("%Y-%m-%dT%H:%M:%S",
-                                                  time.gmtime(os.path.getmtime(logfile))),
+                                                  time.localtime(os.path.getmtime(logfile))),
                         })
 
         # rr_fileinfo?name=XXX
@@ -413,7 +413,7 @@ class rrHandler(tornado.web.RequestHandler):
                 respdata["size"] = os.path.getsize(path)
                 respdata["lastModified"] = \
                     time.strftime("%Y-%m-%dT%H:%M:%S",
-                                  time.gmtime(os.path.getmtime(path)))
+                                  time.localtime(os.path.getmtime(path)))
                 respdata["generatedBy"]      = info["slicer"]
                 respdata["height"]           = info["height"]
                 respdata["firstLayerHeight"] = info["firstLayerHeight"]
