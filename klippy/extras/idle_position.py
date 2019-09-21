@@ -20,7 +20,11 @@ class IdlePosition:
         self.gcode.register_command('IDLE_RESUME', self.cmd_IDLE_RESUME,
                                     desc=self.cmd_IDLE_RESUME_help)
     def _sd_status(self, status):
-        if status in ['pause', 'error', 'stop', 'done']:
+        if status in ['error', 'stop', 'done']:
+            # just move no need to store
+            self.move()
+            self.in_idle_pos = False
+        elif status in ['pause']:
             self.move()
         elif status == 'start':
             self.resume()
