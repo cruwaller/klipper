@@ -297,7 +297,7 @@ class Heater:
                           self.last_temp, self.last_temp_time, self.target_temp)
         self.mcu_pwm.set_pwm(pwm_time, value)
     def temperature_callback(self, read_time, temp):
-        #'''
+        '''
         # >>>>> DEBUG DEBUG DEBUG >>>>>
         if self.target_temp:
             if self.last_pwm_value:
