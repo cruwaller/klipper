@@ -219,6 +219,13 @@ stepper_oid_lookup(uint8_t oid)
 void
 command_queue_step(uint32_t *args)
 {
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    //printf("queue_step: interval %u => count %u add %d \n",
+    //       args[1], args[2], args[3]);
+    if (!args[2])
+        shutdown("Invalid count parameter");
+    return;
+#endif
     struct stepper *s = stepper_oid_lookup(args[0]);
     struct stepper_move *m = move_alloc();
     m->interval = args[1];
@@ -228,11 +235,6 @@ command_queue_step(uint32_t *args)
     m->add = args[3];
     m->next = NULL;
     m->flags = 0;
-
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-    printf("queue_step: next_step_time %u + interval %u => count %u add %d \n",
-           s->next_step_time, m->interval, m->count, m->add);
-#endif
 
     irq_disable();
     uint8_t flags = s->flags;
@@ -275,7 +277,7 @@ command_set_next_step_dir(uint32_t *args)
     s->flags = (s->flags & ~SF_NEXT_DIR) | nextdir;
     irq_enable();
 #if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-    printf("Stepper dir: %u \n", nextdir);
+    //printf("Stepper dir: %u \n", nextdir);
 #endif
 }
 DECL_COMMAND(command_set_next_step_dir, "set_next_step_dir oid=%c dir=%c");
@@ -308,7 +310,7 @@ stepper_get_position(struct stepper *s)
     else
         position -= s->count / 2;
 #if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-    printf("Stepper get position: %d \n", (position & 0x80000000) ? -position : position);
+    //printf("Stepper get position: %d \n", (position & 0x80000000) ? -position : position);
 #endif
     if (position & 0x80000000)
         return -position;
