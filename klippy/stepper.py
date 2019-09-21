@@ -70,9 +70,9 @@ def lookup_endstop_pin(ppins, pin):
 
 # Code storing the definitions for a stepper motor
 class PrinterStepper:
-    driver = mcu_stepper = None
-    max_velocity = max_accel = 0
     def __init__(self, config, logger=None):
+        self.driver = self.mcu_stepper = None
+        self.max_velocity = self.max_accel = 0
         printer = config.get_printer()
         self.name = config.get_name()
         if logger is None:
@@ -228,10 +228,10 @@ class PrinterRail:
                 "position_endstop in section '%s' must be between"
                 " position_min and position_max" % config.get_name())
         # Homing mechanics
-        self.homing_slowdown = config.getfloat('homing_slowdown', 5.0)
+        homing_slowdown = config.getfloat('homing_slowdown', 5.0)
         self.homing_speed = config.getfloat('homing_speed', 5.0, above=0.)
         self.second_homing_speed = config.getfloat(
-            'second_homing_speed', self.homing_speed/self.homing_slowdown, above=0.)
+            'second_homing_speed', self.homing_speed/homing_slowdown, above=0.)
         self.homing_retract_dist = config.getfloat(
             'homing_retract_dist', 5., minval=0.)
         self.homing_positive_dir = config.getboolean(
