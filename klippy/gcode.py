@@ -446,7 +446,8 @@ class GCodeParser:
         if temp < 0:
             temp = 0.
         if is_bed:
-            heater = self.printer.lookup_object('heater bed', None)
+            pheater = self.printer.lookup_object('heater')
+            heater = pheater.lookup_heater('heater bed', None)
         else:
             index = self.get_int('T', params, None)
             if index is None:
