@@ -1,9 +1,6 @@
-import time, util, json, os, re
-import kinematics.extruder
+# This file may be distributed under the terms of the GNU GPLv3 license.
 
-class ParseError(Exception):
-    pass
-
+import time, util, json
 
 class GuiStats:
     def __init__(self, config):

@@ -1,3 +1,5 @@
+# This file may be distributed under the terms of the GNU GPLv3 license.
+
 """
 files in this folder will be loaded
     - default modules are loaded always
