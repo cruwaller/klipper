@@ -1,3 +1,5 @@
+# This file may be distributed under the terms of the GNU GPLv3 license.
+
 import os, re
 import logging
 
@@ -36,7 +38,7 @@ def analyse_gcode_file(filepath):
                 line = f.readline().strip()
                 if "Simplify3D" in line: # S3D
                     slicer = "Simplify3D"
-                elif "Slic3r" in line: # slic3r
+                elif "Slic3r" in line or "slic3r" in line: # slic3r
                     slicer = "Slic3r"
                 elif ";Sliced by " in line: # ideaMaker
                     slicer = "ideaMaker"
