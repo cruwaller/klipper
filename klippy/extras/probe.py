@@ -227,7 +227,8 @@ class ProbeEndstopWrapper:
         ppins = self.printer.lookup_object('pins')
         pin = config.get('pin')
         pin_params = ppins.lookup_pin(pin, can_invert=True, can_pullup=True)
-        self.mcu_endstop = pin_params['chip'].setup_pin('endstop', pin_params)
+        mcu = pin_params['chip']
+        self.mcu_endstop = mcu.setup_pin('endstop', pin_params)
         self.mcu_endstop.get_mcu().register_config_callback(
             self._build_config, prio=True)
         # Wrappers
