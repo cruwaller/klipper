@@ -10,11 +10,7 @@ class MotorFan:
         self.mcu = self.fan.mcu_fan.get_mcu()
         self.fan_speed = config.getfloat("fan_speed", 1., minval=0., maxval=1.)
         self.reactor = self.printer.get_reactor()
-        self.set_timer = self.reactor.register_timer(
-            self.reactor_callback)
-        self.logger = self.fan.logger = \
-            self.printer.logger.getChild(
-                self.fan.name.replace(" ", "_"))
+        self.set_timer = self.reactor.register_timer(self.reactor_callback)
         self.printer.register_event_handler('motor_state', self.event_handler)
         self.printer.register_event_handler(
             'toolhead:motor_off', self.event_handler_motor_off)
