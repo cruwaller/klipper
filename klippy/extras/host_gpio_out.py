@@ -1,3 +1,6 @@
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
 
 class HostGpioOut(object):
     def __init__(self, config):

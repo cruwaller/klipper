@@ -1,3 +1,6 @@
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
 
 class AtxPower(object):
     def __init__(self, config):
@@ -6,8 +9,7 @@ class AtxPower(object):
         # Setup pin
         pin_params = printer.lookup_object('pins').lookup_pin(
             config.get('pin'), can_invert=True)
-        self.pin = pin_params['chip'].setup_pin(
-            'digital_out', pin_params)
+        self.pin = pin_params['chip'].setup_pin('digital_out', pin_params)
         # Register gcode commands
         self.gcode = gcode = printer.lookup_object('gcode')
         for cmd in ['ATX_ON', 'ATX_OFF']:
