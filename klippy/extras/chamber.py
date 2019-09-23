@@ -51,12 +51,18 @@ class Chamber:
             self.sensor = self.fan.sensor
         if self.sensor is None:
             self.sensor = pheater.setup_sensor(config)
+        self.sensor.setup_callback(self.temperature_callback)
         self.min_temp, self.max_temp = self.sensor.get_min_max_temp()
         self.target_temp = config.getfloat('target_temp', 0.,
             minval=self.min_temp, maxval=self.max_temp)
         gcode = self.printer.lookup_object('gcode')
         gcode.register_command("M141", self.cmd_M141)
         self.logger.debug("Chamber created")
+    def temperature_callback(self, read_time, temp):
+        if self.fan:
+            self.fan.temperature_callback(read_time, temp)
+        if self.heater:
+            self.heater.temperature_callback(read_time, temp)
     def _heater_set_temp(self, target_temp):
         if not self.heater or not target_temp:
             return
