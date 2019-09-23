@@ -287,10 +287,10 @@ def add_printer_objects(config):
             break
         pe = PrinterExtruder(config.getsection(section), i)
         printer.extruder_add(pe)
-        # printer.add_object(section, pe)
+        printer.add_object(section, pe)
 
 def get_printer_extruders(printer):
-    return printer.extruder_get().values()
+    # return printer.extruder_get().values()
     out = []
     for i in range(99):
         extruder = printer.lookup_object('extruder%d' % (i,), None)

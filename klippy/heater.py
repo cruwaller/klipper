@@ -601,4 +601,5 @@ def add_printer_objects(config):
 def load_config_prefix(config):
     if 'heater bed' == config.get_name():
         pheater = config.get_printer().lookup_object('heater')
-        pheater.setup_heater(config, 'B')
+        config.get_printer().add_object(
+            'heater_bed', pheater.setup_heater(config, 'B'))
