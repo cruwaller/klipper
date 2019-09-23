@@ -5,8 +5,6 @@
 class HostGpioEvent(object):
     def __init__(self, config):
         self.printer = config.get_printer()
-        self.printer.register_event_handler("klippy:ready", self._handle_ready)
-        self.v_sd = self.gcode_cmd = None
         options = {'halt': 'halt', 'gcode': 'gcode',
             'kill': 'shutdown', 'restart': 'firmware_restart'}
         self.action = config.getchoice('action', options, 'gcode')
@@ -32,12 +30,7 @@ class HostGpioEvent(object):
             self.printer.invoke_shutdown("Shutdown due to host gpio event")
             return
         self.printer.request_exit(self.action)
-    def _handle_ready(self):
-        self.v_sd = self.printer.lookup_object('virtual_sdcard', None)
     def _run_gcode(self):
-        if self.v_sd is not None and self.v_sd.is_active():
-            # Printing from virtual sd, run pause command
-            self.v_sd.do_pause()
         gcode = self.printer.lookup_object('gcode')
         gcode.run_script_from_command(self.gcode_cmd.render())
 
