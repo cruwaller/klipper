@@ -5,34 +5,42 @@
 class HostGpioEvent(object):
     def __init__(self, config):
         self.printer = config.get_printer()
+        self.gcode_return = self.gcode_triggered = None
         options = {'halt': 'halt', 'gcode': 'gcode',
             'kill': 'shutdown', 'restart': 'firmware_restart'}
         self.action = config.getchoice('action', options, 'gcode')
+        options = {'falling' : 'falling', 'rising' : 'rising',
+                   'both' : 'both'}
+        edge = config.getchoice("edge", options)
         if self.action == 'gcode':
             gcode_macro = self.printer.try_load_module(config, 'gcode_macro')
-            self.gcode_cmd = gcode_macro.load_template(config, 'gcode')
+            self.gcode_triggered = gcode_macro.load_template(config, 'gcode')
+            if edge == 'both':
+                self.gcode_return = gcode_macro.load_template(
+                    config, 'gcode_return')
+        self.state = 0
         # Setup pin
         pin_params = self.printer.lookup_object('pins').lookup_pin(
             config.get('pin'), can_invert=True, can_pullup=True)
-        self.pin = pin_params['chip'].setup_pin(
-            "digital_event", pin_params)
-        options = {'falling' : 'falling', 'rising' : 'rising',
-                   'both' : 'both'}
-        self.pin.set_event(self._event_callback,
-                           config.getchoice("edge", options))
-    def _event_callback(self, channel):
-        self.printer.get_logger().exception(
-            'Host event happened! Request exit: %s' % self.action)
+        self.pin = pin_params['chip'].setup_pin("digital_event", pin_params)
+        self.pin.set_event(self._event_callback, edge)
+    def _event_callback(self, _):
+        self.printer.get_logger().warning(
+            'Host event happened! Run action: %s' % self.action)
         if self.action == 'gcode':
             self._run_gcode()
             return
-        if self.action == 'halt':
+        elif self.action == 'halt':
             self.printer.invoke_shutdown("Shutdown due to host gpio event")
             return
         self.printer.request_exit(self.action)
     def _run_gcode(self):
         gcode = self.printer.lookup_object('gcode')
-        gcode.run_script_from_command(self.gcode_cmd.render())
+        if self.state and self.gcode_return:
+            gcode.run_script_from_command(self.gcode_return.render())
+        else:
+            gcode.run_script_from_command(self.gcode_triggered.render())
+        self.state ^= 1
 
 
 def load_config_prefix(config):
