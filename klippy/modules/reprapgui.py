@@ -582,6 +582,9 @@ class RepRapGuiModule(object):
         create_dir(os.path.join(sdcard_dirname, "filaments"))
         create_dir(os.path.join(sdcard_dirname, "sys"))
         # ------------------------------
+        # try to load required modules
+        printer.try_load_module(config, "babysteps")
+        # ------------------------------
         # Start tornado webserver
         if _TORNADO_THREAD is None or not _TORNADO_THREAD.isAlive():
             application = tornado.web.Application(

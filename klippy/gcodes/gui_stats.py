@@ -6,7 +6,6 @@ class GuiStats:
     def __init__(self, config):
         self.printer = printer = config.get_printer()
         self.logger = printer.logger.getChild("gui_stats")
-        self.logger.info("GuiStats config: %s" % config.get_name())
         # required modules
         self.reactor = printer.get_reactor()
         self.gcode = gcode = printer.lookup_object('gcode')

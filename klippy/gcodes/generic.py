@@ -1,36 +1,32 @@
 
-class GenericGcode(object):
+class GenericGcode:
     def __init__(self, config):
         self.printer = printer = config.get_printer()
         self.gcode = gcode = printer.lookup_object('gcode')
-        self.toolhead = printer.lookup_object('toolhead')
         for cmd in ['M1', 'M118',
-                    'M301', 'M302', 'M304',
-                    'M851', 'M900']:
+            'M301', 'M302', 'M304',
+            'M851', 'M900']:
             gcode.register_command(
                 cmd, getattr(self, 'cmd_' + cmd),
                 desc=getattr(self, 'cmd_%s_help' % cmd, None))
         # just discard
         for cmd in ['M120', 'M121', 'M122',
-                    'M291', 'M292',
-                    'M752', 'M753', 'M754', 'M755', 'M756', 'M997']:
+            'M291', 'M292',
+            'M752', 'M753', 'M754', 'M755', 'M756', 'M997']:
             gcode.register_command(cmd, gcode.cmd_IGNORE)
         # M999 to reset
-        gcode.register_command('M999',
-                               gcode.cmd_FIRMWARE_RESTART,
+        gcode.register_command('M999', gcode.cmd_FIRMWARE_RESTART,
                                when_not_ready=True,
                                desc="Alias to FIRMWARE_RESTART")
-        self.axis2pos = gcode.axis2pos
-        self.logger = gcode.logger
-        self.logger.info("Generic GCode extension initialized")
 
     def cmd_ignore(self, params):
         pass
 
     def cmd_M1(self, params):
+        toolhead = self.printer.lookup_object('toolhead')
         # Wait for current moves to finish
-        self.toolhead.wait_moves()
-        self.toolhead.motor_heater_off()
+        toolhead.wait_moves()
+        toolhead.motor_heater_off()
 
     def cmd_M118(self, params):
         self.gcode.respond(params['#original'].replace(params['#command'], ""))
@@ -51,13 +47,14 @@ class GenericGcode(object):
         if 'S' in params:
             temperature = self.gcode.get_int('S', params, -1)
         resp = []
-        for n, h in self.printer.lookup_objects("heater"):
-            if "bed" not in h.name:
-                h.set_min_extrude_temp(temperature, disable)
-                status, temp = h.get_min_extrude_status()
-                resp.append("Heater '%s' cold extrude: %s, min temp %.2fC"
-                            % (h.name, status, temp))
+        for extruder in self.printer.extruder_get().values():
+            heater = extruder.get_heater()
+            heater.set_min_extrude_temp(temperature, disable)
+            status, temp = heater.get_min_extrude_status()
+            resp.append("Heater '%s' cold extrude: %s, min temp %.2fC"
+                        % (heater.name, status, temp))
         self.gcode.respond("\n".join(resp))
+
     def cmd_M301(self, params):
         # M301: Set PID parameters
         self.gcode.respond("Obsolete, use SET_PID_PARAMS")
@@ -68,14 +65,16 @@ class GenericGcode(object):
 
     cmd_M851_help = "Set axis offset. Args [X<offset] [Y<offset>] [Z<offset>]"
     def cmd_M851(self, params):
+        toolhead = self.printer.lookup_object('toolhead')
+        axis2pos = self.gcode.axis2pos
         # Set X, Y, Z offsets
-        rails = self.toolhead.get_kinematics().get_rails()
-        offsets = { self.axis2pos[a]: self.gcode.get_float(a, params)
-                    for a, p in self.axis2pos.items() if a in params }
+        rails = toolhead.get_kinematics().get_rails()
+        offsets = {axis2pos[a]: self.gcode.get_float(a, params)
+            for a, p in axis2pos.items() if a in params}
         for p, offset in offsets.items():
             rails[p].set_homing_offset(offset)
         self.gcode.respond("Current offsets: X=%.2f Y=%.2f Z=%.2f" %
-                          (rails[0].homing_offset,
+                           (rails[0].homing_offset,
                            rails[1].homing_offset,
                            rails[2].homing_offset))
 

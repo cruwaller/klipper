@@ -9,12 +9,10 @@ files in this folder will be loaded
       method and section (e.g. gcodes.retract) is
       defined in config file.
 """
-import babysteps
 import generic
 import gui_stats
 
 def load_gcodes(config):
     # Load all default gcode files
-    babysteps.BabySteps(config)
     generic.GenericGcode(config)
     gui_stats.GuiStats(config)
