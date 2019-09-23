@@ -11,37 +11,38 @@ AMBIENT_TEMP = 25.
 PID_PARAM_BASE = 255.
 
 class TemperatureFan:
-    def __init__(self, config, chamber=False):
-        if chamber:
-            self.name = config.get_name()
-        else:
-            self.name = config.get_name().split()[1]
+    def __init__(self, config, sensor=None):
+        self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
+        self.fan = fan.PrinterFan(config, default_shutdown_speed=1.)
         self.gcode = self.printer.lookup_object('gcode')
-        self.logger = self.printer.get_logger(self.name)
         min_temp = config.getfloat('min_temp', minval=KELVIN_TO_CELCIUS, default=None)
         max_temp = config.getfloat('max_temp', above=min_temp, default=None)
-        self.sensor = self.printer.lookup_object('heater').setup_sensor(config)
+        pheater = self.printer.lookup_object('heater')
+        self.sensor = sensor
+        if sensor is None:
+            sensor = config.get("sensor", None)
+            if sensor is not None:
+                self.sensor = pheater.setup_sensor(
+                    config.getsection('sensor %s' % sensor))
+            else:
+                self.sensor = pheater.setup_sensor(config)
         self.sensor.setup_minmax(min_temp, max_temp)
         self.min_temp, self.max_temp = self.sensor.get_min_max_temp()
         self.sensor.setup_callback(self.temperature_callback)
         self.printer.lookup_object('heater').register_sensor(config, self)
         self.speed_delay = self.sensor.get_report_time_delta()
+        self.max_speed = config.getfloat('max_speed', 1., above=0., maxval=1.)
+        self.min_speed = config.getfloat('min_speed', 0.3, minval=0., maxval=1.)
         self.last_temp = 0.
         self.last_temp_time = 0.
-        self.target_temp = 0.
-        self.fan = self.control = None
-        if config.get('pin', None) is not None or not chamber:
-            self.fan = fan.PrinterFan(config, default_shutdown_speed=1.)
-            self.max_speed = config.getfloat('max_speed', 1., above=0., maxval=1.)
-            self.min_speed = config.getfloat('min_speed', 0.3, minval=0., maxval=1.)
-            self.target_temp_conf = config.getfloat(
-                'target_temp', 40. if self.max_temp > 40. else self.max_temp,
-                minval=self.min_temp, maxval=self.max_temp)
-            self.target_temp = self.target_temp_conf
-            algos = {'watermark': ControlBangBang, 'pid': ControlPID}
-            algo = config.getchoice('control', algos)
-            self.control = algo(self, config)
+        self.target_temp_conf = config.getfloat(
+            'target_temp', 40. if self.max_temp > 40. else self.max_temp,
+            minval=self.min_temp, maxval=self.max_temp)
+        self.target_temp = self.target_temp_conf
+        algos = {'watermark': ControlBangBang, 'pid': ControlPID}
+        algo = config.getchoice('control', algos, 'watermark')
+        self.control = algo(self, config)
         self.next_speed_time = 0.
         self.last_speed_value = 0.
         self.gcode.register_mux_command(
@@ -50,8 +51,6 @@ class TemperatureFan:
             desc=self.cmd_SET_TEMPERATURE_FAN_TARGET_TEMP_help)
 
     def set_speed(self, read_time, value):
-        if self.fan is None:
-            return
         if value <= 0.:
             value = 0.
         elif value < self.min_speed:
@@ -68,8 +67,7 @@ class TemperatureFan:
         self.fan.set_speed(speed_time, value)
     def temperature_callback(self, read_time, temp):
         self.last_temp = temp
-        if self.control is not None:
-            self.control.temperature_callback(read_time, temp)
+        self.control.temperature_callback(read_time, temp)
     def stats(self, eventtime):
         return False, '%s: temp=%.1f fan_speed=%.3f' % (
             self.name, self.last_temp, self.last_speed_value)

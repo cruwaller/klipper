@@ -206,7 +206,8 @@ class Heater:
                 else:
                     self.index = int(name.replace('heater', '').strip())
             except ValueError:
-                self.index = config.getint("index")
+                if config.has_section('reprapgui'):
+                    self.index = config.getint("index")
         self.logger = printer.get_logger(self.name)
         self.heating_start_time = 0.
         self.heating_end_time = None
@@ -509,6 +510,7 @@ class PrinterHeaters:
         self.printer = config.get_printer()
         self.sensor_factories = {}
         self.heaters = {}
+        self.sensors = {}
         self.gcode_id_to_sensor = {}
         self.printer.register_event_handler("gcode:request_restart",
                                             self.turn_off_all_heaters)
@@ -564,11 +566,14 @@ class PrinterHeaters:
         self.printer.try_load_module(config, "adc_temperature")
         self.printer.try_load_module(config, "spi_temperature")
         name = config.get_name().replace('sensor', '').strip()
+        if name in self.sensors:
+            return self.sensors[name]
         sensor_type = config.get('sensor_type')
         if sensor_type not in self.sensor_factories:
             raise self.printer.config_error(
                 "Unknown temperature sensor '%s'" % (sensor_type,))
-        return self.sensor_factories[sensor_type](config)
+        self.sensors[name] = self.sensor_factories[sensor_type](config)
+        return self.sensors[name]
     def get_gcode_sensors(self):
         return self.gcode_id_to_sensor.items()
     def register_sensor(self, config, psensor, gcode_id=None):

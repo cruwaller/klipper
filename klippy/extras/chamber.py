@@ -1,33 +1,97 @@
+# This file may be distributed under the terms of the GNU GPLv3 license.
+
+"""
+[chamber]
+target_temp:    20.
+pin:            ar11
+control:        watermark
+# sensor params
+sensor_type:    NTC 100K beta 3950
+sensor_pin:     analog10
+min_temp:       0
+max_temp:       120
+# heater params
+heater_pin:     ar6
+index: 1
+
+# heater and fan by names
+[chamber]
+target_temp:    150.
+pin:            ar11
+# chamber with heater by name
+heater:         heater_name
+
+# no heater, just fan
+[chamber]
+target_temp:    20.
+pin:            ar11
+sensor:         sensor_name
+"""
 
 import temperature_fan
 
 class Chamber:
     def __init__(self, config):
+        # Support chamber with heater and/or fan
         self.printer = config.get_printer()
-        self.gcode = self.printer.lookup_object('gcode')
-        self.fan = temperature_fan.TemperatureFan(
-            config, chamber=True)
-        self.logger = self.fan.logger
-        self.gcode.register_command(
-            "M141", self.cmd_M141)
-    def cmd_M141(self, params):
-        if self.fan.fan is None:
-            # No fan is configured, cannot change target
+        self.name = config.get_name().split()[-1]
+        self.logger = self.printer.get_logger(self.name)
+        self.fan = self.heater = None
+        self.printer.register_event_handler("klippy:ready", self._handle_ready)
+        pheater = self.printer.lookup_object('heater')
+        heater = config.get('heater', None)
+        if heater is not None:
+            # setup chamber heater if configured
+            self.heater = pheater.setup_heater(config.getsection(heater))
+        elif config.get('heater_pin', None) is not None:
+            self.heater = pheater.setup_heater(config)
+        self.sensor = self.heater.sensor if self.heater else None
+        if config.get('pin', None) is not None:
+            self.fan = temperature_fan.TemperatureFan(config, self.sensor)
+            self.sensor = self.fan.sensor
+        if self.sensor is None:
+            self.sensor = pheater.setup_sensor(config)
+        self.min_temp, self.max_temp = self.sensor.get_min_max_temp()
+        self.target_temp = config.getfloat('target_temp', 0.,
+            minval=self.min_temp, maxval=self.max_temp)
+        gcode = self.printer.lookup_object('gcode')
+        gcode.register_command("M141", self.cmd_M141)
+        self.logger.debug("Chamber created")
+    def _heater_set_temp(self, target_temp):
+        if not self.heater or not target_temp:
             return
-        target_temp = self.gcode.get_float(
-            "S", params, default=self.fan.target_temp,
-            minval=self.fan.min_temp, maxval=self.fan.max_temp)
-        self.fan.target_temp = target_temp
-        self.logger.debug("New chamber target temperature is %s" %
-                          target_temp)
+        print_time = self.printer.lookup_object(
+            'toolhead').get_last_move_time()
+        self.heater.set_temp(print_time, target_temp)
+    def _fan_set_temp(self, target_temp):
+        if self.fan:
+            self.fan.set_temp(target_temp)
+    def _handle_ready(self):
+        if self.heater:
+            self._heater_set_temp(self.target_temp)
+        self._fan_set_temp(self.target_temp)
+    def cmd_M141(self, params):
+        gcode = self.printer.lookup_object('gcode')
+        target_temp = gcode.get_float("S", params, default=self.target_temp)
+        self._heater_set_temp(target_temp)
+        self._fan_set_temp(target_temp)
+        self.target_temp = target_temp
     def get_temp(self, *args):
-        return self.fan.last_temp, self.fan.target_temp
+        eventtime = self.printer.get_reactor().monotonic()
+        if self.heater:
+            return self.heater.get_temp(eventtime)
+        return self.fan.get_temp(eventtime)
     def is_fan_active(self):
+        if self.fan is None:
+            return False
         return 0. < self.fan.last_speed_value
     def stats(self, eventtime):
-        fan = self.fan
-        return False, '%s: temp=%.1f fan_speed=%.3f' % (
-            fan.name, fan.last_temp, fan.last_speed_value)
+        out = []
+        if self.fan is not None:
+            out.append(self.fan.stats(eventtime)[1])
+        if self.heater:
+            out.append(self.heater.stats(eventtime)[1])
+        return False, " ".join(out)
 
 
 def load_config(config):
