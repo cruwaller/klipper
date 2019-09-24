@@ -37,6 +37,7 @@ class Chamber:
         self.name = config.get_name().split()[-1]
         self.logger = self.printer.get_logger(self.name)
         self.fan = self.heater = None
+        self.last_temp = 0.
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
         pheater = self.printer.lookup_object('heater')
         heater = config.get('heater', None)
@@ -59,6 +60,7 @@ class Chamber:
         gcode.register_command("M141", self.cmd_M141)
         self.logger.debug("Chamber created")
     def temperature_callback(self, read_time, temp):
+        self.last_temp = temp
         if self.fan:
             self.fan.temperature_callback(read_time, temp)
         if self.heater:
@@ -98,6 +100,8 @@ class Chamber:
         if self.heater:
             out.append(self.heater.stats(eventtime)[1])
         return False, " ".join(out)
+    def get_status(self, _):
+        return {'temperature': self.last_temp, "target": self.target_temp}
 
 
 def load_config(config):
