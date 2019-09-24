@@ -5,6 +5,9 @@
 // This file may be distributed under the terms of the GNU GPLv3 license.
 
 #include "autoconf.h" // CONFIG_CLOCK_REF_8M
+#include "board/armcm_boot.h" // VectorTable
+#include "board/irq.h" // irq_disable
+#include "board/usb_cdc.h" // usb_request_bootloader
 #include "internal.h" // enable_pclock
 
 #define FREQ_PERIPH (CONFIG_CLOCK_FREQ / 2)
@@ -104,10 +107,29 @@ gpio_peripheral(uint32_t gpio, uint32_t mode, int pullup)
         AFIO->MAPR = AFIO_MAPR_SWJ_CFG_DISABLE;
 }
 
+// Handle USB reboot requests
+void
+usb_request_bootloader(void)
+{
+    if (!CONFIG_STM32_FLASH_START_2000)
+        return;
+    // Enter "stm32duino" bootloader
+    irq_disable();
+    RCC->APB1ENR |= RCC_APB1ENR_PWREN | RCC_APB1ENR_BKPEN;
+    PWR->CR |= PWR_CR_DBP;
+    BKP->DR10 = 0x01;
+    PWR->CR &=~ PWR_CR_DBP;
+    NVIC_SystemReset();
+}
+
 // Main clock setup called at chip startup
 void
 clock_setup(void)
 {
+    // The SystemInit() code alters VTOR - restore it
+    SCB->VTOR = (uint32_t)VectorTable;
+
+    // Configure and enable PLL
     uint32_t cfgr;
     if (CONFIG_CLOCK_REF_8M) {
         // Configure 72Mhz PLL from external 8Mhz crystal (HSE)

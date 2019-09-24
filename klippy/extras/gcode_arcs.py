@@ -19,8 +19,7 @@ import re
 class ArcSupport:
     def __init__(self, config):
         self.printer = config.get_printer()
-        self.mm_per_arc_segment = config.getfloat('resolution', 1)
-        self.debug = True  #will respond motion to terminal as G1 code
+        self.mm_per_arc_segment = config.getfloat('resolution', 1, above=0.0)
 
         self.gcode = self.printer.lookup_object('gcode')
         self.gcode.register_command("G2", self.cmd_G2, desc=self.cmd_G2_help)
@@ -30,12 +29,8 @@ class ArcSupport:
     cmd_G3_help = "Clockwise rotaion move"
 
     def cmd_G2(self, params):
-
         # set vars
         currentPos =  self.printer.lookup_object('toolhead').get_position()
-        asStartX = currentPos[0]
-        asStartY = currentPos[1]
-        asStartZ = currentPos[2]
 
         asX = params.get("X", None)
         asY = params.get("Y", None)
@@ -49,7 +44,7 @@ class ArcSupport:
         asF = float(params.get("F", -1))
 
         # --------- health checks of code -----------
-        if (asX == None or asY == None):
+        if (asX is None or asY is None):
             raise self.gcode.error("g2/g3: Coords missing")
 
         elif asR == 0 and asI == 0 and asJ==0:
@@ -81,8 +76,8 @@ class ArcSupport:
                 # build dict and call cmd_G1
                 for coord in coords:
                     g1_params = {'X': coord[0], 'Y': coord[1]}
-                    if asZ:
-                        g1_params['Z']= float(asZ)/len(coords)
+                    if asZ!=None:
+                        g1_params['Z']= float(asZ)
                     if asE>0:
                         g1_params['E']= float(asE)/len(coords)
                     if asF>0:
