@@ -4,6 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import os, logging
+import shlex
 
 class VirtualSD:
 
@@ -26,6 +27,12 @@ class VirtualSD:
         # Register commands
         self.gcode = printer.lookup_object('gcode')
         self.gcode.register_command('M21', None)
+        for cmd in ['M20', 'M21', 'M23', 'M24', 'M25', 'M26', 'M27',
+                    'M32', 'M37', 'M98']:
+            wnr = getattr(self, 'cmd_' + cmd + '_when_not_ready', False)
+            self.gcode.register_command(cmd, getattr(self, 'cmd_' + cmd), wnr)
+        for cmd in ['M28', 'M29', 'M30']:
+            self.gcode.register_command(cmd, self.cmd_error)
         self.gcode.register_command('SD_SET_PATH',
             self.cmd_SD_SET_PATH)
         self.last_gco_sender = None
@@ -41,11 +48,11 @@ class VirtualSD:
             return None
     def handle_ready(self):
         self.toolhead = self.printer.lookup_object('toolhead')
-        for cmd in ['M0', 'M20', 'M21', 'M23', 'M24', 'M25', 'M26', 'M27',
-                    'M32', 'M37', 'M98']:
-            self.gcode.register_command(cmd, getattr(self, 'cmd_' + cmd))
-        for cmd in ['M28', 'M29', 'M30']:
-            self.gcode.register_command(cmd, self.cmd_error)
+        #for cmd in ['M0', 'M20', 'M21', 'M23', 'M24', 'M25', 'M26', 'M27',
+        #            'M32', 'M37', 'M98']:
+        #    self.gcode.register_command(cmd, getattr(self, 'cmd_' + cmd))
+        #for cmd in ['M28', 'M29', 'M30']:
+        #    self.gcode.register_command(cmd, self.cmd_error)
     def handle_shutdown(self):
         if self.work_timer is not None:
             self.must_pause_work = True
@@ -109,6 +116,7 @@ class VirtualSD:
         elif self.toolhead is not None:
             self.toolhead.motor_off()
         self.printer.send_event('vsd:status', 'stop')
+    cmd_M20_when_not_ready = True
     def cmd_M20(self, params):
         # List SD card
         files = self.get_file_list()
@@ -116,12 +124,12 @@ class VirtualSD:
         for fname, fsize in files:
             self.gcode.respond("%s %d" % (fname, fsize))
         self.gcode.respond("End file list")
+    cmd_M21_when_not_ready = True
     def cmd_M21(self, params):
         # Initialize SD card
         self.gcode.respond("SD card ok")
     def cmd_M23(self, params):
         # Select SD file
-        is_abs_path = bool(self.gcode.get_int('IS_ABS', params, default=0))
         if self.work_timer is not None:
             raise self.gcode.error("SD busy")
         if self.current_file is not None:
@@ -130,17 +138,16 @@ class VirtualSD:
             self.file_position = self.file_size = 0
         try:
             orig = params['#original']
-            filename = orig[orig.find("M23") + 3:].split()[0].strip()
+            # filename = orig[orig.find("M23") + 3:].split()[0].strip()
+            filename = shlex.split(orig[orig.find("M23") + 3:])[0].strip()
             if '*' in filename:
                 filename = filename[:filename.find('*')].strip()
         except:
             raise self.gcode.error("Unable to extract filename")
-        if not is_abs_path and filename.startswith('/'):
+        if filename.startswith('/'):
             filename = filename[1:]
         try:
-            fname = filename
-            if not is_abs_path:
-                fname = os.path.join(self.sdcard_dirname, filename)
+            fname = os.path.join(self.sdcard_dirname, filename)
             f = open(fname, 'rb')
             f.seek(0, os.SEEK_END)
             fsize = f.tell()
@@ -184,28 +191,26 @@ class VirtualSD:
     def cmd_M32(self, params):
         # Select and start gcode file
         orig = params['#original']
-        gco_f = orig[orig.find("M32") + 3:].split()[0].strip()
-        gco_f = gco_f.replace('"', '')
-        params['#original'] = 'M23 %s' % gco_f
+        gco_f = shlex.split(orig[orig.find("M32") + 3:])[0].strip()
+        params['#original'] = 'M23 "%s"' % gco_f
         self.cmd_M23(params)
         self.simulate_print = False
         self.cmd_M24(params)
     def cmd_M37(self, params):
         orig = params['#original']
-        gco_f = orig[orig.find("P") + 1:].split()[0].strip()
-        gco_f = gco_f.replace('"', '')
-        params['#original'] = 'M23 %s' % gco_f
+        gco_f = shlex.split(orig[orig.find("P") + 1:])[0].strip()
+        params['#original'] = 'M23 "%s"' % gco_f
         self.logger.info("Simulate: %s" % gco_f)
         self.cmd_M23(params)
         self.simulate_print = True
         self.logger.info("Simulated print starting")
         self.cmd_M24(params)
+    cmd_M98_when_not_ready = True
     def cmd_M98(self, params):
         # Run macro
         orig = params['#original']
-        macro_f = orig[orig.find("P") + 1:].split()[0].strip()
-        macro_f = macro_f.replace('"', '')
-        params['#original'] = 'M23 %s' % macro_f
+        macro_f = shlex.split(orig[orig.find("P") + 1:])[0].strip()
+        params['#original'] = 'M23 "%s"' % macro_f
         self.cmd_M23(params)
         self.simulate_print = False
         self.logger.info("Executing macro")

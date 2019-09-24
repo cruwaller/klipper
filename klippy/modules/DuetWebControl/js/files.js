@@ -1,7 +1,7 @@
 /* File management logic for Duet Web Control
- * 
+ *
  * written by Christian Hammacher (c) 2016-2017
- * 
+ *
  * licensed under the terms of the GPL v2
  * see http://www.gnu.org/licenses/gpl-2.0.html
  */
@@ -392,7 +392,7 @@ function setGCodeDirectory(directory) {
 	currentGCodeDirectory = directory;
 	var basePath = (currentGCodeVolume == 0) ? "0:/gcodes" : currentGCodeVolume + ":";
 	var baseCaption = (currentGCodeVolume == 0) ? T("G-Codes Directory") : T("Root Directory");
-	
+
 	$("#ol_gcode_directory > li.content:not(:first-child)").remove();
 	if (directory == basePath) {
 		$("#ol_gcode_directory > li.content").replaceWith('<li class="active content"><span class="glyphicon glyphicon-folder-open"></span> ' + baseCaption + '</li>');
@@ -513,7 +513,7 @@ function setGCodeFileItem(row, height, firstLayerHeight, layerHeight, filamentUs
 
 function clearGCodeFiles() {
 	gcodeLastDirectory = undefined;
-	
+
 	$("#table_gcode_files > thead input[type='checkbox']:first-child").prop("checked", false);
 	$("#table_gcode_files > tbody").children().remove();
 	$("#table_gcode_files").addClass("hidden");
@@ -648,11 +648,11 @@ $("body").on("click", ".a-gcode-file", function(e) {
 	showConfirmationDialog(T("Start Print"), T("Do you want to print <strong>{0}</strong>?", file), function() {
 		waitingForPrintStart = true;
 		if (currentGCodeVolume != 0) {
-			sendGCode("M32 gcodes/" + currentGCodeDirectory + "/" + file);
+			sendGCode("M32 \"gcodes/" + currentGCodeDirectory + "/" + file + "\"");
 		} else if (currentGCodeDirectory == "0:/gcodes") {
-			sendGCode("M32 gcodes/" + file);
+			sendGCode("M32 \"gcodes/" + file + "\"");
 		} else {
-			sendGCode("M32 gcodes/" + currentGCodeDirectory.substring(10) + "/" + file);
+			sendGCode("M32 \"gcodes/" + currentGCodeDirectory.substring(10) + "/" + file + "\"");
 		}
 	});
 	e.preventDefault();
@@ -933,7 +933,7 @@ $("body").on("click", ".btn-macro", function(e) {
 		loadMacroDropdown(directory, dropdown);
 		dropdown.dropdown();
 	} else {
-		sendGCode("M98 P" + $(this).data("macro"));
+		sendGCode("M98 P\"" + $(this).data("macro") + "\"");
 	}
 	e.preventDefault();
 });
@@ -966,7 +966,7 @@ function loadMacroDropdown(directory, dropdown) {
 					} else {
 						var item = $('<li><a href="#" data-macro="' + directory + '/' + file.name + '">' + stripMacroFilename(file.name) + '</a></li>');
 						item.find("a").click(function(e) {
-							sendGCode("M98 P" + $(this).data("macro"));
+							sendGCode("M98 P\"" + $(this).data("macro") + "\"");
 							e.preventDefault();
 						});
 						dropdown.append(item);
@@ -986,7 +986,7 @@ $("body").on("click", ".a-macro-directory", function(e) {
 $("body").on("click", ".a-macro-file", function(e) {
 	var file = $(this).closest("tr").data("file");
 	showConfirmationDialog(T("Run Macro"), T("Do you want to run <strong>{0}</strong>?", file), function() {
-		sendGCode("M98 P" + currentMacroDirectory + "/" + file);
+		sendGCode("M98 P\"" + currentMacroDirectory + "/" + file + "\"");
 	});
 	e.preventDefault();
 });
@@ -1616,11 +1616,11 @@ $("#a_context_print").click(function(e) {
 	var file = contextMenuTargets.data("file");
 	waitingForPrintStart = true;
 	if (currentGCodeVolume != 0) {
-		sendGCode("M32 gcodes/" + currentGCodeDirectory + "/" + file);
+		sendGCode("M32 \"gcodes/" + currentGCodeDirectory + "/" + file + "\"");
 	} else if (currentGCodeDirectory == "0:/gcodes") {
-		sendGCode("M32 gcodes/" + file);
+		sendGCode("M32 \"gcodes/" + file + "\"");
 	} else {
-		sendGCode("M32 gcodes/" + currentGCodeDirectory.substring(10) + "/" + file);
+		sendGCode("M32 \"gcodes/" + currentGCodeDirectory.substring(10) + "/" + file + "\"");
 	}
 	e.preventDefault();
 });
@@ -1640,7 +1640,7 @@ $("#a_context_simulate").click(function(e) {
 
 $("#a_context_run").click(function(e) {
 	var file = contextMenuTargets.data("file");
-	sendGCode("M98 P" + currentMacroDirectory + "/" + file);
+	sendGCode("M98 P\"" + currentMacroDirectory + "/" + file + "\"");
 	e.preventDefault();
 });
 

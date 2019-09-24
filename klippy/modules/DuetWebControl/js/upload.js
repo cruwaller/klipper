@@ -1,7 +1,7 @@
 /* Upload handling for Duet Web Control
- * 
+ *
  * written by Christian Hammacher (c) 2016-2017
- * 
+ *
  * licensed under the terms of the GPL v3
  * see http://www.gnu.org/licenses/gpl-3.0.html
  */
@@ -475,7 +475,7 @@ function uploadHasFinished(success) {
 		// Check if a print is supposed to be started
 		if (uploadType == "print") {
 			waitingForPrintStart = true;
-			sendGCode("M32 " + currentGCodeDirectory + "/" + uploadFileName);
+			sendGCode("M32 \"" + currentGCodeDirectory + "/" + uploadFileName + "\"");
 		}
 
 		// Ask for firmware/DWC update if it's safe to do

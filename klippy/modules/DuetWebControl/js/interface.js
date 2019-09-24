@@ -1148,7 +1148,7 @@ $("#btn_pause").click(function() {
 
 $("#btn_print_another").click(function() {
 	if (isConnected) {
-		sendGCode("M32 " + $(this).data("file"));
+		sendGCode("M32 \"" + $(this).data("file") + "\"");
 		$("#div_print_another").addClass("hidden");
 	}
 });
