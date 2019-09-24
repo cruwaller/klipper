@@ -301,6 +301,7 @@ class HostPins(object):
                 "pin type %s not supported on mcu" % (pin_type,))
         pin_params['pin_number'] = self.get_pin_number(pin_params['pin'])
         co = pcs[pin_type](pin_params, self.printer)
+        co.is_host = True
         return co
 
 def load_config(config):
