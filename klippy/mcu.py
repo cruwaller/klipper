@@ -11,7 +11,7 @@ class error(Exception):
 
 class MCU_stepper:
     def __init__(self, mcu, pin_params):
-        self._logger = mcu.logger.getChild('stepper')
+        self._logger = mcu.get_logger('stepper')
         self._mcu = mcu
         self._oid = oid = self._mcu.create_oid()
         self._mcu.register_config_callback(self._build_config)
@@ -131,7 +131,7 @@ class MCU_endstop:
         pass
     RETRY_QUERY = 1.000
     def __init__(self, mcu, pin_params):
-        self._logger = mcu.logger.getChild('endstop')
+        self._logger = mcu.get_logger('endstop')
         self._mcu = mcu
         self._steppers = []
         self._pin = pin_params['pin']
@@ -242,7 +242,7 @@ class MCU_endstop:
 
 class MCU_digital_out:
     def __init__(self, mcu, pin_params):
-        self._logger = mcu.logger.getChild('digital_out')
+        self._logger = mcu.get_logger('digital_out')
         self._mcu = mcu
         self._oid = None
         self._mcu.register_config_callback(self._build_config)
@@ -287,7 +287,7 @@ class MCU_digital_out:
 
 class MCU_pwm:
     def __init__(self, mcu, pin_params):
-        self._logger = mcu.logger.getChild('pwm')
+        self._logger = mcu.get_logger('pwm')
         self._mcu = mcu
         self._hardware_pwm = False
         self._cycle_time = 0.100
@@ -374,7 +374,7 @@ class MCU_pwm:
 
 class MCU_adc:
     def __init__(self, mcu, pin_params):
-        self._logger = mcu.logger.getChild('adc')
+        self._logger = mcu.get_logger('adc')
         self._mcu = mcu
         self._pin = pin_params['pin']
         self._min_sample = self._max_sample = 0.
@@ -461,7 +461,7 @@ class MCU:
         self._name = config.get_name()
         if self._name.startswith('mcu '):
             self._name = self._name[4:]
-        self.logger = self._printer.logger.getChild("mcu.%s" % (self._name,))
+        self.logger = self._printer.get_logger("mcu.%s" % (self._name,))
         clocksync.setLogger(self.logger)
         self._printer.register_event_handler("klippy:connect", self._connect)
         self._printer.register_event_handler("klippy:shutdown", self._shutdown)
@@ -475,7 +475,7 @@ class MCU:
             baud = 0
         self._serial = serialhdl.SerialReader(
             self._reactor, self._serialport, baud,
-            logger=self.logger.getChild('serial'))
+            logger=self.get_logger('serial'))
         # Restarts
         rmethods = [None, 'arduino', 'command', 'rpi_usb', 'hostgpio']
         self._restart_method = config.getchoice(
@@ -517,6 +517,10 @@ class MCU:
         self._mcu_tick_stddev = 0.
         self._mcu_tick_awake = 0.
         self.logger.info("Initialized. Restart method: %s" % self._restart_method)
+    def get_logger(self, child=None):
+        if child is not None:
+            return self.logger.getChild(child)
+        return self.logger
     # Serial callbacks
     def _handle_mcu_stats(self, params):
         count = params['count']

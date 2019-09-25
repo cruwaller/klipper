@@ -73,9 +73,9 @@ class ReactorFileHandlerThread(ReactorFileHandler):
         self.thread = threading.Thread(target=self.__execute)
         self.thread.daemon = True
         # self.thread.start()
-    #READ_ONLY = select.POLLIN | select.POLLHUP
-    READ_ONLY = select.POLLIN | select.POLLPRI | select.POLLHUP | select.POLLERR
-    READ_WRITE = READ_ONLY | select.POLLOUT
+        self.READ_ONLY = (select.POLLIN | select.POLLPRI |
+                          select.POLLHUP | select.POLLERR)
+        self.READ_WRITE = self.READ_ONLY | select.POLLOUT
     def __execute(self):
         self._poll.register(self, self.READ_ONLY)
         self._stop_event.clear()
@@ -288,10 +288,6 @@ class SelectReactor:
         return file_handler
     def unregister_fd(self, file_handler):
         self._fds.pop(self._fds.index(file_handler))
-    def register_fd_thread(self, fd, func, args={}):
-        return ReactorFileHandlerThread(self, fd, func, args)
-    def unregister_fd_thread(self, handle):
-        handle.stop()
     # Main loop
     def _dispatch_loop(self):
         self._g_dispatch = g_dispatch = greenlet.getcurrent()
@@ -315,6 +311,10 @@ class SelectReactor:
         g_next.switch()
     def end(self):
         self._process = False
+    def register_fd_thread(self, fd, func, args={}):
+        return ReactorFileHandlerThread(self, fd, func, args)
+    def unregister_fd_thread(self, handle):
+        handle.stop()
 
 class PollReactor(SelectReactor):
     def __init__(self):

@@ -203,7 +203,7 @@ class DripModeEndSignal(Exception):
 class ToolHead:
     def __init__(self, config):
         self.printer = printer = config.get_printer()
-        self.logger = printer.logger.getChild('toolhead')
+        self.logger = printer.get_logger('toolhead')
         self.logger.info("toolhead '{}' created".format(config.section))
         self.reactor = self.printer.get_reactor()
         self.all_mcus = [
@@ -284,7 +284,6 @@ class ToolHead:
         self.printer.try_load_module(config, "idle_timeout")
         self.printer.try_load_module(config, "statistics")
         self.printer.try_load_module(config, "manual_probe")
-        self.logger.info("Kinematic created: %s" % self.kin.name)
         self.logger.info("max_accel: %s" % (self.max_accel,))
         self.logger.info("max_accel_to_decel: %s" % (self.max_accel_to_decel,))
         self.logger.info("junction_deviation: %s" % (self.junction_deviation,))

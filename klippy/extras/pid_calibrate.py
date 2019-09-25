@@ -13,7 +13,7 @@ class PIDCalibrate:
         self.gcode.register_command(
             'PID_CALIBRATE', self.cmd_PID_CALIBRATE,
             desc=self.cmd_PID_CALIBRATE_help)
-        self.logger = self.printer.logger.getChild('PIDCalibrate')
+        self.logger = self.printer.get_logger('PID_calibrate')
     cmd_PID_CALIBRATE_help = "Run PID calibration test. " \
                              "args: HEATER=name TARGET=temp [COUNT=]"
     def cmd_PID_CALIBRATE(self, params):

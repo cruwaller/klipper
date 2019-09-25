@@ -11,7 +11,7 @@ class CoreXYKinematics:
     def __init__(self, toolhead, config):
         self.printer = config.get_printer()
         self.toolhead = toolhead
-        self.logger = self.printer.logger.getChild(self.name)
+        self.logger = self.printer.get_logger(self.name)
         # Setup axis rails
         self.rails = [ stepper.PrinterRail(config.getsection('stepper_x')),
                        stepper.PrinterRail(config.getsection('stepper_y')),

@@ -10,7 +10,7 @@ class VirtualSD:
 
     def __init__(self, config):
         self.printer = printer = config.get_printer()
-        self.logger = printer.logger.getChild('VirtualSD')
+        self.logger = printer.get_logger('VirtualSD')
         self.simulate_print = False
         self.toolhead = None
         printer.register_event_handler("klippy:shutdown", self.handle_shutdown)

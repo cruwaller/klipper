@@ -24,7 +24,7 @@ SNAPSHOT_DEFAULT = "http://127.0.0.1:8080/?action=snapshot"
 
 class VideoStreamerHelper:
     def __init__(self, config):
-        self.logger = config.get_printer().logger.getChild("VideoStreamerHelper")
+        self.logger = config.get_printer().get_logger("VideoStreamerHelper")
         resolution = config.get('resolution', default="640x480")
         if "x" not in resolution:
             raise config.error("Invalid resolution format!")

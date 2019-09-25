@@ -3,7 +3,7 @@
 class IdlePosition:
     def __init__(self, config):
         self.printer = config.get_printer()
-        self.logger = self.printer.logger.getChild('idle_position')
+        self.logger = self.printer.get_logger('idle_position')
         self.in_idle_pos = False
         self.saved = False
         # register events

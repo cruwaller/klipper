@@ -5,7 +5,7 @@ import time, util, json
 class GuiStats:
     def __init__(self, config):
         self.printer = printer = config.get_printer()
-        self.logger = printer.logger.getChild("gui_stats")
+        self.logger = printer.get_logger("gui_stats")
         # required modules
         self.reactor = printer.get_reactor()
         self.gcode = gcode = printer.lookup_object('gcode')

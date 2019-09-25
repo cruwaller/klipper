@@ -17,7 +17,7 @@ class PrinterExtruder:
         if extruder_num is None:
             extruder_num = int(self.name.replace('extruder', '').strip())
         self.extruder_num = extruder_num
-        self.logger = printer.logger.getChild(self.name)
+        self.logger = printer.get_logger(self.name)
         shared_heater = config.get('shared_heater', None)
         pheater = self.printer.lookup_object('heater')
         gcode_id = 'T%d' % (extruder_num,)

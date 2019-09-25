@@ -76,7 +76,7 @@ class PrinterStepper:
         printer = config.get_printer()
         self.name = config.get_name()
         if logger is None:
-            self.logger = printer.logger.getChild(self.name)
+            self.logger = printer.get_logger(self.name)
         else:
             self.logger = logger.getChild(self.name)
         self.need_motor_enable = True

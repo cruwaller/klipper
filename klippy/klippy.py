@@ -54,7 +54,6 @@ class Printer:
     config_error = configfile.error
     command_error = homing.CommandError
     def __init__(self, input_fd, bglogger, start_args):
-        self.logger = logging.getLogger('printer')
         self.bglogger = bglogger
         self.start_args = start_args
         self.reactor = reactor.Reactor()
@@ -74,10 +73,11 @@ class Printer:
         return self.start_args[name]
     def get_start_args(self):
         return self.start_args
-    def get_logger(self, name=None):
+    @staticmethod
+    def get_logger(name=None):
         if name is not None:
-            return self.logger.getChild(name.replace(" ", "_"))
-        return self.logger
+            return logging.getLogger(name.replace(" ", "_"))
+        return logging.getLogger()
     def get_reactor(self):
         return self.reactor
     def get_state_message(self):
@@ -129,7 +129,7 @@ class Printer:
         return objs
     def set_rollover_info(self, name, info, log=True):
         if log:
-            self.logger.info(info)
+            logging.info(info)
         if self.bglogger is not None:
             self.bglogger.set_rollover_info(name, info)
     def try_load_module(self, config, section, folder=None):
@@ -199,19 +199,19 @@ class Printer:
                     return
                 cb()
         except (self.config_error, pins.error) as e:
-            self.logger.exception("Config error")
+            logging.exception("Config error")
             self._set_state("%s%s" % (str(e), message_restart))
             return
         except msgproto.error as e:
-            self.logger.exception("Protocol error")
+            logging.exception("Protocol error")
             self._set_state("%s%s" % (str(e), message_protocol_error))
             return
         except mcu.error as e:
-            self.logger.exception("MCU error during connect")
+            logging.exception("MCU error during connect")
             self._set_state("%s%s" % (str(e), message_mcu_connect_error))
             return
         except Exception as e:
-            self.logger.exception("Unhandled exception during connect")
+            logging.exception("Unhandled exception during connect")
             self._set_state("Internal error during connect: %s\n%s" % (
                 str(e), message_restart,))
             return
@@ -228,13 +228,13 @@ class Printer:
     def run(self):
         systime = time.time()
         monotime = self.reactor.monotonic()
-        self.logger.info("Start printer at %s (%.1f %.1f)",
+        logging.info("Start printer at %s (%.1f %.1f)",
                      time.asctime(time.localtime(systime)), systime, monotime)
         # Enter main reactor loop
         try:
             self.reactor.run()
         except:
-            self.logger.exception("Unhandled exception during run")
+            logging.exception("Unhandled exception during run")
             return "error_exit"
         # Check restart flags
         run_result = self.run_result
@@ -244,7 +244,7 @@ class Printer:
                     m.microcontroller_restart()
             self.send_event("klippy:disconnect")
         except:
-            self.logger.exception("Unhandled exception during post run")
+            logging.exception("Unhandled exception during post run")
         return run_result
     def invoke_shutdown(self, msg):
         if self.is_shutdown:
@@ -326,6 +326,7 @@ def main():
         bglogger = queuelogger.setup_bg_logging(options.logfile, debuglevel)
     else:
         logging.basicConfig(level=debuglevel, format=queuelogger.LOGFORMAT)
+    logging.getLogger().name = 'klippy'
     logging.getLogger().setLevel(debuglevel)
     logging.info("Starting Klippy...")
     start_args['software_version'] = util.get_git_version()

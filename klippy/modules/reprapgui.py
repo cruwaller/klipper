@@ -551,7 +551,7 @@ class RepRapGuiModule(object):
         global _PARENT
         _PARENT = self
         self.printer = printer = config.get_printer()
-        self.logger = printer.logger.getChild("DuetWebControl")
+        self.logger = printer.get_logger("DWC")
         self.logger_tornado = self.logger.getChild("tornado")
         self.logger_tornado.setLevel(logging.INFO)
         self.gcode = printer.lookup_object('gcode')

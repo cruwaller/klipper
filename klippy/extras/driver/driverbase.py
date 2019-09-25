@@ -19,8 +19,12 @@ class DriverBase(object):
         self.__has_step_dir_pins = has_step_dir_pins
         self.__has_endstop = has_endstop
         self.printer = config.get_printer()
-        self.name = name = config.get_name().split()[-1]
-        self.logger = self.printer.logger.getChild("driver.%s" % name)
+        self.name = logger_name = config.get_name().split()[-1]
+        stepper_name = stepper_config.get_name()
+        if logger_name == stepper_name:
+            logger_name = 'driver'
+        self.logger = self.printer.get_logger("%s.%s" % (
+            stepper_name, logger_name))
         microsteps = stepper_config.getfloat('microsteps',
             default=None, above=0.)
         self.microsteps = config.getint('microsteps',
@@ -38,7 +42,7 @@ class DriverBase(object):
             if self.microsteps is None:
                 raise config.error('Cannot detect proper step distance!!')
             self.calculate_steps(stepper_config)
-        self.logger.info("Driver '%s' base loaded", self.name)
+        self.logger.debug("Driver '%s' base loaded", self.name)
         self.logger.debug("step_dist:%s, inv_step_dist:%s" % (self.step_dist,
             self.inv_step_dist))
     def calculate_steps(self, config):
@@ -140,14 +144,14 @@ class TmcSpiDriver(SpiDriver):
         cmds = ["DRV_STATUS", "DRV_CURRENT", "DRV_STALLGUARD"]
         for cmd in cmds:
             gcode.register_mux_command(
-                cmd, "DRIVER", self.name.upper(),
+                cmd, "DRIVER", self.name,
                 getattr(self, 'cmd_' + cmd),
                 desc=getattr(self, 'cmd_' + cmd + '_help', None))
         gcode.register_mux_command(
-            "DUMP_TMC", "DRIVER", self.name.upper(),
+            "DUMP_TMC", "DRIVER", self.name,
             self.cmd_DUMP_TMC, desc=self.cmd_DUMP_TMC_help)
         gcode.register_mux_command(
-            "INIT_TMC", "DRIVER", self.name.upper(),
+            "INIT_TMC", "DRIVER", self.name,
             self.cmd_INIT_TMC, desc=self.cmd_INIT_TMC_help)
     def handle_ready(self):
         if not self.mcu.is_shutdown():

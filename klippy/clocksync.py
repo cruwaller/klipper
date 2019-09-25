@@ -29,8 +29,7 @@ class ClockSync:
         self.prediction_variance = 0.
         self.last_prediction_time = 0.
     def setLogger(self, logger):
-        if logger is not None:
-            self.logger = logger
+        self.logger = logger.getChild('clocksync')
     def connect(self, serial):
         self.serial = serial
         self.mcu_freq = serial.msgparser.get_constant_float('CLOCK_FREQ')
@@ -174,9 +173,6 @@ class SecondarySync(ClockSync):
         self.main_sync = main_sync
         self.clock_adj = (0., 1.)
         self.last_sync_time = 0.
-    def setLogger(self, logger):
-        if logger is not None:
-            self.logger = logger
     def connect(self, serial):
         ClockSync.connect(self, serial)
         self.clock_adj = (0., self.mcu_freq)

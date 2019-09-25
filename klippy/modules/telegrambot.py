@@ -28,7 +28,7 @@ class TelegramModule(object):
         printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
         printer.register_event_handler("klippy:halt", self._handle_shutdown)
         printer.register_event_handler("klippy:disconnect", self._handle_disconnect)
-        self.logger = printer.logger.getChild("telegram")
+        self.logger = printer.get_logger("telegram")
         # self.logger.setLevel(_TELEGRAM_LOG_LEVEL)
         self.gcode = printer.lookup_object('gcode')
         self.toolhead = printer.lookup_object('toolhead')

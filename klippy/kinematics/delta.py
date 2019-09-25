@@ -14,7 +14,7 @@ class DeltaKinematics:
     def __init__(self, toolhead, config):
         self.toolhead = toolhead
         self.printer = config.get_printer()
-        self.logger = self.printer.logger.getChild(self.name)
+        self.logger = self.printer.get_logger(self.name)
         # Setup tower rails
         stepper_configs = [config.getsection('stepper_' + a) for a in 'abc']
         rail_a = stepper.PrinterRail(

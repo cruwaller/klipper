@@ -10,7 +10,7 @@ class CartKinematics:
     name = "cartesian"
     def __init__(self, toolhead, config):
         self.printer = config.get_printer()
-        self.logger = self.printer.logger.getChild(self.name)
+        self.logger = self.printer.get_logger(self.name)
         self.toolhead = toolhead
         # Setup axis rails
         self.rails = [stepper.LookupMultiRail(config.getsection('stepper_' + n))

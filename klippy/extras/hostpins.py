@@ -233,7 +233,7 @@ class HostPins(object):
         self.printer = printer = config.get_printer()
         printer.lookup_object('pins').register_chip('host', self)
         self.config_error = printer.config_error
-        self.logger = printer.logger.getChild("hostpins")
+        self.logger = printer.get_logger("hostpins")
         # BOARD = physical pin number in pinstripe
         # BCM   = Broadcom's chip pin number
         GPIO.setmode(GPIO.BOARD)
