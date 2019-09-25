@@ -99,7 +99,9 @@ class GCodeParser:
         if desc is not None:
             self.gcode_help[cmd] = desc
     def get_command_handler(self, cmd):
-        return self.ready_gcode_handlers.get(cmd, None)
+        if cmd in self.ready_gcode_handlers:
+            return self.ready_gcode_handlers.get(cmd)
+        return self.base_gcode_handlers.get(cmd, None)
     def register_mux_command(self, cmd, key, value, func, desc=None, when_not_ready=False):
         prev = self.mux_commands.get(cmd)
         if prev is None:
@@ -223,7 +225,7 @@ class GCodeParser:
                 self.speed_factor, self._get_extrude_factor(), self.speed))
         self.logger.info("\n".join(out))
     # Parse input into commands
-    args_r = re.compile('([A-Z_]+|[A-Z*/])')
+    args_r = re.compile('([A-Z_]+|[A-Z*/"])')
     def _process_commands(self, commands, need_ack=True):
         for line in commands:
             # Ignore comments and leading/trailing spaces
