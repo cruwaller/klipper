@@ -153,7 +153,7 @@ class TMC2660CurrentHelper:
 
         gcode = self.printer.lookup_object("gcode")
         gcode.register_mux_command(
-            "SET_TMC_CURRENT", "STEPPER", self.name.upper(),
+            "SET_TMC_CURRENT", "STEPPER", self.name,
             self.cmd_SET_TMC_CURRENT, desc=self.cmd_SET_TMC_CURRENT_help)
 
     def _calc_current_bits(self, current, vsense):

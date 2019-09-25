@@ -184,16 +184,16 @@ class AS5047D:
         # Register gcode commands
         self.gcode = self.printer.lookup_object("gcode")
         self.gcode.register_mux_command(
-            "ENCODER_DUMP", "NAME", self.name.upper(),
+            "ENCODER_DUMP", "NAME", self.name,
             self.cmd_DUMP, desc=self.cmd_DUMP_help)
         self.gcode.register_mux_command(
-            "ENCODER_ERROR", "NAME", self.name.upper(),
+            "ENCODER_ERROR", "NAME", self.name,
             self.cmd_ERROR, desc=self.cmd_ERROR_help)
         self.gcode.register_mux_command(
-            "ENCODER_DIAG", "NAME", self.name.upper(),
+            "ENCODER_DIAG", "NAME", self.name,
             self.cmd_DIAG, desc=self.cmd_DIAG_help)
         self.gcode.register_mux_command(
-            "ENCODER_POS", "NAME", self.name.upper(),
+            "ENCODER_POS", "NAME", self.name,
             self.cmd_POS, desc=self.cmd_POS_help)
     # ============ GCODE   ===============
     cmd_DUMP_help = "ENCODER_DUMP NAME="
