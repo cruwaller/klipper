@@ -406,7 +406,7 @@ class GCodeParser:
         r'\s*(?:[#*;].*)?$')
     def _get_extended_params(self, params):
         m = self.extended_r.match(params['#original'])
-        if m is None:
+        if m is None or params["#command"] == 'ECHO':
             # Not an "extended" command
             return params
         eargs = m.group('args')
@@ -512,7 +512,7 @@ class GCodeParser:
             return
         e = self.printer.extruder_get(index, None)
         if e is None:
-            raise self.error("Extruder %d not configured" % (index,))
+            raise self.error("Extruder %s not configured" % (index,))
         if self.extruder is e:
             return
         if self.extruder is not None:
