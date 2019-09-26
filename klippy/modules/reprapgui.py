@@ -694,7 +694,7 @@ class RepRapGuiModule(object):
                 resp = resp.replace("ok", "")
             if self.store_resp or "Error:" in resp or "Warning:" in resp:
                 self.append_gcode_resp(resp)
-            self.resp_rcvd = True
+            # self.resp_rcvd = True
         self.resp = ""
     def append_gcode_resp(self, msg):
         self.gcode_resps.append(msg)
