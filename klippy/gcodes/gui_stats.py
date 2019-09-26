@@ -66,7 +66,9 @@ class GuiStats:
         self.gcode.respond(dump)
 
     def cmd_GUISTATS_GET_SD_INFO(self, params):
-        dump = json.dumps(self.sd.get_status(0, True))
+        dump = "virtual sd is not available"
+        if self.sd is not None:
+            dump = json.dumps(self.sd.get_status(0, True))
         self.gcode.respond(dump)
 
     def cmd_GUISTATS_AUTO_REPORT(self, params):
@@ -376,7 +378,9 @@ class GuiStats:
                 warmup_time = printing_time
 
             # Print time estimations
-            progress = self.sd.get_progress()
+            progress = 0.
+            if self.sd is not None:
+                progress = self.sd.get_progress()
             remaining_time_file = 0.
             if progress > 0:
                 remaining_time_file = (printing_time / progress) - printing_time
