@@ -93,25 +93,26 @@ def analyse_gcode_file(filepath):
                         elif "firstLayerHeightPercentage" in line:
                             parts = build_info_r.split(line)
                             firstLayerHeightPercentage = float(parts[1]) / 100.
+
                     elif slicer in ["Slic3r", "PrusaSlicer"]:
-                        if "filament used" in line:
+                        if "; filament used" in line:
                             if "mm" in line:
                                 parts = build_info_r.split(line)
                                 info["filament"].append(float(parts[1]))
                             elif "cm3" in line:
                                 # No support at the moment
                                 pass
-                        elif "first_layer_height" in line:
+                        elif "; first_layer_height" in line:
                             # first_layer_height = 100%
                             parts = build_info_r.split(line)
                             firstLayerHeight = float(parts[1])
                             if "%" in line:
                                 firstLayerHeightPercentage = firstLayerHeight / 100.
                                 firstLayerHeight = None
-                        elif "layer_height" in line:
+                        elif "; layer_height" in line:
                             parts = build_info_r.split(line)
                             layerHeight = float(parts[1])
-                        elif "estimated printing time" in line:
+                        elif "; estimated printing time" in line:
                             buildTime = 0.
                             parts = line.split("=", 1)
                             # time format is 12h 23m 19s
@@ -125,6 +126,7 @@ def analyse_gcode_file(filepath):
                             elif "silent" in parts[0]:
                                 # No support at the moment
                                 pass
+
                     elif slicer is "Cura":
                         if "Filament used" in line:
                             parts = build_info_r.split(line)
@@ -140,6 +142,7 @@ def analyse_gcode_file(filepath):
                         elif "z_layer_height_mm" in line:
                             parts = build_info_r.split(line)
                             layerHeight = float(parts[1])
+
                     elif slicer is "KISSlicer":
                         if ";    Ext " in line:
                             parts = build_info_r.split(line)
@@ -150,6 +153,7 @@ def analyse_gcode_file(filepath):
                         elif "layer_thickness_mm" in line:
                             parts = build_info_r.split(line)
                             layerHeight = float(parts[1])
+
                     elif slicer is "CraftWare":
                         # encoded settings in gcode file, need to extract....
                         pass
@@ -188,11 +192,14 @@ def analyse_gcode_file(filepath):
                         absolute_coord = False
 
             info["height"] = last_position
-            # first layer height
+            # layer height
             if layerHeight is not None:
                 info["layerHeight"] = float("%.3f" % layerHeight)
-            if layerHeight is not None and firstLayerHeightPercentage is not None:
-                info["firstLayerHeight"] = float("%.3f" % (layerHeight * firstLayerHeightPercentage))
+            # first layer height
+            if (layerHeight is not None and
+                    firstLayerHeightPercentage is not None):
+                info["firstLayerHeight"] = float("%.3f" % (
+                        layerHeight * firstLayerHeightPercentage))
             if firstLayerHeight is not None:
                 info["firstLayerHeight"] = float("%.3f" % firstLayerHeight)
     except (IOError, ParseError) as err:
