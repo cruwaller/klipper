@@ -841,3 +841,5 @@ class GCodeParser:
             if cmd in self.gcode_help:
                 cmdhelp.append("%-10s: %s" % (cmd, self.gcode_help[cmd]))
         self.respond_info("\n".join(cmdhelp), log=False)
+    def get_temp_str(self, eventtime):
+        return self._get_temp(eventtime)

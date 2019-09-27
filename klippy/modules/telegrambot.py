@@ -19,26 +19,25 @@ _TELEGRAM_BOT = None
 
 class TelegramModule(object):
     bot = updater = None
-    state = "initiated"
     def __init__(self, config):
         global _TELEGRAM_BOT
+        self.state = "disconnect"
         self.printer = printer = config.get_printer()
+        self.logger = printer.get_logger("telegram")
+        self.gcode = printer.lookup_object('gcode')
+        self.toolhead = printer.lookup_object('toolhead')
+        self.sd = printer.try_load_module(config, "virtual_sdcard")
+        printer.register_event_handler('vsd:status', self.sd_print_cb)
         printer.register_event_handler("klippy:ready", self._handle_ready)
         printer.register_event_handler("klippy:connect", self._handle_connect)
         printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
         printer.register_event_handler("klippy:halt", self._handle_shutdown)
         printer.register_event_handler("klippy:disconnect", self._handle_disconnect)
-        self.logger = printer.get_logger("telegram")
         # self.logger.setLevel(_TELEGRAM_LOG_LEVEL)
-        self.gcode = printer.lookup_object('gcode')
-        self.toolhead = printer.lookup_object('toolhead')
-        printer.try_load_module(config, "virtual_sdcard")
-        self.sd = printer.lookup_object('virtual_sdcard')
-        self.sd.register_done_cb(self.sd_print_cb)
-        self.camera = printer.try_load_module(
-            config, "videocam", folder="modules")
-        self.name = config.getsection('printer').get(
-            'name', default="Klipper printer")
+        self.camera = printer.try_load_module(config, "videocam",
+                                              folder="modules")
+        self.name = config.getsection('printer').get('name',
+                                                     default="Klipper printer")
         # Get telegram token key
         self.token = config.get('token')
         self.chat_ids = []
@@ -122,6 +121,9 @@ class TelegramModule(object):
         elif status == 'error':
             self.__send_message("Print failed")
             self.__send_status()
+        elif status == "stop":
+            self.__send_message("Print stopped")
+            self.__send_status()
         elif status == 'done':
             self.__send_message("Print finished.")
             self.gcostat = "finished"
@@ -157,20 +159,21 @@ class TelegramModule(object):
             chat_ids = self.chat_ids
         for _id in chat_ids:
             sd = self.sd
-            temperature = self.gcode.get_temp(
-                self.printer.get_reactor().monotonic())
-            status = ['Firmware state is "%s"' % self.state,
-                      '  temperatures : %s' % temperature]
-            if self.gcof is None:
-                status.append("  Not printing.")
-            else:
-                if self.gcostat == "finished":
-                    progress = 100.
+            status = ['Firmware state is "%s"' % self.state]
+            if self.state != "disconnect":
+                temperature = self.gcode.get_temp_str(
+                    self.printer.get_reactor().monotonic())
+                status.append('  temperatures : %s' % temperature)
+                if self.gcof is None:
+                    status.append("  Not printing.")
                 else:
-                    progress = sd.get_progress() * 100.
-                status.append("  File '%s':" % os.path.basename(self.gcof))
-                status.append('    progress : %.1f%%' % (progress,))
-                status.append('    state    : %s' % self.gcostat)
+                    if self.gcostat == "finished":
+                        progress = 100.
+                    else:
+                        progress = sd.get_progress() * 100.
+                    status.append("  File '%s':" % os.path.basename(self.gcof))
+                    status.append('    progress : %.1f%%' % (progress,))
+                    status.append('    state    : %s' % self.gcostat)
             self.__send_photo(_id)
             self.__send_message("\n".join(status), chat_id=_id)
     @staticmethod
