@@ -214,7 +214,7 @@ class GuiStats:
         _extrs   = self.printer.extruder_get()
         kinematic = toolhead.get_kinematics()
         homed_axes = [0] * 3
-        if getattr(kinematic, "is_homed", None) is not None:
+        if hasattr(kinematic, "is_homed"):
             homed_axes = kinematic.is_homed()
 
         atx_pwr = pheater.lookup_heater('atx_power', None)
