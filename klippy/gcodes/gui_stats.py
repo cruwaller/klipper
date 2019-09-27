@@ -1,6 +1,6 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
-import time, util, json
+import time, util, json, math
 
 class GuiStats:
     def __init__(self, config):
@@ -144,40 +144,49 @@ class GuiStats:
     def get_config_stats(self):
         printer = self.printer
         _extrs = printer.extruder_get()
-        toolhead = self.toolhead
-        kinematic = toolhead.get_kinematics()
-        rails = kinematic.get_rails()
+        kinematic = self.toolhead.get_kinematics()
         motor_off_time = printer.lookup_object('idle_timeout').idle_timeout
         currents = []
         max_feedrates = []
         accelerations = []
         axisMins = []
         axisMaxes = []
-        for rail in rails:
+        axisName = []
+        # read rails
+        for limit in kinematic.get_max_limits():
+            rail = limit['rail']
+            accel = limit['acc']
+            velocity = limit['velocity']
             _min, _max = rail.get_range()
             steppers = rail.get_steppers()
-            for idx, stp in enumerate(steppers):
+            for stp in steppers:
+                max_feedrates.append(int(velocity))
+                accelerations.append(int(accel))
                 axisMins.append(_min)
                 axisMaxes.append(_max)
-                get_current = getattr(stp.driver, "get_current", None)
+                axisName.append(stp.get_name(short=True))
+                get_current = getattr(stp.get_driver(), "get_current", None)
                 if get_current is not None:
                     currents.append(int(get_current()))
                 else:
                     currents.append(-1)
-                _vel, _accel = stp.get_max_velocity()
-                max_feedrates.append(int(_vel))
-                accelerations.append(int(_accel))
-        for idx, e in _extrs.items():
-            _vel, _accel = e.get_max_velocity()
-            max_feedrates.append(int(_vel))
-            accelerations.append(int(_accel))
-            get_current = getattr(e.stepper.driver, "get_current", None)
+        # read extrudersl
+        for e in _extrs.values():
+            limits = e.get_max_e_limits()
+            max_feedrates.append(int(limits['velocity']))
+            accelerations.append(int(limits['acc']))
+            axisMins.append(0)
+            axisMaxes.append(limits['max_e_dist'])
+            axisName.append("e%s" % e.get_index())
+            get_current = getattr(limits['stepper'].get_driver(),
+                                  "get_current", None)
             if get_current is not None:
                 currents.append(int(get_current()))
             else:
                 currents.append(-1)
         config = {
             "err"                 : 0,
+            "axisNames"           : axisName,
             "axisMins"            : axisMins,
             "axisMaxes"           : axisMaxes,
             "accelerations"       : accelerations,
@@ -187,7 +196,7 @@ class GuiStats:
             "firmwareVersion"     : self.sw_version,
             "idleCurrentFactor"   : 0.0,
             "idleTimeout"         : motor_off_time,
-            "minFeedrates"        : [0.00] * (len(max_feedrates) + len(_extrs)),
+            "minFeedrates"        : [0.00] * len(max_feedrates),
             "maxFeedrates"        : max_feedrates
             }
         return config
@@ -195,36 +204,41 @@ class GuiStats:
     def get_status_stats(self, _type=1):
         pheater = self.printer.lookup_object('heater')
         toolhead = self.toolhead
-        states = {
-            False : 0,
-            True  : 2
-        }
+        # STATES = 0: off, 1: standby, 2: active, 3: fault (same for bed)
+        states = {False : 0, True  : 2}
         curr_extruder = toolhead.get_extruder()
         curr_pos = toolhead.get_position()
         fans     = [ fan.last_fan_value * 100.0 for n, fan in
                      self.printer.lookup_objects("fan") ]
         heatbed  = pheater.lookup_heater('heater bed', None)
-        #_heaters = pheater.get_heaters().values()
-        ##total_htrs = len(_heaters) + 1
         _extrs   = self.printer.extruder_get()
+        kinematic = toolhead.get_kinematics()
+        homed_axes = [0] * 3
+        if getattr(kinematic, "is_homed", None) is not None:
+            homed_axes = kinematic.is_homed()
+
+        atx_pwr = pheater.lookup_heater('atx_power', None)
+        atx_state = atx_pwr.get_state() if atx_pwr else 0
+
+        babysteps = self.babysteps.babysteps if self.babysteps else 0.
 
         # _type == 1 is always included
         status_block = {
             "status": self.curr_state,
             "seq": 0,
             "coords": {
-                "axesHomed": toolhead.kin.is_homed(),
-                "extr": [e.extrude_pos
-                         for i, e in _extrs.items()],
+                "axesHomed": homed_axes,
+                "extr": [e.extrude_pos for i, e in _extrs.items()],
                 "xyz": curr_pos[:3],
             },
             "currentTool": curr_extruder.get_index(),
             "params": {
-                "atxPower": 0,
+                "atxPower": atx_state,
                 "fanPercent": fans,
                 "speedFactor": self.gcode.speed_factor * 60. * 100.0,
-                "extrFactors": [e.get_extrude_factor(procent=True) for i, e in _extrs.items()],
-                "babystep": float("%.3f" % self.babysteps.babysteps),
+                "extrFactors": [e.get_extrude_factor(procent=True)
+                                for i, e in _extrs.items()],
+                "babystep": float("%.3f" % babysteps),
             },
             "sensors": {
                 # "fanRPM": 0,
@@ -249,31 +263,31 @@ class GuiStats:
             "active"  : [],
             "standby" : [[ .0 ]] * num_extruders
         }
-        for name, extr in _extrs.items():
+        for extr in _extrs.values():
             htr = extr.get_heater()
-            status = htr.get_status(0)
+            temp, target = htr.get_temp(0)
             index = extr.get_index() + heatbed_add
-            htr_current[index] = float("%.2f" % status['temperature'])
-            htr_state[index] = states[(status['target'] > 0.0)]
-            extr_states['active'].append([float("%.2f" % htr.target_temp)])
+            htr_current[index] = float("%.2f" % temp)
+            htr_state[index] = states[(target > 0.0)]
+            extr_states['active'].append([float("%.2f" % target)])
         # Tools target temps
         status_block["temps"].update({'tools': extr_states})
 
         if heatbed is not None:
-            status = heatbed.get_status(0)
-            htr_current[0] = float("%.2f" % status['temperature'])
-            htr_state[0] = states[(status['target'] > 0.0)]
+            temp, target = heatbed.get_temp(0)
+            htr_current[0] = float("%.2f" % temp)
+            htr_state[0] = states[(target > 0.0)]
             # Heatbed target temp
             status_block["temps"].update( {
                 "bed": {
-                    "active"  : float("%.2f" % status['target']),
+                    "active"  : float("%.2f" % target),
                     "heater"  : 0,
                 },
             } )
 
         chamber = self.printer.lookup_object('chamber', default=None)
         if chamber is not None:
-            current, target = chamber.get_temp()
+            current, target = chamber.get_temp(0)
             status_block["temps"].update( {
                 "chamber": {
                     "active"  : float("%.2f" % target),
@@ -282,10 +296,10 @@ class GuiStats:
             } )
             htr_current.append(float("%.2f" % current))
             htr_state.append(states[chamber.is_fan_active()])
-        '''
+
         cabinet = self.printer.lookup_object('cabinet', default=None)
         if cabinet is not None:
-            current, target = cabinet.get_temp()
+            current, target = cabinet.get_temp(0)
             status_block["temps"].update( {
                 "cabinet": {
                     "active"  : float("%.2f" % target),
@@ -294,11 +308,10 @@ class GuiStats:
             } )
             htr_current.append(current)
             htr_state.append(states[target > 0.0])
-        '''
 
         status_block["temps"].update( {
             "current" : htr_current,
-            "state"   : htr_state, # 0: off, 1: standby, 2: active, 3: fault (same for bed)
+            "state"   : htr_state,
         } )
 
         if _type >= 2:
@@ -310,16 +323,25 @@ class GuiStats:
                 cold_temp = heater.min_extrude_temp
                 if heater.min_extrude_temp_disabled:
                     cold_temp = 0.0
+
+            # endstop states
             endstops_hit = 0
-            for idx, state in enumerate(toolhead.get_kinematics().is_homed()):
-                endstops_hit |= (state << idx)
+            if any(homed_axes):
+                index = 0
+                for home_state, rail in zip(homed_axes, kinematic.get_rails()):
+                    num_steppers = len(rail.get_steppers())
+                    if home_state and num_steppers:
+                        endstops_hit |= (
+                                (int(math.pow(2, num_steppers)) - 1) << index)
+                    index += num_steppers
+
             status_block.update( {
                 "coldExtrudeTemp" : cold_temp,
                 "coldRetractTemp" : cold_temp,
                 "tempLimit"       : max_temp,
                 "endstops"        : endstops_hit,
                 "firmwareName"    : "Klipper",
-                "geometry"        : toolhead.kin.name, # cartesian, coreXY, delta
+                "geometry"        : kinematic.name,   # cartesian, coreXY, delta
                 "axes"            : 3,                # Subject to deprecation - may be dropped in RRF 1.20
                 "volumes"         : 1,                # Num of SD cards
                 "mountedVolumes"  : 1,                # Bitmap of all mounted volumes

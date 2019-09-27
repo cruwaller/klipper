@@ -279,7 +279,8 @@ function updateStatus() {
 
 			// Endstops
 			if (status.hasOwnProperty("endstops")) {
-				for(var i = 0; i <= maxDrives; i++) {
+				var drive_count = $('#tr_drives tbody tr').length - 1; // remove header
+				for(var i = 0; i <= drive_count; i++) {
 					var displayText;
 					if ((status.endstops & (1 << i)) != 0) {
 						displayText = T("Yes");
@@ -1171,8 +1172,30 @@ function getConfigResponse() {
 				_version = _version + " (" + response.firmwareDate + ")";
 			}
 			$("#firmware_version").text(_version);
+			
+			// Check amount of drives
+			var rowCount = $('#tr_drives tbody tr').length - 1; // remove header
+			if (rowCount < response.accelerations.length) {
+				// Add missing drives
+				for (var drive = 0; drive < response.accelerations.length; drive++) {
+					$('#tr_drives > tbody:last-child').append(
+						'<tr id="tr_drive_' + drive + '">' +
+						'<td>' + drive + '</td>'+
+						'<td>n/a</td>' +
+						'<td>n/a</td>' +
+						'<td>n/a</td>' +
+						'<td class="hidden-xs">n/a</td>' +
+						'<td>n/a</td>' +
+						'<td class="hidden-xs">n/a</td>' +
+						'<td class="hidden-xs hidden-sm">n/a</td>' +
+						'</tr>');
+				}
+			}
 
 			for(var drive = 0; drive < response.accelerations.length; drive++) {
+				if (drive < response.axisNames.length) {
+					$("#tr_drive_" + drive + " > td:nth-child(1)").text(response.axisNames[drive]);
+				}
 				if (drive < response.axisMins.length) {
 					$("#tr_drive_" + drive + " > td:nth-child(3)").text(T("{0} mm", response.axisMins[drive]));
 				}
@@ -1183,7 +1206,9 @@ function getConfigResponse() {
 				$("#tr_drive_" + drive + " > td:nth-child(6)").text(T("{0} mm/s", response.maxFeedrates[drive]));
 				$("#tr_drive_" + drive + " > td:nth-child(7)").text(T("{0} mm/s²", response.accelerations[drive]));
 				if (response.hasOwnProperty("currents")) {
-					$("#tr_drive_" + drive + " > td:nth-child(8)").text(T("{0} mA", response.currents[drive]));
+					if (response.currents[drive] >= 0) {
+						$("#tr_drive_" + drive + " > td:nth-child(8)").text(T("{0} mA", response.currents[drive]));
+					}
 				}
 			}
 			if (response.hasOwnProperty("idleCurrentFactor")) {

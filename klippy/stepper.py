@@ -72,7 +72,6 @@ def lookup_endstop_pin(ppins, pin):
 class PrinterStepper:
     def __init__(self, config, logger=None):
         self.driver = self.mcu_stepper = None
-        self.max_velocity = self.max_accel = 0
         printer = config.get_printer()
         self.name = config.get_name()
         if logger is None:
@@ -130,10 +129,7 @@ class PrinterStepper:
         # Calculate the time it takes to travel a distance with constant accel
         time_offset = start_velocity / accel
         return math.sqrt(2. * dist / accel + time_offset**2) - time_offset
-    def set_max_jerk(self, max_halt_velocity, max_accel, max_velocity=0):
-        if max_velocity > 0:
-            self.max_velocity = max_velocity
-        self.max_accel = max_accel
+    def set_max_jerk(self, max_halt_velocity, max_accel):
         # Calculate the firmware's maximum halt interval time
         step_dist = self.get_step_dist()
         last_step_time = self._dist_to_time(
@@ -148,8 +144,6 @@ class PrinterStepper:
         self.need_motor_enable = not enable
     def is_motor_enabled(self):
         return not self.need_motor_enable
-    def get_max_velocity(self):
-        return self.max_velocity, self.max_accel
     def get_driver(self):
         return self.driver
     def has_driver_endstop(self):
@@ -338,9 +332,9 @@ class PrinterRail:
     def setup_itersolve(self, alloc_func, *params):
         for stepper in self.steppers:
             stepper.setup_itersolve(alloc_func, *params)
-    def set_max_jerk(self, max_halt_velocity, max_accel, max_velocity=0):
+    def set_max_jerk(self, max_halt_velocity, max_accel):
         for stepper in self.steppers:
-            stepper.set_max_jerk(max_halt_velocity, max_accel, max_velocity)
+            stepper.set_max_jerk(max_halt_velocity, max_accel)
     def set_commanded_position(self, pos):
         for stepper in self.steppers:
             stepper.set_commanded_position(pos)

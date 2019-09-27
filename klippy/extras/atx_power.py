@@ -18,6 +18,8 @@ class AtxPower(object):
             gcode.register_command(cmd, func, True, desc)
             for a in getattr(self, 'cmd_' + cmd + '_aliases', []):
                 gcode.register_command(a, func, True)
+    def get_state(self):
+        return self.state
     def stats(self, eventtime):
         return False, "atx_state=%d" % (self.state,)
     cmd_ATX_ON_aliases = ['M80']

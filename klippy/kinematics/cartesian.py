@@ -24,6 +24,8 @@ class CartKinematics:
         self.max_z_accel = config.getfloat(
             'max_z_accel', max_accel, above=0., maxval=max_accel)
         self.need_motor_enable = True
+        self.max_velocity = max_velocity
+        self.max_accel = max_accel
         if toolhead.allow_move_wo_homing is False:
             self.limits = [(1.0, -1.0)] * 3
         else:
@@ -31,10 +33,10 @@ class CartKinematics:
             self.limits = [ rail.get_range() for rail in self.rails ]
         # Setup stepper max halt velocity
         max_halt_velocity = toolhead.get_max_axis_halt()
-        self.rails[0].set_max_jerk(max_halt_velocity, max_accel, max_velocity)
-        self.rails[1].set_max_jerk(max_halt_velocity, max_accel, max_velocity)
+        self.rails[0].set_max_jerk(max_halt_velocity, max_accel)
+        self.rails[1].set_max_jerk(max_halt_velocity, max_accel)
         self.rails[2].set_max_jerk(
-            min(max_halt_velocity, self.max_z_velocity), max_accel, self.max_z_velocity)
+            min(max_halt_velocity, self.max_z_velocity), max_accel)
         # Check for dual carriage support
         self.dual_carriage_axis = None
         self.dual_carriage_rails = []
@@ -50,8 +52,6 @@ class CartKinematics:
             self.printer.lookup_object('gcode').register_command(
                 'SET_DUAL_CARRIAGE', self.cmd_SET_DUAL_CARRIAGE,
                 desc=self.cmd_SET_DUAL_CARRIAGE_help)
-    def get_rails(self):
-        return list(self.rails)
     def get_steppers(self, flags=""):
         if flags == "Z":
             return self.rails[2].get_steppers()
@@ -178,6 +178,17 @@ class CartKinematics:
                 if self.limits[i][0] > self.limits[i][1]:
                     ret[i] = 0
         return ret
+    def get_rails(self):
+        return list(self.rails)
+    def get_max_limits(self):
+        return {
+            0: {'rail': self.rails[0],
+                'acc': self.max_accel, 'velocity': self.max_velocity},
+            1: {'rail': self.rails[1],
+                'acc': self.max_accel, 'velocity': self.max_velocity},
+            2: {'rail': self.rails[2],
+                'acc': self.max_z_accel, 'velocity': self.max_z_velocity},
+        }
 
 def load_kinematics(toolhead, config):
     return CartKinematics(toolhead, config)

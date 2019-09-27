@@ -225,7 +225,7 @@ class rrHandler(tornado.web.RequestHandler):
             # 0 = success, 1 = wrong passwd, 2 = No more HTTP sessions available
             respdata["sessionTimeout"] = 30000 # ms
             # duetwifi10, duetethernet10, radds15, alligator2, duet06, duet07, duet085, default: unknown
-            respdata["boardType"] = "unknown" # "radds15"
+            respdata["boardType"] = "klipper"
 
         # rr_disconnect
         elif "rr_disconnect" in path:
@@ -240,6 +240,9 @@ class rrHandler(tornado.web.RequestHandler):
             # get status from Klippy
             respdata["err"] = 0
             respdata.update(self.parent.gui_stats.get_status_stats(_type))
+            if self.parent.atx_state is not None:
+                # update ATX power state
+                respdata['params']['atxPower'] = int(self.parent.atx_state)
             respdata['seq'] += len(self.parent.gcode_resps)
 
         # rr_gcode?gcode=XXX
@@ -257,11 +260,13 @@ class rrHandler(tornado.web.RequestHandler):
                 resp = os.popen(self.parent.atx_on).read()
                 self.parent.append_gcode_resp(resp)
                 self.logger.info("ATX ON: %s" % resp)
+                self.parent.atx_state = True
             elif "M81" in gcode and self.parent.atx_off is not None:
                 # ATX OFF
                 resp = os.popen(self.parent.atx_off).read()
                 self.parent.append_gcode_resp(resp)
                 self.logger.info("ATX OFF: %s" % resp)
+                self.parent.atx_state = False
             elif "T-1" in gcode:
                 # ignore
                 pass
@@ -571,8 +576,11 @@ class RepRapGuiModule(object):
         self.camera = printer.try_load_module(
             config, "videocam", folder="modules")
         # - M80 / M81 ATX commands
+        self.atx_state = self.atx_off = None
         self.atx_on = config.get('atx_cmd_on', default=None)
-        self.atx_off = config.get('atx_cmd_off', default=None)
+        if self.atx_on:
+            self.atx_off = config.get('atx_cmd_off')
+            self.atx_state = False
         # ------------------------------
         # Create paths to virtual SD
         sd = printer.try_load_module(config, "virtual_sdcard")

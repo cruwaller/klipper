@@ -35,7 +35,7 @@ class DeltaKinematics:
         max_halt_velocity = toolhead.get_max_axis_halt() * SLOW_RATIO
         max_halt_accel = self.max_accel * SLOW_RATIO
         for rail in self.rails:
-            rail.set_max_jerk(max_halt_velocity, max_halt_accel, self.max_velocity)
+            rail.set_max_jerk(max_halt_velocity, max_halt_accel)
         # Read radius and arm lengths
         self.radius = radius = config.getfloat('delta_radius', above=0., default=None)
         if radius is None:
@@ -97,8 +97,6 @@ class DeltaKinematics:
         self.set_position([0., 0., 0.], ())
         if toolhead.allow_move_wo_homing is True:
             self.need_home = False
-    def get_rails(self):
-        return list(self.rails)
     def get_steppers(self, flags=""):
         return [s for rail in self.rails for s in rail.get_steppers()]
     def _actuator_to_cartesian(self, spos):
@@ -183,11 +181,23 @@ class DeltaKinematics:
             out['endstop_'+axis] = rail.get_homing_info().position_endstop
             out['stepdist_'+axis] = rail.get_steppers()[0].get_step_dist()
         return out
+
+    def get_rails(self):
+        return list(self.rails)
     def is_homed(self):
         ret = [1, 1, 1]
         if self.need_home is True:
             ret = [0, 0, 0]
         return ret
+    def get_max_limits(self):
+        return [
+            {'rail': self.rails[0],
+             'acc': self.max_accel, 'velocity': self.max_velocity},
+            {'rail': self.rails[1],
+             'acc': self.max_accel, 'velocity': self.max_velocity},
+            {'rail': self.rails[2],
+             'acc': self.max_accel, 'velocity': self.max_z_velocity},
+        ]
 
 def load_kinematics(toolhead, config):
     return DeltaKinematics(toolhead, config)
