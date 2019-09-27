@@ -1,6 +1,6 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
-import os, re
+import os, re, math
 import logging
 
 class ParseError(Exception):
@@ -17,7 +17,7 @@ def analyse_gcode_file(filepath):
         "layerHeight" : 0,
         "firstLayerHeight": 0,
         "filament" : [],
-        "buildTime" : 0
+        "buildTime" : 0,
     }
     if filepath is None:
         return info
@@ -38,8 +38,10 @@ def analyse_gcode_file(filepath):
                 line = f.readline().strip()
                 if "Simplify3D" in line: # S3D
                     slicer = "Simplify3D"
-                elif "Slic3r" in line or "slic3r" in line: # slic3r
+                elif "slic3r" in line.lower():
                     slicer = "Slic3r"
+                elif 'PrusaSlicer' in line:
+                    slicer = "PrusaSlicer"
                 elif ";Sliced by " in line: # ideaMaker
                     slicer = "ideaMaker"
                 elif "; KISSlicer" in line: # KISSlicer
@@ -64,7 +66,7 @@ def analyse_gcode_file(filepath):
             firstLayerHeight = None
             # read footer and find object height
             f.seek(0)
-            args_r = re.compile('([A-Z_]+|[A-Z*/])')
+            args_r = re.compile('([A-Z_]+|[A-Z*/"])')
             build_info_r = re.compile('([0-9\.]+)')
             for line in f:
                 line = line.strip()
@@ -91,10 +93,14 @@ def analyse_gcode_file(filepath):
                         elif "firstLayerHeightPercentage" in line:
                             parts = build_info_r.split(line)
                             firstLayerHeightPercentage = float(parts[1]) / 100.
-                    elif slicer is "Slic3r":
+                    elif slicer in ["Slic3r", "PrusaSlicer"]:
                         if "filament used" in line:
-                            parts = build_info_r.split(line)
-                            info["filament"].append(float(parts[1]))
+                            if "mm" in line:
+                                parts = build_info_r.split(line)
+                                info["filament"].append(float(parts[1]))
+                            elif "cm3" in line:
+                                # No support at the moment
+                                pass
                         elif "first_layer_height" in line:
                             # first_layer_height = 100%
                             parts = build_info_r.split(line)
@@ -105,6 +111,20 @@ def analyse_gcode_file(filepath):
                         elif "layer_height" in line:
                             parts = build_info_r.split(line)
                             layerHeight = float(parts[1])
+                        elif "estimated printing time" in line:
+                            buildTime = 0.
+                            parts = line.split("=", 1)
+                            # time format is 12h 23m 19s
+                            time_re = re.compile("\s*([0-9]+)[hmsHMS]\s*")
+                            time_parts = filter(None, time_re.split(parts[1]))
+                            time_parts.reverse()
+                            for count, time in enumerate(time_parts):
+                                buildTime += float(time) * math.pow(60., count)
+                            if "normal" in parts[0]:
+                                info["buildTime"] = buildTime
+                            elif "silent" in parts[0]:
+                                # No support at the moment
+                                pass
                     elif slicer is "Cura":
                         if "Filament used" in line:
                             parts = build_info_r.split(line)
@@ -142,9 +162,20 @@ def analyse_gcode_file(filepath):
                 parts = args_r.split(line.upper())[1:]
                 params = { parts[i]: parts[i+1].strip()
                            for i in range(0, len(parts), 2) }
+                if parts and parts[0] == 'N':
+                    # Skip line number at start of command
+                    del parts[:2]
+                if not parts:
+                    continue
                 # Find object height
                 if "G" in params:
-                    gnum = int(params['G'])
+                    try:
+                        gnum = int(params['G'])
+                    except ValueError as err:
+                        logging.error("GCode line erro: %s" % line)
+                        logging.error("GCode params: %s" % params)
+                        # not a G1 or G0 -> continue
+                        continue
                     if gnum == 0 or gnum == 1:
                         if "Z" in params:
                             if absolute_coord:
@@ -164,8 +195,18 @@ def analyse_gcode_file(filepath):
                 info["firstLayerHeight"] = float("%.3f" % (layerHeight * firstLayerHeightPercentage))
             if firstLayerHeight is not None:
                 info["firstLayerHeight"] = float("%.3f" % firstLayerHeight)
-    except (IOError, ParseError):
-        pass
+    except (IOError, ParseError) as err:
+        logging.error("Parsing error: '%s'" % err)
+    except ValueError as err:
+        logging.error("GCode file has an issue! '%s'" % err)
     ANALYSED_GCODE_FILES[filepath] = info
     # logging.info("PARSED: %s" % info)
     return info
+
+class GCodeAnalyzer:
+    def __init__(self, config):
+        pass
+
+
+def load_config(config):
+    return GCodeAnalyzer(config)
