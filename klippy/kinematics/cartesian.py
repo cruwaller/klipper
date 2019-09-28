@@ -181,14 +181,14 @@ class CartKinematics:
     def get_rails(self):
         return list(self.rails)
     def get_max_limits(self):
-        return {
-            0: {'rail': self.rails[0],
-                'acc': self.max_accel, 'velocity': self.max_velocity},
-            1: {'rail': self.rails[1],
-                'acc': self.max_accel, 'velocity': self.max_velocity},
-            2: {'rail': self.rails[2],
-                'acc': self.max_z_accel, 'velocity': self.max_z_velocity},
-        }
+        return [
+            {'rail': self.rails[0],
+             'acc': self.max_accel, 'velocity': self.max_velocity},
+            {'rail': self.rails[1],
+             'acc': self.max_accel, 'velocity': self.max_velocity},
+            {'rail': self.rails[2],
+             'acc': self.max_z_accel, 'velocity': self.max_z_velocity},
+        ]
 
 def load_kinematics(toolhead, config):
     return CartKinematics(toolhead, config)
