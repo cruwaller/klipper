@@ -476,7 +476,7 @@ class GCodeParser:
         print_time = self.toolhead.get_last_move_time()
         fan.set_speed(print_time, speed)
     # G-Code special command handlers
-    layer_r = re.compile(r'^.*;.*layer.*\s+([0-9]+).*([0-9]+\.[0-9]+).*', flags=re.IGNORECASE)
+    layer_r = re.compile('^.*;.*layer.*\s+([0-9]+).*\s+([0-9]+\.[0-9]+).*', flags=re.IGNORECASE)
     def cmd_default(self, params):
         if not self.is_printer_ready:
             self.respond_error(self.printer.get_state_message())
