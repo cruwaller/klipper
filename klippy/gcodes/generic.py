@@ -6,7 +6,8 @@ class GenericGcode:
     def __init__(self, config):
         self.printer = config.get_printer()
         gcode = self.printer.lookup_object('gcode')
-        for cmd in ['M1', 'M302', 'M851']:
+        for cmd in ['G29', 'G32', 'M1', 'M302', 'M561', 'M851',
+                    'QUERY_COMPENSATION']:
             wnr = getattr(self, 'cmd_' + cmd + '_when_not_ready', False)
             gcode.register_command(
                 cmd, getattr(self, 'cmd_' + cmd),
@@ -24,6 +25,41 @@ class GenericGcode:
         gcode.register_command('M999', gcode.cmd_FIRMWARE_RESTART,
                                when_not_ready = True,
                                desc = "Alias to FIRMWARE_RESTART")
+    def cmd_G29(self, params):
+        # wrap probe commands
+        gcode = self.printer.lookup_object('gcode')
+        type = gcode.get_int('S', params, 0)
+        if type == 1:
+            # load compensation bitmap from SD
+            gcode.run_script_from_command("BED_MESH_PROFILE LOAD=default\n")
+            return
+        elif type == 2:
+            # clean compensation bitmap
+            gcode.run_script_from_command("BED_MESH_CLEAR\n")
+            return
+        # do probing
+        gcode.run_script_from_command("BED_MESH_CALIBRATE\n")
+    def cmd_G32(self, params):
+        gcode = self.printer.lookup_object('gcode')
+        gcode.run_script_from_command("BED_MESH_CALIBRATE\n")
+    def cmd_M561(self, params):
+        # M561: Disable bed compensation
+        gcode = self.printer.lookup_object('gcode')
+        gcode.run_script_from_command("BED_MESH_CLEAR\n")
+    def cmd_QUERY_COMPENSATION(self, params):
+        out = []
+        bed_mesh = self.printer.lookup_object('bed_mesh', None)
+        calibrate = getattr(bed_mesh, "calibrate", None)
+        if calibrate is not None:
+            table = calibrate.get_probed_z_table()
+            if table is not None:
+                out.append("Bed equation fits points")
+                for pos, z in table:
+                    # TODO: change z output to .6 while default is .3 ??
+                    out.append("[%.1f, %.1f, %.6f]" % (pos[0], pos[1], z))
+        gcode = self.printer.lookup_object('gcode')
+        gcode.respond(" ".join(out))
+
     def cmd_M1(self, params):
         toolhead = self.printer.lookup_object('toolhead')
         # Wait for current moves to finish

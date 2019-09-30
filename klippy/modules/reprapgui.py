@@ -286,6 +286,20 @@ class rrHandler(tornado.web.RequestHandler):
             elif KLIPPER_LOG_NAME in path:
                 path = os.path.abspath(
                     self.printer.get_start_arg('logfile'))
+            elif "heightmap.csv" in path:
+                bed_mesh = self.printer.lookup_object('bed_mesh', None)
+                calibrate = getattr(bed_mesh, "calibrate", None)
+                if calibrate:
+                    # calibrate.print_probed_positions_to_csv()
+                    self.set_header('Content-Type',
+                                    'application/force-download')
+                    self.set_header('Content-Disposition',
+                                    'attachment; filename=heightmap.csv')
+                    self.write(calibrate.print_probed_positions_to_csv())
+                    self.finish()
+                    return
+                else:
+                    raise tornado.web.HTTPError(404)
             else:
                 path = os.path.abspath(os.path.join(sd_path, path))
             # Check if file exists and upload
@@ -514,6 +528,9 @@ class rrHandler(tornado.web.RequestHandler):
                     except IOError as err:
                         self.logger.error("Upload, cfg: %s" % err)
                 elif KLIPPER_LOG_NAME in target_path:
+                    respdata['err'] = 0
+                elif "heightmap.csv" in target_path:
+                    # skip just in case
                     respdata['err'] = 0
                 else:
                     target_path = os.path.abspath(os.path.join(self.sd_path, target_path))

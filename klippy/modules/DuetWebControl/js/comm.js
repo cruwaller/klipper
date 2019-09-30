@@ -613,6 +613,13 @@ function updateStatus() {
 					// Don't enable babystepping controls if the firmware doesn't support it
 					$(".babystepping button").addClass("disabled");
 				}
+				
+				// mesh bed levelling loaded
+				if (status.params.bed_mesh_ok) {
+					$("#a_show_bed_points").parent().removeClass("disabled");
+				} else {
+					$("#a_show_bed_points").parent().addClass("disabled");
+				}
 			}
 
 			// Fetch the last G-Code response from the server if there is anything new and we're not flashing new firmware
@@ -693,8 +700,20 @@ function updateStatus() {
 
 			if (status.hasOwnProperty("sensors")) {
 				// Sensors
-				setProbeValue(status.sensors.probeValue, status.sensors.probeSecondary);
-				$("#td_fanrpm").html(status.sensors.fanRPM);
+				if (status.sensors.hasOwnProperty("probe")) {
+					$("#th_probe").html("Probe");
+					setProbeValue(status.sensors.probe.probeValue, status.sensors.probe.probeSecondary);
+				} else if (status.sensors.hasOwnProperty("z_offset")) {
+					$("#th_probe").html("Z-offset");
+					setProbeValue(status.sensors.z_offset, undefined);
+				}
+				
+				if (status.sensors.hasOwnProperty("fanRPM")) {
+					$(".fan-rpm").removeClass("hidden")
+					$("#td_fanrpm").html(status.sensors.fanRPM);
+				} else {
+					$(".fan-rpm").addClass("hidden")
+				}
 			}
 
 			if (status.hasOwnProperty("temps")) {

@@ -349,7 +349,7 @@ function updateGui() {
 	if (numExtruderDrives <= 3) {
 		$("#col_extr_totals, #td_extr_total").addClass("hidden-md");
 		for(var i = 0; i < 3; i++) {
-			$("#table_extruder_positions th[data-extruder='" + i + "']").removeClass("hidden-md").html(T("Drive {0}", i));
+			$("#table_extruder_positions th[data-extruder='" + i + "']").removeClass("hidden-md").html(T("E{0}", i));
 			$("#table_extruder_positions td[data-extruder='" + i + "']").removeClass("hidden-md");
 		}
 	} else {

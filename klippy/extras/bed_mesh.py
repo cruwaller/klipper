@@ -496,6 +496,21 @@ class BedMeshCalibrate:
             self.bedmesh.set_mesh(mesh)
             self.gcode.respond_info("Mesh Bed Leveling Complete")
             self.save_profile("default")
+    def print_probed_positions_to_csv(self):
+        if self.probed_z_table is not None:
+            msg = ""
+            for line in self.probed_z_table:
+                for x in line:
+                    msg += " %f" % x
+                msg += "\n"
+            return msg
+        return ""
+    def get_probed_z_table(self):
+        points = self.probe_helper.probe_points
+        if points is not None and self.probed_z_table is not None:
+            table = [_e for _t in self.probed_z_table for _e in _t]
+            return zip(points, table)
+        return None
 
 
 class MoveSplitter:

@@ -239,19 +239,34 @@ class GuiStats:
                 "extrFactors": [e.get_extrude_factor(procent=True)
                                 for i, e in _extrs.items()],
                 "babystep": float("%.3f" % babysteps),
+                "bed_mesh_ok": 0,
             },
-            "sensors": {
-                # "fanRPM": 0,
-            },
+            "sensors": {},
             "time": (time.time() - self.starttime),
-            "temps": {}
+            "temps": {},
         }
 
-        #bed_tilt = self.printer.lookup_object('bed_tilt', default=None)
-        #if bed_tilt:
-        #    probe_x, probe_y, probeValue = bed_tilt.get_adjust()
-        #    status_block['sensors']['probeValue'] = probeValue
-        #    status_block['sensors']['probeSecondary'] = [probe_x, probe_y]
+        probe = self.printer.lookup_object('probe', None)
+        if probe:
+            x_offset, y_offset, z_offset = probe.get_offsets()
+            status_block['sensors']['probe'] = {
+                'probeValue': z_offset,
+                'probeSecondary': [x_offset, y_offset]}
+
+        bed_mesh = self.printer.lookup_object('bed_mesh', None)
+        if bed_mesh:
+            # Check whether bed mesh is loaded or not
+            status_block['params']['bed_mesh_ok'] = int(
+                bed_mesh.z_mesh is not None)
+
+        #calibrate = getattr(bed_mesh, "calibrate", None)
+        #if calibrate:
+        #    # calibrate.probed_z_table
+        #    pass
+
+        #if fans:
+        #    fan0 = self.printer.lookup_objects("fan 0")
+        #    # status_block['sensors']['fanRPM'] = 0
 
         heatbed_add = (heatbed is not None)
         num_extruders = len(_extrs)
