@@ -281,14 +281,15 @@ class TMCMicrostepHelper:
         return (1023 - mscnt) >> self.fields.get_field("MRES")
 
 # Helper to configure "stealthchop" mode
-def TMCStealthchopHelper(config, mcu_tmc, tmc_freq):
+def TMCStealthchopHelper(config, mcu_tmc, tmc_freq, step_dist=None):
     fields = mcu_tmc.get_fields()
     en_pwm_mode = False
     velocity = config.getfloat('stealthchop_threshold', 0., minval=0.)
     if velocity:
         stepper_name = " ".join(config.get_name().split()[1:])
-        stepper_config = config.getsection(stepper_name)
-        step_dist = stepper_config.getfloat('step_distance')
+        if step_dist is None:
+            stepper_config = config.getsection(stepper_name)
+            step_dist = stepper_config.getfloat('step_distance')
         step_dist_256 = step_dist / (1 << fields.get_field("MRES"))
         threshold = int(tmc_freq * step_dist_256 / velocity + .5)
         fields.set_field("TPWMTHRS", max(0, min(0xfffff, threshold)))
