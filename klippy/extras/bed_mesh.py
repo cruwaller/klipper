@@ -506,6 +506,8 @@ class BedMeshCalibrate:
             return msg
         return ""
     def get_probed_z_table(self):
+        if self.bedmesh.z_mesh is None:
+            return None
         points = self.probe_helper.probe_points
         if points is not None and self.probed_z_table is not None:
             table = [_e for _t in self.probed_z_table for _e in _t]

@@ -289,7 +289,7 @@ class rrHandler(tornado.web.RequestHandler):
             elif "heightmap.csv" in path:
                 bed_mesh = self.printer.lookup_object('bed_mesh', None)
                 calibrate = getattr(bed_mesh, "calibrate", None)
-                if calibrate:
+                if bed_mesh.z_mesh and calibrate:
                     # calibrate.print_probed_positions_to_csv()
                     self.set_header('Content-Type',
                                     'application/force-download')

@@ -50,13 +50,15 @@ class GenericGcode:
         out = []
         bed_mesh = self.printer.lookup_object('bed_mesh', None)
         calibrate = getattr(bed_mesh, "calibrate", None)
-        if calibrate is not None:
+        if bed_mesh.z_mesh is not None and calibrate is not None:
             table = calibrate.get_probed_z_table()
             if table is not None:
                 out.append("Bed equation fits points")
                 for pos, z in table:
                     # TODO: change z output to .6 while default is .3 ??
                     out.append("[%.1f, %.1f, %.6f]" % (pos[0], pos[1], z))
+        else:
+            out.append("Bed mesh is not configured")
         gcode = self.printer.lookup_object('gcode')
         gcode.respond(" ".join(out))
 

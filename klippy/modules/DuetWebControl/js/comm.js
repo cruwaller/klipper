@@ -616,8 +616,10 @@ function updateStatus() {
 				
 				// mesh bed levelling loaded
 				if (status.params.bed_mesh_ok) {
+					$("#a_show_bed_points").removeClass("disabled");
 					$("#a_show_bed_points").parent().removeClass("disabled");
 				} else {
+					$("#a_show_bed_points").addClass("disabled"); // prevent gcode send if disabled
 					$("#a_show_bed_points").parent().addClass("disabled");
 				}
 			}
