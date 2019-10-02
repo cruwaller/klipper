@@ -355,7 +355,7 @@ function updateGui() {
 	} else {
 		$("#col_extr_totals, #td_extr_total").removeClass("hidden-md");
 		for(var i = 0; i < maxExtruders; i++) {
-			$("#table_extruder_positions th[data-extruder='" + i + "']").addClass("hidden-md").html(T("D{0}", i));
+			$("#table_extruder_positions th[data-extruder='" + i + "']").addClass("hidden-md").html(T("E{0}", i));
 			$("#table_extruder_positions td[data-extruder='" + i + "']").addClass("hidden-md");
 		}
 	}
