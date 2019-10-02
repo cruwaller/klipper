@@ -613,7 +613,7 @@ function updateStatus() {
 					// Don't enable babystepping controls if the firmware doesn't support it
 					$(".babystepping button").addClass("disabled");
 				}
-				
+
 				// mesh bed levelling loaded
 				if (status.params.bed_mesh_ok) {
 					$("#a_show_bed_points").removeClass("disabled");
@@ -709,7 +709,7 @@ function updateStatus() {
 					$("#th_probe").html("Z-offset");
 					setProbeValue(status.sensors.z_offset, undefined);
 				}
-				
+
 				if (status.sensors.hasOwnProperty("fanRPM")) {
 					$(".fan-rpm").removeClass("hidden")
 					$("#td_fanrpm").html(status.sensors.fanRPM);
@@ -886,6 +886,8 @@ function updateStatus() {
 						var numLayers;
 						if (status.firstLayerHeight > 0) {
 							numLayers = ((fileInfo.height - status.firstLayerHeight) / fileInfo.layerHeight) + 1;
+						} else if (fileInfo.firstLayerHeight > 0) {
+							numLayers = ((fileInfo.height - fileInfo.firstLayerHeight) / fileInfo.layerHeight) + 1;
 						} else {
 							numLayers = (fileInfo.height / fileInfo.layerHeight);
 						}
@@ -1193,7 +1195,7 @@ function getConfigResponse() {
 				_version = _version + " (" + response.firmwareDate + ")";
 			}
 			$("#firmware_version").text(_version);
-			
+
 			// Check amount of drives
 			var rowCount = $('#tr_drives tbody tr').length - 1; // remove header
 			if (rowCount < response.accelerations.length) {
