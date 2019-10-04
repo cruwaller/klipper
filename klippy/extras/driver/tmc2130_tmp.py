@@ -197,6 +197,7 @@ class MCU_TMC_SPI:
         reg = Registers[reg_name]
         data = [(reg | 0x80) & 0xff, (val >> 24) & 0xff, (val >> 16) & 0xff,
                 (val >> 8) & 0xff, val & 0xff]
+        logging.debug("==>> cmd 0x%02X : 0x%08X (%s)" % (reg, val, reg_name))
         with self.mutex:
             self.spi.spi_send(data, minclock)
 

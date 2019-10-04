@@ -13,9 +13,9 @@ import binascii, types, struct, math, collections
 ######################################################################
 
 class DriverBase(object):
-    __inv_step_dist = __step_dist = microsteps = None
     def __init__(self, config, stepper_config,
                  has_step_dir_pins=True, has_endstop=False):
+        self.__inv_step_dist = self.__step_dist = self.microsteps = None
         self.__has_step_dir_pins = has_step_dir_pins
         self.__has_endstop = has_endstop
         self.printer = config.get_printer()
@@ -153,6 +153,21 @@ class TmcSpiDriver(SpiDriver):
         gcode.register_mux_command(
             "INIT_TMC", "DRIVER", self.name,
             self.cmd_INIT_TMC, desc=self.cmd_INIT_TMC_help)
+        gcode.register_mux_command(
+            "SET_TMC_FIELD", "DRIVER", self.name,
+            self.cmd_SET_TMC_FIELD, desc=self.cmd_SET_TMC_FIELD_help)
+    cmd_SET_TMC_FIELD_help = "Set a register field of a TMC driver"
+    def cmd_SET_TMC_FIELD(self, params):
+        if 'FIELD' not in params or 'VALUE' not in params:
+            raise self.gcode.error("Invalid command format")
+        field_name = self.gcode.get_str('FIELD', params)
+        reg_name = self.fields.lookup_register(field_name, None)
+        if reg_name is None:
+            raise self.gcode.error("Unknown field name '%s'" % (field_name,))
+        value = self.gcode.get_int('VALUE', params)
+        reg_val = self.fields.set_field(field_name, value)
+        print_time = self.printer.lookup_object('toolhead').get_last_move_time()
+        self._command_write(reg_name, reg_val, print_time)
     def handle_ready(self):
         if not self.mcu.is_shutdown():
             self._init_driver()
@@ -171,13 +186,15 @@ class TmcSpiDriver(SpiDriver):
             params = self.spi.spi_transfer([reg, 0x00, 0x00, 0x00, 0x00])
         pr = bytearray(params['response'])
         return (pr[1] << 24) | (pr[2] << 16) | (pr[3] << 8) | pr[4]
-    def set_register(self, reg_name, val, print_time=0.):
-        min_clock = self.spi.get_mcu().print_time_to_clock(print_time)
+    def set_register(self, reg_name, val, print_time=None):
+        minclock = 0
+        if print_time is not None:
+            minclock = self.get_mcu().print_time_to_clock(print_time)
         reg = self.registers[reg_name]
         data = [(reg | 0x80) & 0xff, (val >> 24) & 0xff, (val >> 16) & 0xff,
                 (val >> 8) & 0xff, val & 0xff]
         with self.mutex:
-            self.spi.spi_send(data, min_clock)
+            self.spi.spi_send(data, minclock)
 
     # **************************************************************************
     # === virtual declarations ===
@@ -298,7 +315,7 @@ class TmcSpiDriver(SpiDriver):
     | A 8bit |      32bit data                   |
     |  ADDR  |   D    |   D    |   D    |   D    |
     '''
-    def _command_write(self, cmd, val=None, print_time=0.): # 40bits always = 5 x 8bit!
+    def _command_write(self, cmd, val=None, print_time=None): # 40bits always = 5 x 8bit!
         if val is not None:
             # cmd, mode = self.registers.get(cmd, (cmd, '')) # map string to value
             cmd, mode = self.registers.get(cmd)
@@ -313,9 +330,11 @@ class TmcSpiDriver(SpiDriver):
             self.logger.debug("==>> cmd 0x%02X : 0x%s" % (
                 cmd, binascii.hexlify(bytearray(val))))
             cmd |= 0x80 # Make sure command has write bit set
-            min_clock = self.spi.get_mcu().print_time_to_clock(print_time)
+            minclock = 0
+            if print_time is not None:
+                minclock = self.get_mcu().print_time_to_clock(print_time)
             with self.mutex:
-                self.spi_send([cmd] + val, min_clock)
+                self.spi_send([cmd] + val, minclock)
 
     def _calc_rms_current(self,
                           current = None,
