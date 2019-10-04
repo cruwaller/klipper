@@ -3,6 +3,7 @@
 # Copyright (C) 2018  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+import  logging
 
 class HomingOverride:
     def __init__(self, config):
@@ -21,9 +22,8 @@ class HomingOverride:
         self.gcode.register_command("G28", None)
         self.gcode.register_command("G28", self.cmd_G28)
     def cmd_G28(self, params):
-        if self.in_script or not self.axes:
-            # Was called recursively or not exes defined
-            # invoke the real G28 command
+        if self.in_script:
+            # Was called recursively - invoke the real G28 command
             self.gcode.cmd_G28(params)
             return
         if not self.template.render():
@@ -33,8 +33,11 @@ class HomingOverride:
             for axis in axes:
                 try:
                     self.in_script = True
-                    self.gcode.run_script_from_command(
-                        getattr(self, 'gcode_'+axis).render())
+                    kwparams = {
+                        'printer': self.template.create_status_wrapper(),
+                        'params': params}
+                    getattr(self, 'gcode_' + axis).run_gcode_from_command(
+                        kwparams)
                 finally:
                     self.in_script = False
             return
