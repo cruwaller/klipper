@@ -11,17 +11,33 @@ class HomingOverride:
                           for a in 'xyz']
         self.axes = config.get('axes', 'XYZ').upper()
         gcode_macro = self.printer.try_load_module(config, 'gcode_macro')
-        self.template = gcode_macro.load_template(config, 'gcode')
+        self.template = gcode_macro.load_template(config, 'gcode', "")
+        # load override homing macros for axes
+        self.gcode_X = gcode_macro.load_template(config, 'gcode_x', "G28 X0")
+        self.gcode_Y = gcode_macro.load_template(config, 'gcode_y', "G28 Y0")
+        self.gcode_Z = gcode_macro.load_template(config, 'gcode_z', "G28 Z0")
         self.in_script = False
         self.gcode = self.printer.lookup_object('gcode')
         self.gcode.register_command("G28", None)
         self.gcode.register_command("G28", self.cmd_G28)
     def cmd_G28(self, params):
-        if self.in_script:
-            # Was called recursively - invoke the real G28 command
+        if self.in_script or not self.axes:
+            # Was called recursively or not exes defined
+            # invoke the real G28 command
             self.gcode.cmd_G28(params)
             return
-
+        if not self.template.render():
+            axes = [axis for axis in 'XYZ' if axis in params]
+            if not axes:
+                axes = ['X', 'Y', 'Z']
+            for axis in axes:
+                try:
+                    self.in_script = True
+                    self.gcode.run_script_from_command(
+                        getattr(self, 'gcode_'+axis).render())
+                finally:
+                    self.in_script = False
+            return
         # if no axis is given as parameter we assume the override
         no_axis = True
         for axis in 'XYZ':
