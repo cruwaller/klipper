@@ -96,7 +96,7 @@ class VirtualSD:
             stat['printing'] = int(self.work_timer is not None)
         return stat
     def get_progress(self):
-        if self.current_file is None or not self.file_size:
+        if not self.file_size:
             return .0
         return float(self.file_position) / self.file_size
     def is_active(self):
@@ -161,6 +161,7 @@ class VirtualSD:
         self.file_position = 0
         self.file_size = fsize
         self.printer.send_event('vsd:status', 'loaded')
+        self.printer.send_event('vsd:file_loaded', fname)
         self.simulate_print = False
     def cmd_M24(self, params):
         # Start/resume SD print

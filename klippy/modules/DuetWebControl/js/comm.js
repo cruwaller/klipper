@@ -968,7 +968,10 @@ function updateStatus() {
 							lastLayerPrintDuration = realPrintTime;
 						}
 					} else if (printJustFinished || status.currentLayer - 1 > layerData.length) {
-						addLayerData(realPrintTime - lastLayerPrintDuration, totalFilamentUsage, true);
+						var layer_time = status.previousLayerTime;
+						//layer_time = realPrintTime - lastLayerPrintDuration;
+						if (printJustFinished) layer_time = status.lastLayerTime;
+						addLayerData(layer_time, totalFilamentUsage, true);
 						lastLayerPrintDuration = realPrintTime;
 					}
 				}

@@ -1,6 +1,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import time, util, json, math
+import modules.analyse_gcode as analyse_gcode
 
 class GuiStats:
     def __init__(self, config):
@@ -22,14 +23,13 @@ class GuiStats:
         self.auto_report = False
         self.auto_report_timer = None
         # Print statistics
-        self.layer_stats = []
-        self.warmup_time = None
-        self.print_time = self.last_time = .0
-        self.first_layer_start = None
-        self.firstLayerHeight = .0
+        self._stats_type_3 = {}
+        self.print_start_time = self.starttime
+        self.last_print_layer_change = .0
         # register callbacks
-        printer.register_event_handler('vsd:status', self.sd_status)
-        printer.register_event_handler('gcode:layer_changed', self.layer_changed)
+        printer.register_event_handler('vsd:status', self._sd_status)
+        printer.register_event_handler('vsd:file_loaded', self._sd_file_loaded)
+        printer.register_event_handler('gcode:layer_changed', self._layer_changed)
         printer.register_event_handler("klippy:ready", self.handle_ready)
         printer.register_event_handler("klippy:connect", self._handle_connect)
         printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
@@ -107,39 +107,67 @@ class GuiStats:
     def _handle_connect(self):
         self.curr_state = "B"
 
-    def sd_status(self, status):
+    def _sd_status(self, status):
         if status == 'pause':
             self.curr_state = "S"
         elif status == 'start':
             self.curr_state = "P"
-            self.last_time = self.toolhead.get_estimated_print_time()
+            # reset time counters
+            self.print_start_time = self.last_print_layer_change = time.time()
         elif status == 'error' or status == "stop":
             self.curr_state = "I"
         elif status == 'done':
             toolhead = self.toolhead
-            toolhead.wait_moves() # TODO: remove?
+            toolhead.wait_moves()
+            self._stats_type_3['lastLayerTime'] = \
+                time.time() - self.last_print_layer_change
             self.curr_state = "I"
         elif status == 'loaded':
-            self.layer_stats = []
-            self.warmup_time = None
-            self.print_time = .0
+            pass
+    def _sd_file_loaded(self, fname):
+        file_info = analyse_gcode.analyse_gcode_file(fname)
+        firstLayerHeight = file_info.get('firstLayerHeight', 0.)
+        # clear stats when new file is loaded
+        self._stats_type_3_reset(firstLayerHeight)
 
-    def layer_changed(self, change_time, layer, height, *args):
-        # 1st call is "heating ready"
-        self.logger.debug("Layer changed cb: time %s, layer %s, h=%s" % (
-            change_time, layer, height))
-        try:
-            start_time = self.layer_stats[-1]['end time']
-        except IndexError:
-            # 1st layer change
-            start_time = change_time
-            self.warmup_time = self.print_time # warmup ready
-        self.layer_stats.append(
-            {'start time': start_time,
-             'layer time': (change_time - start_time),
-             'end time': change_time})
+    def _layer_changed(self, change_time, layer, height, *args):
+        #self.logger.debug("Layer changed cb: time %s, layer %s, h=%s" % (
+        #    change_time, layer, height))
+        type_3 = self._stats_type_3
+        current_time = time.time()
+        print_time = current_time - self.last_print_layer_change
+        current_layer = type_3['currentLayer'] + 1
+        type_3['currentLayer'] = current_layer
+        if current_layer == 1:
+            # heating / preparation is done when 1st call happens
+            type_3['warmUpDuration'] = int(self.toolhead.get_print_time())
+        elif current_layer == 2:
+            type_3['firstLayerDuration'] = int(print_time + .5)
+        else:
+            type_3['previousLayerTime'] = type_3['currentLayerTime']
+        self.last_print_layer_change = current_time
 
     # ================================================================================
+    def _stats_type_3_reset(self, first_layer_height=0.):
+        self._stats_type_3 = {
+            "progressType": 0, # 1 = layer, else file progress
+            "previousLayerTime": 0,
+            "lastLayerTime": 0,
+            "currentLayer": 0,
+            "currentLayerTime": 0,
+            "extrRaw": [.0] * 9,
+            "fractionPrinted": .0,
+            "firstLayerDuration": 0,
+            "firstLayerHeight": first_layer_height,
+            "printDuration": 0.,
+            "warmUpDuration": 0.,
+            "timesLeft": {
+                "file": .0,
+                # "filament": [.0] * 9,
+                # "layer": .0,
+            },
+        }
+
     # Statistics
     def get_config_stats(self):
         printer = self.printer
@@ -391,50 +419,46 @@ class GuiStats:
             status_block["tools"] = tools
 
         if _type >= 3:
-            lstat = self.layer_stats
-            current_time = toolhead.get_estimated_print_time()
-            printing_time = self.print_time
-            if self.curr_state == "P":
-                # Update time while printing
-                printing_time += current_time - self.last_time
-                self.last_time = current_time
-                self.print_time = printing_time
-            curr_layer = len(lstat)
-            try:
-                layer_time_curr = current_time - lstat[-1]['end time']
-            except IndexError:
-                layer_time_curr = printing_time
-            try:
-                first_layer_time = lstat[1]['layer time']
-            except IndexError:
-                first_layer_time = layer_time_curr
+            stat = self._stats_type_3
 
-            warmup_time = self.warmup_time
-            if warmup_time is None:
-                # Update warmup time
-                warmup_time = printing_time
+            current_time = time.time()
+            printing_time = current_time - self.print_start_time
+            stat["printDuration"] = int(printing_time)
+            stat['currentLayerTime'] = int(
+                current_time - self.last_print_layer_change)
 
-            # Print time estimations
+            # SD progress
             progress = 0.
             if self.sd is not None:
                 progress = self.sd.get_progress()
-            remaining_time_file = 0.
-            if progress > 0:
-                remaining_time_file = (printing_time / progress) - printing_time
 
-            # Used filament amount
-            remaining_time_fila = 0.
+            # How much filament would have been printed without extrusion factors applied
+            stat["extrRaw"] = [float("%0.1f" % e.raw_filament)
+                for i, e in _extrs.items()]
+
+            # ===== Print time estimation =====
+            timesLeft = stat["timesLeft"]
+            # 1) based on file progress
+            if 0 < progress < 1.0:
+                remaining_time_file = (printing_time / progress) - printing_time
+                timesLeft['file'] = int(remaining_time_file)
+            elif progress == 1. and self.curr_state == "P":
+                # keep progress ongoing until print is end
+                progress = .999
+                timesLeft['file'] = 1
+            # stat["fractionPrinted"] = float("%.1f" % (progress * 100.))
+            stat["fractionPrinted"] = int(progress * 100.)
             '''
+            # 2) Used filament amount
             fila_total = sum(e for e in info['filament'])
             if fila_total > 0:
                 fila_used = sum(e.raw_filament for i, e in _extrs.items())
                 fila_perc = (fila_used / fila_total)
                 remaining_time_fila = (printing_time / fila_perc) - printing_time
+                timesLeft['filament'] = [float("%.1f" % remaining_time_fila)]
+            #'''
             '''
-
-            # Layer statistics
-            remaining_time_layer = 0.
-            '''
+            # 3) Layer statistics
             num_layers = 0
             layerHeight = info['layerHeight']
             firstLayerHeight = info['firstLayerHeight']
@@ -445,36 +469,12 @@ class GuiStats:
                 proc = curr_layer / num_layers
                 if proc > 0:
                     remaining_time_layer = (printing_time / proc) - printing_time
-            '''
-
-            '''
-            self.logger.debug(
-                "TYPE3: layer %s, time: %s, 1st time: %s, warmup: %.2f, progress: %.2f, "
-                "file_time: %.2f, printing_time: %f" % (
-                curr_layer, layer_time_curr, first_layer_time, warmup_time, progress,
-                remaining_time_file, printing_time))
+                    timesLeft['layer'] = float("%.1f" % remaining_time_layer)
             #'''
 
+            # self.logger.debug("self._stats_type_3 = %s" % stat)
             # Fill status block
-            status_block.update( {
-                "progressType"       : 0, # 1 = layer, else file progress
-                "currentLayer"       : curr_layer,
-                "currentLayerTime"   : layer_time_curr,
-                # How much filament would have been printed without extrusion factors applied
-                "extrRaw"            : [ float("%0.1f" % e.raw_filament)
-                                         for i, e in _extrs.items() ],
-                "fractionPrinted"    : float("%.1f" % (progress * 100.)),
+            status_block.update(stat)
 
-                "firstLayerDuration" : first_layer_time,
-                "SKIP_ firstLayerHeight"   : float("%.1f" % self.firstLayerHeight),
-                "printDuration"      : printing_time,
-                "warmUpDuration"     : float("%.1f" % warmup_time),
-
-                "timesLeft": {
-                    "file"     : float("%.1f" % remaining_time_file),
-                    "filament" : [ float("%.1f" % remaining_time_fila) ],
-                    "layer"    : float("%.1f" % remaining_time_layer),
-                }
-            } )
         # self.logger.debug("%s", json.dumps(status_block, indent=4))
         return status_block

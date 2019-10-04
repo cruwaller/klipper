@@ -488,7 +488,7 @@ class GCodeParser:
             try:
                 layer = self.layer_r.search(original).groups()
                 self.printer.send_event('gcode:layer_changed',
-                                        self.toolhead.get_estimated_print_time(),
+                                        self.toolhead.get_last_move_time(),
                                         layer[0], layer[1])
             except AttributeError:
                 pass
