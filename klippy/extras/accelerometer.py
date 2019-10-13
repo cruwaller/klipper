@@ -97,12 +97,12 @@ class VirtualEndstop:
             'toolhead').get_kinematics()
         for stepper in kin.get_steppers('Z'):
             stepper.add_to_endstop(self)
-    def home_prepare(self, *args):
+    def home_prepare(self, speed):
         if self.prepare_done: # shared pin protect
             return
         self.prepare_done = True
-        self.accelerometer.home_prepare(*args)
-        self.mcu_endstop.home_prepare()
+        self.accelerometer.home_prepare(speed)
+        self.mcu_endstop.home_prepare(speed)
     def home_finalize(self):
         if not self.prepare_done:
             return

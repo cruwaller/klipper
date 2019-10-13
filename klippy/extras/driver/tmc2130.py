@@ -289,9 +289,9 @@ class VirtualEndstop:
         self.home_wait = mcu_endstop.home_wait
         self.query_endstop = mcu_endstop.query_endstop
         self.TimeoutError = mcu_endstop.TimeoutError
-    def home_prepare(self, *args):
+    def home_prepare(self, speed):
         self.tmc.init_homing(True)
-        self.mcu_endstop.home_prepare()
+        self.mcu_endstop.home_prepare(speed)
     def home_finalize(self):
         self.tmc.init_homing(False)
         self.mcu_endstop.home_finalize()

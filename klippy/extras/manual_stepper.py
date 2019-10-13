@@ -67,7 +67,7 @@ class ManualStepper:
         # Notify endstops of upcoming home
         endstops = self.stepper.get_endstops()
         for mcu_endstop, name in endstops:
-            mcu_endstop.home_prepare()
+            mcu_endstop.home_prepare(speed)
         # Start endstop checking
         self.sync_print_time()
         for mcu_endstop, name in endstops:

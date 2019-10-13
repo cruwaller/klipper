@@ -244,14 +244,14 @@ class ProbeEndstopWrapper:
         kin = self.printer.lookup_object('toolhead').get_kinematics()
         for stepper in kin.get_steppers('Z'):
             stepper.add_to_endstop(self)
-    def home_prepare(self, *args):
+    def home_prepare(self, speed):
         toolhead = self.printer.lookup_object('toolhead')
         start_pos = toolhead.get_position()
         self.activate_gcode.run_gcode_from_command()
         if toolhead.get_position()[:3] != start_pos[:3]:
             raise homing.CommandError(
                 "Toolhead moved during probe activate_gcode script")
-        self.mcu_endstop.home_prepare()
+        self.mcu_endstop.home_prepare(speed)
     def home_finalize(self):
         toolhead = self.printer.lookup_object('toolhead')
         start_pos = toolhead.get_position()
