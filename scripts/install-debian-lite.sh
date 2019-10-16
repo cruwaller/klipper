@@ -107,7 +107,7 @@ SRCDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )"/.. && pwd )"
 
 # Run installation steps defined above
 verify_ready
-prepare_install
+# prepare_install
 install_mjpg_streamer
 install_mjpg_streamer_script
 install_mjpg_streamer_defaults
