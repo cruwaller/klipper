@@ -102,7 +102,7 @@ class GuiStats:
     def _handle_disconnect(self):
         self.curr_state = "C"
     def handle_ready(self):
-        self._parse_homed_states()
+        # self._parse_homed_states()
         self.curr_state = "I"
         if self.auto_report and self.auto_report_timer is None:
             self.auto_report_timer = self.reactor.register_timer(
@@ -114,7 +114,10 @@ class GuiStats:
         self.curr_state = "B"
 
     def _homing_ready(self, homing_state, rails):
-        self._parse_homed_states()
+        # self._parse_homed_states()
+        for axis in homing_state.get_axes():
+            self.logger.info("Homed axis '%s'", axis)
+            self._stats_type_1["coords"]["axesHomed"][axis] = 1
 
     def _sd_status(self, status):
         if status == 'pause':
