@@ -171,12 +171,12 @@ class CartKinematics:
         carriage = gcode.get_int('CARRIAGE', params, minval=0, maxval=1)
         self._activate_carriage(carriage)
         gcode.reset_last_position()
+
     def is_homed(self):
         ret = [1, 1, 1]
-        if self.toolhead.sw_limit_check_enabled is True:
-            for i in (0, 1, 2):
-                if self.limits[i][0] > self.limits[i][1]:
-                    ret[i] = 0
+        for i in (0, 1, 2):
+            if self.limits[i][0] > self.limits[i][1]:
+                ret[i] = 0
         return ret
     def get_rails(self):
         return list(self.rails)

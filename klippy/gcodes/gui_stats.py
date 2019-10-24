@@ -23,6 +23,10 @@ class GuiStats:
         self.auto_report = False
         self.auto_report_timer = None
         # Print statistics
+        self._stats_type_1 = {}
+        self._stats_type_1_reset()
+        self._stats_type_2 = {}
+        self._stats_type_2_reset()
         self._stats_type_3 = {}
         self.print_start_time = self.starttime
         self.last_print_layer_change = .0
@@ -35,6 +39,7 @@ class GuiStats:
         printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
         printer.register_event_handler("klippy:halt", self._handle_shutdown)
         printer.register_event_handler("klippy:disconnect", self._handle_disconnect)
+        printer.register_event_handler("homing:homed_rails", self._homing_ready)
         # register control commands
         for cmd in ["GUISTATS_GET_ARGS",
                     "GUISTATS_GET_CONFIG", "GUISTATS_GET_STATUS",
@@ -97,6 +102,7 @@ class GuiStats:
     def _handle_disconnect(self):
         self.curr_state = "C"
     def handle_ready(self):
+        self._parse_homed_states()
         self.curr_state = "I"
         if self.auto_report and self.auto_report_timer is None:
             self.auto_report_timer = self.reactor.register_timer(
@@ -106,6 +112,9 @@ class GuiStats:
             self.auto_report_timer = None
     def _handle_connect(self):
         self.curr_state = "B"
+
+    def _homing_ready(self, homing_state, rails):
+        self._parse_homed_states()
 
     def _sd_status(self, status):
         if status == 'pause':
@@ -148,6 +157,95 @@ class GuiStats:
         self.last_print_layer_change = current_time
 
     # ================================================================================
+    def _parse_homed_states(self):
+        homed_axes = [0] * 3
+        kinematic = self.toolhead.get_kinematics()
+        if hasattr(kinematic, "is_homed"):
+            homed_axes = kinematic.is_homed()
+            self._stats_type_1["coords"]["axesHomed"] = homed_axes
+        if any(homed_axes):
+            endstops_hit = 0
+            index = 0
+            for home_state, rail in zip(homed_axes, kinematic.get_rails()):
+                num_steppers = len(rail.get_steppers())
+                if home_state and num_steppers:
+                    endstops_hit |= (
+                            (int(math.pow(2, num_steppers)) - 1) << index)
+                index += num_steppers
+            self._stats_type_2["endstops"] = endstops_hit
+
+    def _stats_type_1_reset(self):
+        self._stats_type_1 = {
+            "status": self.curr_state,
+            "seq": 0,
+            "coords": {
+                "axesHomed": [0] * 3,
+                "extr": [0],
+                "xyz": [0] * 3,
+            },
+            "currentTool": 0,
+            "params": {
+                "atxPower": 0,
+                "fanPercent": [0],
+                "speedFactor": 100.,
+                "extrFactors": [100.],
+                "babystep": .0,
+                "bed_mesh_ok": 0,
+            },
+            "sensors": {},
+            "time": (time.time() - self.starttime),
+            "temps": {},
+        }
+
+    def _stats_type_2_reset(self):
+        # Fill stats type 2
+        kinematic = self.toolhead.get_kinematics()
+        _extrs = self.printer.extruder_get()
+        heaters = self.printer.lookup_object('heater')
+        max_temp = 0.0
+        for _heater in heaters.get_heaters().values():
+            if _heater.max_temp > max_temp:
+                max_temp = _heater.max_temp
+        tools = []
+        for extr in _extrs.values():
+            index = extr.get_index()
+            values = {
+                "number"   : index,
+                "name"     : extr.name,
+                "heaters"  : [ extr.heater.get_index() + 1 ],
+                "drives"   : [ 3 + index ],
+                #"filament" : "N/A",
+            }
+            tools.append(values)
+        self._stats_type_2 = {
+            "coldExtrudeTemp": 170.,
+            "coldRetractTemp": 170.,
+            "tempLimit":       max_temp,
+            "endstops":        0,
+            "firmwareName":    "Klipper",
+            "geometry":        kinematic.name,  # cartesian, coreXY, delta
+            "axes":            3,  # Subject to deprecation - may be dropped in RRF 1.20
+            "volumes":         1,  # Num of SD cards
+            "mountedVolumes":  1,  # Bitmap of all mounted volumes
+            "name":            self.name,
+            # "probe": {
+            #    "threshold" : 500,
+            #    "height"    : 2.6,
+            #    "type"      : 1
+            # },
+            # "mcutemp": { # Not available on RADDS
+            #    "min": 26.4,
+            #    "cur": 30.5,
+            #    "max": 43.4
+            # },
+            # "vin": { # Only DuetNG (Duet Ethernet + WiFi)
+            #    "min": 10.4,
+            #    "cur": 12.3,
+            #    "max": 12.5
+            # },
+            "tools": tools,
+        }
+
     def _stats_type_3_reset(self, first_layer_height=0.):
         self._stats_type_3 = {
             "progressType": 0, # 1 = layer, else file progress
@@ -231,19 +329,14 @@ class GuiStats:
 
     def get_status_stats(self, _type=1):
         pheater = self.printer.lookup_object('heater')
-        toolhead = self.toolhead
         # STATES = 0: off, 1: standby, 2: active, 3: fault (same for bed)
         states = {False : 0, True  : 2}
-        curr_extruder = toolhead.get_extruder()
-        curr_pos = toolhead.get_position()
-        fans     = [ fan.last_fan_value * 100.0 for n, fan in
-                     self.printer.lookup_objects("fan") ]
-        heatbed  = pheater.lookup_heater('heater bed', None)
-        _extrs   = self.printer.extruder_get()
-        kinematic = toolhead.get_kinematics()
-        homed_axes = [0] * 3
-        if hasattr(kinematic, "is_homed"):
-            homed_axes = kinematic.is_homed()
+        curr_extruder = self.toolhead.get_extruder()
+        curr_pos = self.toolhead.get_position()
+        fans = [fan.last_fan_value * 100.0 for n, fan in
+                self.printer.lookup_objects("fan")]
+        heatbed = pheater.lookup_heater('heater bed', None)
+        _extrs = self.printer.extruder_get()
 
         atx_pwr = pheater.lookup_heater('atx_power', None)
         atx_state = atx_pwr.get_state() if atx_pwr else 0
@@ -251,28 +344,25 @@ class GuiStats:
         babysteps = self.babysteps.babysteps if self.babysteps else 0.
 
         # _type == 1 is always included
-        status_block = {
-            "status": self.curr_state,
-            "seq": 0,
-            "coords": {
-                "axesHomed": homed_axes,
-                "extr": [e.extrude_pos for i, e in _extrs.items()],
-                "xyz": curr_pos[:3],
-            },
-            "currentTool": curr_extruder.get_index(),
-            "params": {
-                "atxPower": atx_state,
-                "fanPercent": fans,
-                "speedFactor": self.gcode.speed_factor * 60. * 100.0,
-                "extrFactors": [e.get_extrude_factor(procent=True)
-                                for i, e in _extrs.items()],
-                "babystep": float("%.3f" % babysteps),
-                "bed_mesh_ok": 0,
-            },
-            "sensors": {},
-            "time": (time.time() - self.starttime),
-            "temps": {},
-        }
+        status_block = self._stats_type_1
+        status_block["status"] = self.curr_state
+        status_block["currentTool"] = curr_extruder.get_index()
+        status_block["time"] = time.time() - self.starttime
+
+        # update coordinates
+        status_block['coords']["extr"] = [
+            e.extrude_pos for i, e in _extrs.items()]
+        status_block['coords']["xyz"] = curr_pos[:3]
+
+        # update params
+        status_block["params"].update({
+            "atxPower":    atx_state,
+            "fanPercent":  fans,
+            "speedFactor": self.gcode.speed_factor * 60. * 100.0,
+            "extrFactors": [e.get_extrude_factor(procent=True)
+                for i, e in _extrs.items()],
+            "babystep":    float("%.3f" % babysteps),
+        })
 
         probe = self.printer.lookup_object('probe', None)
         if probe:
@@ -352,71 +442,24 @@ class GuiStats:
             htr_current.append(current)
             htr_state.append(states[target > 0.0])
 
-        status_block["temps"].update( {
+        status_block["temps"].update({
             "current" : htr_current,
             "state"   : htr_state,
-        } )
+        })
+
+        status_resp = dict(status_block)
 
         if _type >= 2:
-            max_temp  = 0.0
-            cold_temp = 0.0
+            stat2 = self._stats_type_2
+            cold_temp = 999.0
             if hasattr(curr_extruder, "get_heater"):
                 heater = curr_extruder.get_heater()
-                max_temp  = heater.max_temp
-                cold_temp = heater.min_extrude_temp
                 if heater.min_extrude_temp_disabled:
-                    cold_temp = 0.0
-
-            # endstop states
-            endstops_hit = 0
-            if any(homed_axes):
-                index = 0
-                for home_state, rail in zip(homed_axes, kinematic.get_rails()):
-                    num_steppers = len(rail.get_steppers())
-                    if home_state and num_steppers:
-                        endstops_hit |= (
-                                (int(math.pow(2, num_steppers)) - 1) << index)
-                    index += num_steppers
-
-            status_block.update( {
-                "coldExtrudeTemp" : cold_temp,
-                "coldRetractTemp" : cold_temp,
-                "tempLimit"       : max_temp,
-                "endstops"        : endstops_hit,
-                "firmwareName"    : "Klipper",
-                "geometry"        : kinematic.name,   # cartesian, coreXY, delta
-                "axes"            : 3,                # Subject to deprecation - may be dropped in RRF 1.20
-                "volumes"         : 1,                # Num of SD cards
-                "mountedVolumes"  : 1,                # Bitmap of all mounted volumes
-                "name"            : self.name,
-                #"probe": {
-                #    "threshold" : 500,
-                #    "height"    : 2.6,
-                #    "type"      : 1
-                #},
-                #"mcutemp": { # Not available on RADDS
-                #    "min": 26.4,
-                #    "cur": 30.5,
-                #    "max": 43.4
-                #},
-                #"vin": { # Only DuetNG (Duet Ethernet + WiFi)
-                #    "min": 10.4,
-                #    "cur": 12.3,
-                #    "max": 12.5
-                #},
-            } )
-
-            tools = []
-            for key, extr in _extrs.items():
-                values = {
-                    "number"   : extr.get_index(),
-                    "name"     : extr.name,
-                    "heaters"  : [ extr.heater.get_index() + 1 ],
-                    "drives"   : [ 3+extr.get_index() ],
-                    #"filament" : "N/A",
-                }
-                tools.append(values)
-            status_block["tools"] = tools
+                    cold_temp = .0
+                else:
+                    cold_temp = heater.min_extrude_temp
+            stat2["coldExtrudeTemp"] = stat2["coldRetractTemp"] = cold_temp
+            status_resp.update(stat2)
 
         if _type >= 3:
             stat = self._stats_type_3
@@ -471,10 +514,7 @@ class GuiStats:
                     remaining_time_layer = (printing_time / proc) - printing_time
                     timesLeft['layer'] = float("%.1f" % remaining_time_layer)
             #'''
+            status_resp.update(stat)
 
-            # self.logger.debug("self._stats_type_3 = %s" % stat)
-            # Fill status block
-            status_block.update(stat)
-
-        # self.logger.debug("%s", json.dumps(status_block, indent=4))
-        return status_block
+        # self.logger.debug("%s", json.dumps(status_resp, indent=4))
+        return status_resp

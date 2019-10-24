@@ -151,10 +151,9 @@ class CoreXYKinematics:
         return list(self.rails)
     def is_homed(self):
         ret = [1, 1, 1]
-        if self.toolhead.sw_limit_check_enabled is True:
-            for i in (0, 1, 2):
-                if self.limits[i][0] > self.limits[i][1]:
-                    ret[i] = 0
+        for i in (0, 1, 2):
+            if self.limits[i][0] > self.limits[i][1]:
+                ret[i] = 0
         return ret
     def get_max_limits(self):
         return [
