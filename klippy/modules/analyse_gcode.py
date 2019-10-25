@@ -1,13 +1,11 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
-import os, re, math
+import os, re, math, json
 import logging
 
 class ParseError(Exception):
     pass
 
-
-ANALYSED_GCODE_FILES = {}
 
 def analyse_gcode_file(filepath):
     # Set initial values
@@ -21,10 +19,6 @@ def analyse_gcode_file(filepath):
     }
     if filepath is None:
         return info
-    if filepath in ANALYSED_GCODE_FILES:
-        return ANALYSED_GCODE_FILES[filepath]
-    elif os.path.join("gcode", filepath) in ANALYSED_GCODE_FILES:
-        return ANALYSED_GCODE_FILES[filepath]
     absolute_coord = True
     last_position = .0
     try:
@@ -176,7 +170,7 @@ def analyse_gcode_file(filepath):
                     try:
                         gnum = int(params['G'])
                     except ValueError as err:
-                        logging.error("GCode line erro: %s" % line)
+                        logging.error("GCode line error: %s" % line)
                         logging.error("GCode params: %s" % params)
                         # not a G1 or G0 -> continue
                         continue
@@ -206,14 +200,56 @@ def analyse_gcode_file(filepath):
         logging.error("Parsing error: '%s'" % err)
     except ValueError as err:
         logging.error("GCode file has an issue! '%s'" % err)
-    ANALYSED_GCODE_FILES[filepath] = info
     # logging.info("PARSED: %s" % info)
     return info
 
-class GCodeAnalyzer:
-    def __init__(self, config):
-        pass
+
+class GCodeAnalyser:
+    def __init__(self, config, sd_path=None):
+        self.dir = sd_path
+        if sd_path is None:
+            printer = config.get_printer()
+            sd = printer.try_load_module(config, "virtual_sdcard")
+            self.dir = sd.sdcard_dirname
+        self._db = self._open_database()
+    def _open_database(self):
+        db = {}
+        try:
+            with open(os.path.join(self.dir, "analysed.json"), "rb") as _f:
+                for line in _f:
+                    parts = line.split("=", 1)
+                    db[parts[0].strip()] = json.loads(parts[1])
+            return db
+        except IOError:
+            return {}
+    def _write_database(self):
+        with open(os.path.join(self.dir, "analysed.json"), "w+") as _f:
+            #json.dump(self._db, _f)
+            for fname, data in self._db.items():
+                _f.write("%s=%s\n" % (fname, json.dumps(data)))
+    def _append_file_info(self, fname, data):
+        with open(os.path.join(self.dir, "analysed.json"), "a+") as _f:
+            # json.dump(data, _f)
+            _f.write("%s=%s\n" % (fname, json.dumps(data)))
+    def remove_file(self, path):
+        if type(path) != list:
+            path = [path]
+        for fname in path:
+            if fname in self._db:
+                del self._db[fname]
+        self._write_database()
+    def move_file(self, source, target):
+        if source in self._db:
+            self._db[target] = self._db[source]
+            self.remove_file(source)
+    def get_file_info(self, path):
+        if path in self._db:
+            return self._db[path]
+        info = analyse_gcode_file(path)
+        self._db[path] = info
+        self._append_file_info(path, info)
+        return info
 
 
-def load_config(config):
-    return GCodeAnalyzer(config)
+def load_config(config, sd_path=None):
+    return GCodeAnalyser(config, sd_path)

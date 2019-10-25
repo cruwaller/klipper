@@ -54,7 +54,6 @@ Parameters
 """
 
 import time, sys, os, errno, threading, json, logging
-import analyse_gcode
 
 try:
     sys.path.append(os.path.normpath(
@@ -67,6 +66,7 @@ import tornado.web
 _PARENT = None
 KLIPPER_CFG_NAME = 'klipper_config.cfg'
 KLIPPER_LOG_NAME = "klippy.log"
+MAX_STREAMED_SIZE = 1024**3
 
 def dict_dump_json(data, logger=None):
     if logger is None:
@@ -203,10 +203,15 @@ class JpegStreamHandler(tornado.web.RequestHandler):
                 yield tornado.gen.Task(ioloop.add_timeout,
                                        ioloop.time() + self.interval)
 
+@tornado.web.stream_request_body
 class rrHandler(tornado.web.RequestHandler):
     parent = printer = sd_path = logger = None
 
     def initialize(self, sd_path):
+        self.klipper_cfg = None
+        self.fp = None
+        self.bytes_written = 0
+
         self.parent = _PARENT
         self.printer = self.parent.printer
         self.sd_path = sd_path
@@ -325,18 +330,25 @@ class rrHandler(tornado.web.RequestHandler):
             if KLIPPER_CFG_NAME in directory or KLIPPER_LOG_NAME in directory:
                 pass
             else:
+                fremoved = []
                 directory = os.path.abspath(os.path.join(sd_path, directory))
                 #self.logger.debug("delete: absolute path {}".format(directory))
                 try:
                     for root, dirs, files in os.walk(directory, topdown=False):
                         for name in files:
-                            os.remove(os.path.join(root, name))
+                            fpath = os.path.join(root, name)
+                            os.remove(fpath)
+                            fremoved.append(fpath)
                         for name in dirs:
                             os.rmdir(os.path.join(root, name))
                     if os.path.isdir(directory):
                         os.rmdir(directory)
                     else:
                         os.remove(directory)
+                        fremoved.append(directory)
+                    if fremoved:
+                        handler = self.printer.lookup_object("analyse_gcode")
+                        handler.remove_file(fremoved)
                 except OSError as e:
                     self.logger.error("rr_delete: %s" % (e.strerror,))
                     respdata["err"] = 1
@@ -427,7 +439,8 @@ class rrHandler(tornado.web.RequestHandler):
             if path is None or not os.path.exists(path):
                 respdata["err"] = 1
             else:
-                info = analyse_gcode.analyse_gcode_file(path)
+                handler = self.printer.lookup_object("analyse_gcode")
+                info = handler.get_file_info(path)
                 respdata["err"] = 0
                 respdata["size"] = os.path.getsize(path)
                 respdata["lastModified"] = \
@@ -454,6 +467,8 @@ class rrHandler(tornado.web.RequestHandler):
                 _to   = os.path.abspath(os.path.join(sd_path, _to))
                 try:
                     os.rename(_from, _to)
+                    handler = self.printer.lookup_object("analyse_gcode")
+                    handler.move_file(_from, _to)
                 except OSError as e:
                     self.logger.error("rr_move: %s" % (e.strerror,))
                     respdata["err"] = 1
@@ -493,14 +508,50 @@ class rrHandler(tornado.web.RequestHandler):
         respstr = json.dumps(respdata)
         self.write(respstr)
 
+    def _parse_file_path(self, filename):
+        # /rr_upload?name=xxxxx&time=xxxx
+        # /rr_upload?name=0:/filaments/PLA/unload.g&time=2017-11-30T11:46:50
+
+        filename = filename.replace("0:/", "").replace("0%3A%2F", "")
+        if KLIPPER_CFG_NAME in filename:
+            cfgname = os.path.abspath(
+                self.printer.get_start_arg('config_file'))
+            datestr = time.strftime("-%Y%m%d_%H%M%S")
+            backup_name = cfgname + datestr
+            temp_name = cfgname + "_autosave"
+            if cfgname.endswith(".cfg"):
+                backup_name = cfgname[:-4] + datestr + ".cfg"
+                temp_name = cfgname[:-4] + "_autosave.cfg"
+            try:
+                os.rename(cfgname, backup_name)
+                self.klipper_cfg = (cfgname, temp_name)
+            except IOError:
+                raise tornado.web.HTTPError(400)
+            filename = temp_name
+        elif KLIPPER_LOG_NAME in filename:
+            filename = None
+        elif "heightmap.csv" in filename:
+            filename = None
+        else:
+            filename = os.path.abspath(
+                os.path.join(self.sd_path, filename))
+            try:
+                # try to create a dir first
+                os.makedirs(os.path.dirname(filename))
+            except OSError:
+                pass
+        return filename
+
     def post(self, path, *args, **kwargs):
         respdata = { "err" : 1 }
         if "rr_upload" in self.request.path:
             # /rr_upload?name=xxxxx&time=xxxx
             # /rr_upload?name=0:/filaments/PLA/unload.g&time=2017-11-30T11:46:50
 
+            '''
             size = int(self.request.headers['Content-Length'])
-            body_len = len(self.request.body)
+            # body_len = len(self.request.body)
+            body_len = self.bytes_read
             if body_len == 0:
                 # e.g. filament create
                 respdata["err"] = 0
@@ -546,10 +597,42 @@ class rrHandler(tornado.web.RequestHandler):
                             respdata['err'] = 0
                     except IOError as err:
                         self.logger.error("Upload, g-code: %s" % err)
+            '''
+            if self.fp is not None:
+                self.fp.close()
+                if self.klipper_cfg is not None:
+                    # if file was klipper.cfg then rename temp file
+                    os.rename(self.klipper_cfg[1], self.klipper_cfg[0])
+
+            size = int(self.request.headers['Content-Length'])
+            if self.bytes_written != size:
+                self.logger.error("upload size error: %s != %s" % (
+                    self.bytes_written, size))
+            else:
+                respdata['err'] = 0
+
         else:
-            self.logger.error("Unknown req path: %s" % self.request.path)
+            self.logger.error("Unknown post path: %s" % self.request.path)
         # Send response back to client
         self.write(json.dumps(respdata))
+
+    def prepare(self):
+        self.request.connection.set_max_body_size(MAX_STREAMED_SIZE)
+
+    def data_received(self, chunk):
+        if "rr_upload" in self.request.path:
+            if self.fp is None:
+                filename = self._parse_file_path(self.get_argument('name'))
+                if filename is None:
+                    return
+                try:
+                    self.fp = open(filename, "wb+")
+                    self.fp.write(chunk)
+                except IOError:
+                    raise tornado.web.HTTPError(400)
+            else:
+                self.fp.write(chunk)
+            self.bytes_written += len(chunk)
 
 
 def create_dir(_dir):
@@ -609,6 +692,7 @@ class RepRapGuiModule(object):
         # ------------------------------
         # try to load required modules
         printer.try_load_module(config, "babysteps")
+        printer.try_load_module(config, "analyse_gcode", folder="modules")
         # ------------------------------
         # Start tornado webserver
         if _TORNADO_THREAD is None or not _TORNADO_THREAD.isAlive():
@@ -637,7 +721,7 @@ class RepRapGuiModule(object):
                 ],
                 cookie_secret="16d35553-3331-4569-b419-8748d22aa599",
                 log_function=self.Tornado_LoggerCb,
-                max_buffer_size=104857600*20,
+                # max_buffer_size=104857600*20,
                 login_url = "/login",
                 xsrf_cookies = False)
 
@@ -684,8 +768,10 @@ class RepRapGuiModule(object):
         self.logger.info("Server port %s (SSL %s)" % (
             port, ssl_options is not None))
 
-        http_server = tornado.httpserver.HTTPServer(application,
-                                                    ssl_options=ssl_options)
+        http_server = tornado.httpserver.HTTPServer(
+            application,
+            # max_buffer_size=1 * 1024 ** 3,  # 1GB
+            ssl_options=ssl_options)
         http_server.listen(port)
         tornado.ioloop.IOLoop.current().start()
         self.logger.warning("Something went wrong, server exited!")
@@ -726,4 +812,6 @@ class RepRapGuiModule(object):
 
 
 def load_config(config):
-    return RepRapGuiModule(config)
+    if not config.has_section('reprapgui_process'):
+        return RepRapGuiModule(config)
+    return None

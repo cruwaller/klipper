@@ -1,7 +1,6 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import time, util, json, math
-import modules.analyse_gcode as analyse_gcode
 
 class GuiStats:
     def __init__(self, config):
@@ -13,6 +12,7 @@ class GuiStats:
         self.toolhead = printer.lookup_object('toolhead')
         self.babysteps = printer.try_load_module(config, 'babysteps')
         self.sd = printer.try_load_module(config, "virtual_sdcard")
+        printer.try_load_module(config, "analyse_gcode", folder="modules")
         # variables
         self.starttime = time.time()
         self.curr_state = 'PNR'
@@ -28,6 +28,7 @@ class GuiStats:
         self._stats_type_2 = {}
         self._stats_type_2_reset()
         self._stats_type_3 = {}
+        self._stats_type_3_reset()
         self.print_start_time = self.starttime
         self.last_print_layer_change = .0
         # register callbacks
@@ -137,7 +138,8 @@ class GuiStats:
         elif status == 'loaded':
             pass
     def _sd_file_loaded(self, fname):
-        file_info = analyse_gcode.analyse_gcode_file(fname)
+        handler = self.printer.lookup_object("analyse_gcode")
+        file_info = handler.get_file_info(fname)
         firstLayerHeight = file_info.get('firstLayerHeight', 0.)
         # clear stats when new file is loaded
         self._stats_type_3_reset(firstLayerHeight)

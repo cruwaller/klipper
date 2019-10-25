@@ -4,8 +4,8 @@ import tornado.ioloop
 import tornado.web
 import time, sys, os, errno, threading, json, re, logging
 import argparse, ConfigParser
-import Queue
-#from multiprocessing import Queue as QueueMulti
+# import Queue
+# from multiprocessing import Queue as QueueMulti
 
 # Local modules
 import queuelogger, reactor, configfile
@@ -33,6 +33,7 @@ RepRap Web Gui - Status info:
 
 KLIPPER_CFG_NAME = 'klipper_config.cfg'
 KLIPPER_LOG_NAME = "klippy.log"
+MAX_STREAMED_SIZE = 1024**3
 
 def dict_dump_json(data, logger):
     logger.info(json.dumps(data,
@@ -190,10 +191,15 @@ class LogoutHandler(BaseHandler):
         self.clear_cookie("user")
         self.redirect(self.get_argument("next", self.reverse_url("main")))
 
+@tornado.web.stream_request_body
 class rrHandler(tornado.web.RequestHandler):
-    parent = sd_path = logger = None
+    parent = printer = sd_path = logger = None
 
     def initialize(self, sd_path, parent):
+        self.klipper_cfg = None
+        self.fp = None
+        self.bytes_written = 0
+
         self.parent = parent
         self.sd_path = self.parent.sd_path
         self.logger = self.parent.logger
@@ -291,18 +297,24 @@ class rrHandler(tornado.web.RequestHandler):
             if KLIPPER_CFG_NAME in directory or KLIPPER_LOG_NAME in directory:
                 pass
             else:
+                fremoved = []
                 directory = os.path.abspath(os.path.join(sd_path, directory))
                 #self.logger.debug("delete: absolute path {}".format(directory))
                 try:
                     for root, dirs, files in os.walk(directory, topdown=False):
                         for name in files:
-                            os.remove(os.path.join(root, name))
+                            fpath = os.path.join(root, name)
+                            os.remove(fpath)
+                            fremoved.append(fpath)
                         for name in dirs:
                             os.rmdir(os.path.join(root, name))
                     if os.path.isdir(directory):
                         os.rmdir(directory)
                     else:
                         os.remove(directory)
+                        fremoved.append(directory)
+                    if fremoved:
+                        self.parent.gcode_analyse.remove_file(fremoved)
                 except OSError as e:
                     self.logger.error("rr_delete: %s" % (e.strerror,))
                     respdata["err"] = 1
@@ -387,7 +399,7 @@ class rrHandler(tornado.web.RequestHandler):
             if path is None or not os.path.exists(path):
                 respdata["err"] = 1
             else:
-                info = analyse_gcode.analyse_gcode_file(path)
+                info = self.parent.gcode_analyse.get_file_info(path)
                 respdata["err"] = 0
                 respdata["size"] = os.path.getsize(path)
                 respdata["lastModified"] = \
@@ -456,14 +468,48 @@ class rrHandler(tornado.web.RequestHandler):
         respstr = json.dumps(respdata)
         self.write(respstr)
 
+    def _parse_file_path(self, target_path):
+        # /rr_upload?name=xxxxx&time=xxxx
+        # /rr_upload?name=0:/filaments/PLA/unload.g&time=2017-11-30T11:46:50
+
+        target_path = target_path.replace("0:/", "").replace("0%3A%2F", "")
+        if KLIPPER_CFG_NAME in target_path:
+            path = self.parent.get_printer_start_arg('config_file', None)
+            if path is not None:
+                cfgname = os.path.abspath(path)
+                datestr = time.strftime("-%Y%m%d_%H%M%S")
+                backup_name = cfgname + datestr
+                temp_name = cfgname + "_autosave"
+                if cfgname.endswith(".cfg"):
+                    backup_name = cfgname[:-4] + datestr + ".cfg"
+                    temp_name = cfgname[:-4] + "_autosave.cfg"
+                try:
+                    os.rename(cfgname, backup_name)
+                    self.klipper_cfg = (cfgname, temp_name)
+                except IOError:
+                    raise tornado.web.HTTPError(400)
+                target_path = temp_name
+        elif KLIPPER_LOG_NAME in target_path:
+            raise tornado.web.HTTPError(503)
+        else:
+            target_path = os.path.abspath(os.path.join(self.sd_path, target_path))
+            # Create a dir first
+            try:
+                os.makedirs(os.path.dirname(target_path))
+            except OSError:
+                pass
+        return target_path
+
     def post(self, path, *args, **kwargs):
         respdata = { "err" : 1 }
         if "rr_upload" in self.request.path:
             # /rr_upload?name=xxxxx&time=xxxx
             # /rr_upload?name=0:/filaments/PLA/unload.g&time=2017-11-30T11:46:50
 
+            '''
             size = int(self.request.headers['Content-Length'])
-            body_len = len(self.request.body)
+            # body_len = len(self.request.body)
+            body_len = self.bytes_written
             if body_len == 0:
                 # e.g. filament create
                 respdata["err"] = 0
@@ -484,7 +530,8 @@ class rrHandler(tornado.web.RequestHandler):
                             temp_name = cfgname[:-4] + "_autosave.cfg"
                         try:
                             f = open(temp_name, 'wb')
-                            f.write(self.request.body)
+                            # f.write(self.request.body)
+                            f.write(self.data)
                             f.close()
                             os.rename(cfgname, backup_name)
                             os.rename(temp_name, cfgname)
@@ -502,15 +549,44 @@ class rrHandler(tornado.web.RequestHandler):
                         pass
                     # Try to save content
                     try:
-                        with open(target_path, 'w') as output_file:
-                            output_file.write(self.request.body)
+                        with open(target_path, 'wb') as output_file:
+                            # output_file.write(self.request.body)
+                            output_file.write(self.data)
                             respdata['err'] = 0
                     except IOError as err:
                         self.logger.error("Upload, g-code: %s" % err)
+            '''
+            if self.fp is not None:
+                self.fp.close()
+                if self.klipper_cfg is not None:
+                    os.rename(self.klipper_cfg[1], self.klipper_cfg[0])
+
+            size = int(self.request.headers['Content-Length'])
+            if self.bytes_written != size:
+                self.logger.error("upload size error: %s != %s" % (
+                    self.bytes_written, size))
+            else:
+                respdata['err'] = 0
 
         # Send response back to client
         respstr = json.dumps(respdata)
         self.write(respstr)
+
+    def prepare(self):
+        self.request.connection.set_max_body_size(MAX_STREAMED_SIZE)
+
+    def data_received(self, chunk):
+        if "rr_upload" in self.request.path:
+            if self.fp is None:
+                filename = self._parse_file_path(self.get_argument('name'))
+                try:
+                    self.fp = open(filename, "wb+")
+                    self.fp.write(chunk)
+                except IOError:
+                    raise tornado.web.HTTPError(400)
+            else:
+                self.fp.write(chunk)
+            self.bytes_written += len(chunk)
 
 
 def create_dir(_dir):
@@ -570,12 +646,15 @@ class RepRapGuiModule(object):
         create_dir(os.path.join(sdcard_dirname, "sys"))
         self.logger.debug("Gcode path: %s" % sdcard_dirname)
         # ------------------------------
+        self.gcode_analyse = analyse_gcode.load_config(config, sdcard_dirname)
+        # ------------------------------
         # Open a communication pipe
         self.reactor = reactor.Reactor()
         self.partial_input = ""
         self.printer_start_args = {}
         self.input_fd = None
         self.gcode_resps = []
+        self.write_count = 0
         # self.lock = threading.Lock()
         self.write_lock = threading.Lock()
         self.resp_event = threading.Event()
@@ -606,7 +685,7 @@ class RepRapGuiModule(object):
             ],
             cookie_secret="16d35553-3331-4569-b419-8748d22aa599",
             log_function=self.Tornado_LoggerCb,
-            max_buffer_size=104857600*20,
+            # max_buffer_size=104857600*20,
             login_url = "/login",
             xsrf_cookies = False)
         # ------------------------------
@@ -734,13 +813,12 @@ class RepRapGuiModule(object):
                 self.write(cmd, fd)
             except ValueError:
                 pass
-    write_count = 0
     def write_async_with_resp(self, cmd, fd=None):
         with self.write_lock:
             try:
                 self.write_count = 1
                 self.write(cmd, fd)
-            except ValueError:
+            except (ValueError, CommunicationError):
                 pass
     sync_resp = None
     def write_sync(self, cmd, fd=None):
@@ -802,6 +880,7 @@ class RepRapGuiModule(object):
             self.gcode_resps.append(msg)
         elif self.write_count > 0:
             self.gcode_resps.append(msg)
+            self.logger.info("resp appended")
             self.write_count -= 1
 
     # ================================================================================
