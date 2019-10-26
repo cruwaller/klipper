@@ -51,25 +51,27 @@ def analyse_gcode_file(filepath):
                 elif "CraftWare" in line:
                     slicer = "CraftWare"
                 if slicer is not None:
+                    info["slicer"] = slicer
                     break
-            # Stop if slicer is not detected!
-            if slicer is None:
-                raise ParseError("Cannot detect slicer")
-            info["slicer"] = slicer
-            # read header
+
             layerHeight = None
             firstLayerHeightPercentage = None
             firstLayerHeight = None
 
-            # read footer and find object height
             f.seek(0)
-            data = f.read(READ_SIZE)
-            lines = data.split('\n')
-            # read from end of the file
-            if f.tell() < (fsize - READ_SIZE):
-                # goto end if file is big
+            if fsize <= (2 * READ_SIZE):
+                # read while file
+                data = f.read(fsize)
+                lines = data.split('\n')
+            else:
+                # read head
+                data = f.read(READ_SIZE)
+                lines = data.split('\n')
+                lines.pop()
+                # read tail
                 f.seek(fsize - READ_SIZE)
-            lines.extend(f.read(READ_SIZE).split('\n'))
+                data = f.read(READ_SIZE)
+                lines.extend(data.split('\n')[1:])
 
             args_r = re.compile('([A-Z_]+|[A-Z*/"])')
             build_info_r = re.compile('([0-9\.]+)')
