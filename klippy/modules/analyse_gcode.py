@@ -3,6 +3,8 @@
 import os, re, math, json
 import logging
 
+READ_SIZE = 16384 # 16kB
+
 class ParseError(Exception):
     pass
 
@@ -23,8 +25,8 @@ def analyse_gcode_file(filepath):
     last_position = .0
     try:
         with open(filepath, 'rb') as f:
-            #f.seek(0, os.SEEK_END)
-            #fsize = f.tell()
+            f.seek(0, os.SEEK_END)
+            fsize = f.tell()
             f.seek(0)
             # find used slicer
             slicer = None
@@ -58,11 +60,20 @@ def analyse_gcode_file(filepath):
             layerHeight = None
             firstLayerHeightPercentage = None
             firstLayerHeight = None
+
             # read footer and find object height
             f.seek(0)
+            data = f.read(READ_SIZE)
+            lines = data.split('\n')
+            # read from end of the file
+            if f.tell() < (fsize - READ_SIZE):
+                # goto end if file is big
+                f.seek(fsize - READ_SIZE)
+            lines.extend(f.read(READ_SIZE).split('\n'))
+
             args_r = re.compile('([A-Z_]+|[A-Z*/"])')
             build_info_r = re.compile('([0-9\.]+)')
-            for line in f:
+            for line in lines:
                 line = line.strip()
                 cpos = line.find(';')
                 if cpos == 0:
