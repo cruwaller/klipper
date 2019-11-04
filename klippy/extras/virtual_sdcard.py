@@ -7,7 +7,6 @@ import os, logging
 import shlex
 
 class VirtualSD:
-
     def __init__(self, config):
         self.printer = printer = config.get_printer()
         self.logger = printer.get_logger('VirtualSD')
@@ -104,6 +103,8 @@ class VirtualSD:
     def do_pause(self):
         if self.work_timer is not None:
             self.must_pause_work = True
+            while self.work_timer is not None:
+                self.reactor.pause(self.reactor.monotonic() + .001)
             self.printer.send_event('vsd:status', 'pause')
     # G-Code commands
     def cmd_error(self, params):
