@@ -197,8 +197,8 @@ class rrHandler(tornado.web.RequestHandler):
 
     def initialize(self, sd_path, parent):
         self.klipper_cfg = None
-        self.fp = None
-        self.bytes_written = 0
+        self.upload_fp = None
+        self.upload_bytes_written = 0
 
         self.parent = parent
         self.sd_path = self.parent.sd_path
@@ -468,12 +468,9 @@ class rrHandler(tornado.web.RequestHandler):
         respstr = json.dumps(respdata)
         self.write(respstr)
 
-    def _parse_file_path(self, target_path):
-        # /rr_upload?name=xxxxx&time=xxxx
-        # /rr_upload?name=0:/filaments/PLA/unload.g&time=2017-11-30T11:46:50
-
-        target_path = target_path.replace("0:/", "").replace("0%3A%2F", "")
-        if KLIPPER_CFG_NAME in target_path:
+    def _parse_file_path(self, filename):
+        filename = filename.replace("0:/", "").replace("0%3A%2F", "")
+        if KLIPPER_CFG_NAME in filename:
             path = self.parent.get_printer_start_arg('config_file', None)
             if path is not None:
                 cfgname = os.path.abspath(path)
@@ -488,105 +485,53 @@ class rrHandler(tornado.web.RequestHandler):
                     self.klipper_cfg = (cfgname, temp_name)
                 except IOError:
                     raise tornado.web.HTTPError(400)
-                target_path = temp_name
-        elif KLIPPER_LOG_NAME in target_path:
-            raise tornado.web.HTTPError(503)
+                filename = temp_name
+        elif KLIPPER_LOG_NAME in filename:
+            filename = None
+        elif "heightmap.csv" in filename:
+            filename = None
         else:
-            target_path = os.path.abspath(os.path.join(self.sd_path, target_path))
-            # Create a dir first
+            filename = os.path.abspath(os.path.join(self.sd_path, filename))
             try:
-                os.makedirs(os.path.dirname(target_path))
+                # try to create a dir first
+                os.makedirs(os.path.dirname(filename))
             except OSError:
                 pass
-        return target_path
+        return filename
 
     def post(self, path, *args, **kwargs):
-        respdata = { "err" : 1 }
+        error = 1
         if "rr_upload" in self.request.path:
-            # /rr_upload?name=xxxxx&time=xxxx
-            # /rr_upload?name=0:/filaments/PLA/unload.g&time=2017-11-30T11:46:50
-
-            '''
-            size = int(self.request.headers['Content-Length'])
-            # body_len = len(self.request.body)
-            body_len = self.bytes_written
-            if body_len == 0:
-                # e.g. filament create
-                respdata["err"] = 0
-            elif body_len != size or not size:
-                self.logger.error("upload size error: %s != %s" % (body_len, size))
-            else:
-                target_path = self.get_argument('name').replace("0:/", ""). \
-                    replace("0%3A%2F", "")
-                if KLIPPER_CFG_NAME in target_path:
-                    path = self.parent.get_printer_start_arg('config_file', None)
-                    if path is not None:
-                        cfgname = os.path.abspath(path)
-                        datestr = time.strftime("-%Y%m%d_%H%M%S")
-                        backup_name = cfgname + datestr
-                        temp_name = cfgname + "_autosave"
-                        if cfgname.endswith(".cfg"):
-                            backup_name = cfgname[:-4] + datestr + ".cfg"
-                            temp_name = cfgname[:-4] + "_autosave.cfg"
-                        try:
-                            f = open(temp_name, 'wb')
-                            # f.write(self.request.body)
-                            f.write(self.data)
-                            f.close()
-                            os.rename(cfgname, backup_name)
-                            os.rename(temp_name, cfgname)
-                            respdata['err'] = 0
-                        except IOError as err:
-                            self.logger.error("Upload, cfg: %s" % err)
-                elif KLIPPER_LOG_NAME in target_path:
-                    respdata['err'] = 0
-                else:
-                    target_path = os.path.abspath(os.path.join(self.sd_path, target_path))
-                    # Create a dir first
-                    try:
-                        os.makedirs(os.path.dirname(target_path))
-                    except OSError:
-                        pass
-                    # Try to save content
-                    try:
-                        with open(target_path, 'wb') as output_file:
-                            # output_file.write(self.request.body)
-                            output_file.write(self.data)
-                            respdata['err'] = 0
-                    except IOError as err:
-                        self.logger.error("Upload, g-code: %s" % err)
-            '''
-            if self.fp is not None:
-                self.fp.close()
+            if self.upload_fp is not None:
+                self.upload_fp.close()
                 if self.klipper_cfg is not None:
                     os.rename(self.klipper_cfg[1], self.klipper_cfg[0])
 
             size = int(self.request.headers['Content-Length'])
-            if self.bytes_written != size:
+            if self.upload_bytes_written != size:
                 self.logger.error("upload size error: %s != %s" % (
-                    self.bytes_written, size))
-            else:
-                respdata['err'] = 0
-
+                    self.upload_bytes_written, size))
+            error = int(self.upload_bytes_written != size)
         # Send response back to client
-        respstr = json.dumps(respdata)
-        self.write(respstr)
+        self.write(json.dumps({ "err" : error }))
 
     def prepare(self):
         self.request.connection.set_max_body_size(MAX_STREAMED_SIZE)
 
     def data_received(self, chunk):
         if "rr_upload" in self.request.path:
-            if self.fp is None:
+            # /rr_upload?name=xxxxx&time=xxxx
+            # /rr_upload?name=0:/filaments/PLA/unload.g&time=2017-11-30T11:46:50
+            if self.upload_fp is None:
                 filename = self._parse_file_path(self.get_argument('name'))
+                if filename is None:
+                    return
                 try:
-                    self.fp = open(filename, "wb+")
-                    self.fp.write(chunk)
+                    self.upload_fp = open(filename, "wb+")
                 except IOError:
                     raise tornado.web.HTTPError(400)
-            else:
-                self.fp.write(chunk)
-            self.bytes_written += len(chunk)
+            self.upload_fp.write(chunk)
+            self.upload_bytes_written += len(chunk)
 
 
 def create_dir(_dir):
