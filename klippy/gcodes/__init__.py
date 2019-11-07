@@ -15,4 +15,6 @@ import gui_stats
 def load_gcodes(config):
     # Load all default gcode files
     generic.GenericGcode(config)
-    gui_stats.GuiStats(config)
+    if config.has_section('reprapgui_process') or \
+            config.has_section('reprapgui'):
+        gui_stats.GuiStats(config)
