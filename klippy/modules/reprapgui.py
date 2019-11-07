@@ -739,6 +739,7 @@ class RepRapGuiModule(object):
         if "Klipper state" in resp:
             self.append_gcode_resp(resp)
         elif not self.resp_rcvd or "Error:" in resp or "Warning:" in resp:
+            self.resp_rcvd = True
             resp = resp.strip()
             if len(resp) > 2:
                 resp = resp.replace("ok", "")
