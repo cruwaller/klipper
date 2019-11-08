@@ -599,7 +599,6 @@ class RepRapGuiModule(object):
         self.logger_tornado = self.logger.getChild("tornado")
         self.logger_tornado.setLevel(logging.INFO)
         self.gcode = printer.lookup_object('gcode')
-        self.gui_stats = printer.lookup_object('gui_stats')
         self.gcode_resps = []
         self.lock = threading.Lock()
         # Read config
@@ -632,6 +631,8 @@ class RepRapGuiModule(object):
         # try to load required modules
         printer.try_load_module(config, "babysteps")
         printer.try_load_module(config, "analyse_gcode", folder="modules")
+        self.gui_stats = printer.try_load_module(config, 'gui_stats',
+                                                 folder='gcodes')
         # ------------------------------
         # Start tornado webserver
         if _TORNADO_THREAD is None or not _TORNADO_THREAD.isAlive():

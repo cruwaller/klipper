@@ -9,26 +9,21 @@ class GuiStats:
         # required modules
         self.reactor = printer.get_reactor()
         self.gcode = gcode = printer.lookup_object('gcode')
-        self.toolhead = printer.lookup_object('toolhead')
         self.babysteps = printer.try_load_module(config, 'babysteps')
         self.sd = printer.try_load_module(config, "virtual_sdcard")
         printer.try_load_module(config, "analyse_gcode", folder="modules")
         # variables
+        self.toolhead = None
         self.starttime = time.time()
         self.curr_state = 'PNR'
         self.name = config.getsection('printer').get(
             'name', default="Klipper printer")
-        self.cpu_info = util.get_cpu_info()
-        self.sw_version = printer.get_start_arg('software_version', 'Unknown')
         self.auto_report = False
         self.auto_report_timer = None
         # Print statistics
         self._stats_type_1 = {}
-        self._stats_type_1_reset()
         self._stats_type_2 = {}
-        self._stats_type_2_reset()
         self._stats_type_3 = {}
-        self._stats_type_3_reset()
         self.print_start_time = self.starttime
         self.last_print_layer_change = .0
         # register callbacks
@@ -48,7 +43,6 @@ class GuiStats:
                     "GUISTATS_AUTO_REPORT"]:
             gcode.register_command(
                 cmd, getattr(self, 'cmd_' + cmd), when_not_ready=True)
-        self.logger.info("GUI STATS LOADED!")
 
     def get_current_state(self):
         return self.curr_state
@@ -102,7 +96,10 @@ class GuiStats:
     def _handle_disconnect(self):
         self.curr_state = "C"
     def handle_ready(self):
-        # self._parse_homed_states()
+        self.toolhead = self.printer.lookup_object('toolhead')
+        self._stats_type_1_reset()
+        self._stats_type_2_reset()
+        self._stats_type_3_reset()
         self.curr_state = "I"
         if self.auto_report and self.auto_report_timer is None:
             self.auto_report_timer = self.reactor.register_timer(
@@ -321,9 +318,10 @@ class GuiStats:
             "axisMaxes"           : axisMaxes,
             "accelerations"       : accelerations,
             "currents"            : currents,
-            "firmwareElectronics" : self.cpu_info,
+            "firmwareElectronics" : util.get_cpu_info(),
             "firmwareName"        : "Klipper",
-            "firmwareVersion"     : self.sw_version,
+            "firmwareVersion"     : printer.get_start_arg('software_version',
+                                                          'Unknown'),
             "idleCurrentFactor"   : 0.0,
             "idleTimeout"         : motor_off_time,
             "minFeedrates"        : [0.00] * len(max_feedrates),

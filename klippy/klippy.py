@@ -159,14 +159,13 @@ class Printer:
         for m in [pins, heater, mcu]:
             m.add_printer_objects(config)
         for section_config in all_sections:
-            self.try_load_module(config, section_config.get_name())
+            if not self.try_load_module(config, section_config.get_name()):
+                self.try_load_module(config, section_config.get_name(),
+                                     folder="modules")
         for m in [toolhead]:
             m.add_printer_objects(config)
-
         # Load generic gcode extensions
         gcodes.load_gcodes(config)
-        for section in all_sections:
-            self.try_load_module(config, section.get_name(), folder="modules")
         # Validate that there are no undefined parameters in the config file
         # pconfig.check_unused_options(config)
     def _connect(self, eventtime):

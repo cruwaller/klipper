@@ -134,7 +134,3 @@ class GenericGcode:
                 "SET_GCODE_OFFSET %s\n" % " ".join(cmd))
         # print out the current position + offsets
         gcode.run_script_from_command("GET_POSITION\n")
-
-
-#def load_config(config):
-#    return GenericGcode(config)
