@@ -187,8 +187,6 @@ class Printer:
         self._try_load_extensions('modules', 'load_module', config)
         for section in all_sections:
             self.try_load_module(config, section.get_name(), folder="modules")
-        for section in all_sections:
-            self.try_load_module(config, section.get_name(), folder="modules_host")
         # Validate that there are no undefined parameters in the config file
         # pconfig.check_unused_options(config)
     def _connect(self, eventtime):
