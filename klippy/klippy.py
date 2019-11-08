@@ -9,10 +9,6 @@ import util, reactor, queuelogger, msgproto, homing
 import gcode, configfile, pins, heater, mcu, toolhead
 import gcodes
 
-# Include extras path to search dir
-sys.path.append(os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "extras")))
-
 message_ready = "Printer is ready"
 
 message_startup = """
@@ -132,7 +128,7 @@ class Printer:
             logging.info(info)
         if self.bglogger is not None:
             self.bglogger.set_rollover_info(name, info)
-    def try_load_module(self, config, section, folder=None):
+    def try_load_module(self, config, section, folder="extras"):
         if section in self.objects:
             return self.objects[section]
         module_parts = section.split()
@@ -152,20 +148,6 @@ class Printer:
             if module is not None:
                 self.objects[section] = module
         return self.objects.get(section, None)
-    def _try_load_extensions(self, folder, func, config):
-        files = os.listdir(os.path.join(os.path.dirname(__file__), folder))
-        for module in files:
-            if module == '__init__.py' or module[-3:] != '.py':
-                continue
-            try:
-                mod_name = module[:-3]
-                mod_path = ".".join([folder, mod_name])
-                mod = importlib.import_module(mod_path)
-            except ImportError:
-                continue
-            init_func = getattr(mod, func, None)
-            if init_func is not None:
-                init_func(self, config)
     def _read_config(self):
         self.objects['configfile'] = pconfig = configfile.PrinterConfig(self)
         config = pconfig.read_main_config()
@@ -183,8 +165,6 @@ class Printer:
 
         # Load generic gcode extensions
         gcodes.load_gcodes(config)
-        # Load 'auto' modules
-        self._try_load_extensions('modules', 'load_module', config)
         for section in all_sections:
             self.try_load_module(config, section.get_name(), folder="modules")
         # Validate that there are no undefined parameters in the config file
