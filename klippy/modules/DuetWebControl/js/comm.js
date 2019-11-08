@@ -545,8 +545,19 @@ function updateStatus() {
 
 			if (status.hasOwnProperty("params")) {
 				// ATX Power
-				if (lastStatusResponse == undefined || status.params.atxPower != lastStatusResponse.params.atxPower) {
-					setATXPower(status.params.atxPower);
+				if (status.params.hasOwnProperty("atxPower")) {
+					if (!settings.showATXControl) {
+						// Show ATX buttons
+						settings.showATXControl = true;
+						$(".atx-control").toggleClass("hidden", !settings.showATXControl);
+					}
+					if (lastStatusResponse == undefined || status.params.atxPower != lastStatusResponse.params.atxPower) {
+						setATXPower(status.params.atxPower);
+					}
+				} else if (settings.showATXControl) {
+					// Hide ATX buttons
+					settings.showATXControl = false;
+					$(".atx-control").toggleClass("hidden", !settings.showATXControl);
 				}
 
 				// Fan Control

@@ -17,4 +17,5 @@ def load_gcodes(config):
     generic.GenericGcode(config)
     if config.has_section('reprapgui_process') or \
             config.has_section('reprapgui'):
-        gui_stats.GuiStats(config)
+        config.get_printer().add_object(
+            "gui_stats", gui_stats.load_config(config))

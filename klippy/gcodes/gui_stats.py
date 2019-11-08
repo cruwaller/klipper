@@ -48,7 +48,6 @@ class GuiStats:
                     "GUISTATS_AUTO_REPORT"]:
             gcode.register_command(
                 cmd, getattr(self, 'cmd_' + cmd), when_not_ready=True)
-        printer.add_object("gui_stats", self)
         self.logger.info("GUI STATS LOADED!")
 
     def get_current_state(self):
@@ -190,7 +189,7 @@ class GuiStats:
             },
             "currentTool": 0,
             "params": {
-                "atxPower": 0,
+                # "atxPower": 0,
                 "fanPercent": [0],
                 "speedFactor": 100.,
                 "extrFactors": [100.],
@@ -343,9 +342,6 @@ class GuiStats:
         heatbed = pheater.lookup_heater('heater bed', None)
         _extrs = self.printer.extruder_get()
 
-        atx_pwr = pheater.lookup_heater('atx_power', None)
-        atx_state = atx_pwr.get_state() if atx_pwr else 0
-
         babysteps = self.babysteps.babysteps if self.babysteps else 0.
 
         # _type == 1 is always included
@@ -359,9 +355,15 @@ class GuiStats:
             e.extrude_pos for i, e in _extrs.items()]
         status_block['coords']["xyz"] = curr_pos[:3]
 
+        # update ATX status
+        atx_pwr = self.printer.lookup_object('atx_power', None)
+        # atx_state = atx_pwr.get_state() if atx_pwr else 0
+        if atx_pwr is not None:
+            status_block["params"]["atxPower"] = atx_pwr.get_state()
+
         # update params
         status_block["params"].update({
-            "atxPower":    atx_state,
+            # "atxPower":    atx_state,
             "fanPercent":  fans,
             "speedFactor": self.gcode.speed_factor * 60. * 100.0,
             "extrFactors": [e.get_extrude_factor(procent=True)
@@ -523,3 +525,6 @@ class GuiStats:
 
         # self.logger.debug("%s", json.dumps(status_resp, indent=4))
         return status_resp
+
+def load_config(config):
+    return GuiStats(config)
