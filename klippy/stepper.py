@@ -54,7 +54,7 @@ def lookup_enable_pin(ppins, pin_list):
 def lookup_endstop_pin(ppins, pin):
     if pin is None:
         raise ppins.error("Endstop requires pin")
-    pin_params = ppins.lookup_pin(pin, can_invert=True,
+    pin_params = ppins.lookup_pin(pin, can_invert=True, can_pullup=True,
                                   share_type='shared_endstop')
     mcu_endstop = pin_params.get('endstop_mcu')
     if mcu_endstop is None:
