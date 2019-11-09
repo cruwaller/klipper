@@ -30,6 +30,7 @@ class GuiStats:
         printer.register_event_handler('vsd:status', self._sd_status)
         printer.register_event_handler('vsd:file_loaded', self._sd_file_loaded)
         printer.register_event_handler('gcode:layer_changed', self._layer_changed)
+        printer.register_event_handler('klippy:config_ready', self._config_ready)
         printer.register_event_handler("klippy:ready", self.handle_ready)
         printer.register_event_handler("klippy:connect", self._handle_connect)
         printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
@@ -91,15 +92,16 @@ class GuiStats:
         self.gcode.respond('GUISTATS_REPORT='+dump)
         return eventtime + .250
 
+    def _config_ready(self):
+        self.toolhead = self.printer.lookup_object('toolhead')
+        self._stats_type_1_reset()
+        self._stats_type_2_reset()
+        self._stats_type_3_reset()
     def _handle_shutdown(self):
         self.curr_state = "H"
     def _handle_disconnect(self):
         self.curr_state = "C"
     def handle_ready(self):
-        self.toolhead = self.printer.lookup_object('toolhead')
-        self._stats_type_1_reset()
-        self._stats_type_2_reset()
-        self._stats_type_3_reset()
         self.curr_state = "I"
         if self.auto_report and self.auto_report_timer is None:
             self.auto_report_timer = self.reactor.register_timer(

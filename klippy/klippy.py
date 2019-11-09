@@ -168,6 +168,7 @@ class Printer:
         gcodes.load_gcodes(config)
         # Validate that there are no undefined parameters in the config file
         # pconfig.check_unused_options(config)
+        self.send_event("klippy:config_ready")
     def _connect(self, eventtime):
         try:
             self._read_config()

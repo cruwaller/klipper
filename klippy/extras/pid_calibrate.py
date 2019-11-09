@@ -23,6 +23,7 @@ class PIDCalibrate:
         write_file = self.gcode.get_int('WRITE_FILE', params, 0)
         pheater = self.printer.lookup_object('heater')
         try:
+            heater_name = pheater.convert_name(heater_name)
             heater = pheater.lookup_heater(heater_name)
         except self.printer.config_error as e:
             raise self.gcode.error(str(e))
