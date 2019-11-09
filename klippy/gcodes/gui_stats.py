@@ -339,7 +339,7 @@ class GuiStats:
         curr_pos = self.toolhead.get_position()
         fans = [fan.last_fan_value * 100.0 for n, fan in
                 self.printer.lookup_objects("fan")]
-        heatbed = pheater.lookup_heater('heater bed', None)
+        heatbed = pheater.lookup_heater('bed', None)
         _extrs = self.printer.extruder_get()
 
         babysteps = self.babysteps.babysteps if self.babysteps else 0.

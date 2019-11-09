@@ -447,15 +447,21 @@ class GCodeParser:
             temp = self.get_float('R', params, 0.)
         if temp < 0:
             temp = 0.
+        heater = None
         if is_bed:
-            pheater = self.printer.lookup_object('heater')
-            heater = pheater.lookup_heater('heater bed', None)
-        else:
-            index = self.get_int('T', params, None)
+            heater = self.printer.lookup_object('heater_bed', None)
+        elif 'T' in params or 'P' in params:
+            index = self.get_int('T', params, default=None, minval=0)
             if index is None:
-                index = self.get_int('P', params, 999)
-            heater = self.printer.extruder_get(
-                index, default=self.extruder).get_heater()
+                index = self.get_int('P', params, 999, minval=0)
+            section = 'extruder'
+            if index:
+                section = 'extruder%d' % (index,)
+            extruder = self.printer.lookup_object(section, None)
+            if extruder is not None:
+                heater = extruder.get_heater()
+        elif self.extruder is not None:
+            heater = self.extruder.get_heater()
         if heater is None:
             if temp > 0.:
                 self.respond_error("Heater not configured")
@@ -521,7 +527,8 @@ class GCodeParser:
         self.extruder = e
         self.reset_last_position()
         self.base_position[3] = self.last_position[3]
-        self.run_script_from_command(self.extruder.get_activate_gcode(True))
+        if self.extruder is not None:
+            self.run_script_from_command(self.extruder.get_activate_gcode(True))
     def _cmd_mux(self, params):
         key, values = self.mux_commands[params['#command']]
         if None in values:

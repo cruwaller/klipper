@@ -555,10 +555,8 @@ class PrinterHeaters:
     @staticmethod
     def convert_name(heater_name):
         heater_name = heater_name.split()[-1]
-        if heater_name == 'extruder':
-            heater_name = 'extruder0'
-        elif heater_name in ['heater_bed', 'bed', '-1']:
-            heater_name = 'heater bed'
+        if heater_name in ['bed', '-1']:
+            heater_name = 'heater_bed'
         elif heater_name.isdigit():
             # config [heater 0] case
             heater_name = 'heater ' + heater_name
