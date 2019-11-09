@@ -41,6 +41,8 @@ class PrinterADCtoTemperature:
         self.mcu_adc.setup_adc_callback(REPORT_TIME, self.adc_callback)
         self.min_temp = config.getfloat('min_temp', minval=0., default=0.)
         self.max_temp = config.getfloat('max_temp', above=self.min_temp, default=0.)
+        query_adc = config.get_printer().try_load_module(config, 'query_adc')
+        query_adc.register_adc(config.get_name(), self.mcu_adc)
     def setup_callback(self, temperature_callback):
         self.temperature_callback = temperature_callback
     def get_report_time_delta(self):

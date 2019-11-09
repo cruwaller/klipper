@@ -1,21 +1,18 @@
 # Code for handling printer nozzle extruders
 #
-# Copyright (C) 2016  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2016-2019  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import math
+import math, logging
 import stepper, homing, chelper
 
 EXTRUDE_DIFF_IGNORE = 1.02
 
-
 class PrinterExtruder:
-    def __init__(self, config, extruder_num=None):
+    def __init__(self, config, extruder_num):
         self.printer = printer = config.get_printer()
         printer.register_event_handler('vsd:status', self._sd_status)
         self.name = config.get_name()
-        if extruder_num is None:
-            extruder_num = int(self.name.replace('extruder', '').strip())
         self.extruder_num = extruder_num
         self.logger = printer.get_logger(self.name)
         shared_heater = config.get('shared_heater', None)
@@ -23,7 +20,7 @@ class PrinterExtruder:
         gcode_id = 'T%d' % (extruder_num,)
         shared_heater = config.get('heater', shared_heater)
         if shared_heater is None:
-            self.heater = pheater.setup_heater(config, gcode_id)
+            self.heater = pheater.setup_heater(config, gcode_id, index=extruder_num)
         else:
             self.heater = pheater.setup_heater(
                 config.getsection(shared_heater), gcode_id)
@@ -60,18 +57,21 @@ class PrinterExtruder:
             'pressure_advance', 0., minval=0.)
         self.pressure_advance_lookahead_time = config.getfloat(
             'pressure_advance_lookahead_time', 0.010, minval=0.)
-        self.need_motor_enable = True
         self.extrude_pos = 0.
         self.raw_filament = 0.
         self.extrude_factor = config.getfloat('extrusion_factor', 1.0, minval=0.1)
         # Setup iterative solver
         ffi_main, ffi_lib = chelper.get_ffi()
-        self.cmove = ffi_main.gc(ffi_lib.move_alloc(), ffi_lib.free)
-        self.extruder_move_fill = ffi_lib.extruder_move_fill
+        self.extruder_add_move = ffi_lib.extruder_add_move
+        self.trapq = ffi_main.gc(ffi_lib.trapq_alloc(), ffi_lib.trapq_free)
+        self.trapq_free_moves = ffi_lib.trapq_free_moves
         self.stepper.setup_itersolve('extruder_stepper_alloc')
+        self.stepper.set_trapq(self.trapq)
+        toolhead.register_step_generator(self.stepper.generate_steps)
+        toolhead.register_step_generator(self._free_moves)
         # Setup SET_PRESSURE_ADVANCE command
         gcode = self.printer.lookup_object('gcode')
-        if self.name in ('extruder', 'extruder0'):
+        if self.name == 'extruder':
             gcode.register_mux_command("SET_PRESSURE_ADVANCE", "EXTRUDER", None,
                                        self.cmd_default_SET_PRESSURE_ADVANCE,
                                        desc=self.cmd_SET_PRESSURE_ADVANCE_help)
@@ -84,6 +84,8 @@ class PrinterExtruder:
         if status == 'loaded':
             # Reset filament counter
             self.raw_filament = 0.
+    def _free_moves(self, flush_time):
+        self.trapq_free_moves(self.trapq, flush_time)
     def get_status(self, eventtime):
         return dict(
             self.get_heater().get_status(eventtime),
@@ -102,15 +104,14 @@ class PrinterExtruder:
         return self.heater.stats(eventtime)
     def motor_off(self, print_time):
         self.stepper.motor_enable(print_time, 0)
-        self.need_motor_enable = True
     def check_move(self, move):
-        move.extrude_r = move.axes_d[3] / move.move_d
+        move.extrude_r = move.axes_r[3]
         move.extrude_max_corner_v = 0.
         if not self.heater.can_extrude:
             raise homing.EndstopError(
                 "Extrude below minimum temp\n"
                 "See the 'min_extrude_temp' config option for details")
-        if not move.is_kinematic_move or move.extrude_r < 0.:
+        if (not move.axes_d[0] and not move.axes_d[1]) or move.extrude_r < 0.:
             # Extrude only move (or retraction move) - limit accel and velocity
             if abs(move.axes_d[3]) > self.max_e_dist:
                 raise homing.EndstopError(
@@ -125,10 +126,10 @@ class PrinterExtruder:
                 # Permit extrusion if amount extruded is tiny
                 move.extrude_r = self.max_extrude_ratio
                 return
-            area = move.axes_d[3] * self.filament_area / move.move_d
-            self.logger.debug("Over extrude: %s vs %s (area=%.3f dist=%.3f)",
-                              move.extrude_r, self.max_extrude_ratio,
-                              area, move.move_d)
+            area = move.axes_r[3] * self.filament_area
+            self.logger.debug("Overextrude: %s vs %s (area=%.3f dist=%.3f)",
+                          move.extrude_r, self.max_extrude_ratio,
+                          area, move.move_d)
             raise homing.EndstopError(
                 "Move exceeds maximum extrusion (%.3fmm^2 vs %.3fmm^2)\n"
                 "See the 'max_extrude_cross_section' config option for details"
@@ -185,12 +186,8 @@ class PrinterExtruder:
             move.extrude_max_corner_v = max_corner_v
         return flush_count
     def move(self, print_time, move):
-        if self.need_motor_enable:
-            self.stepper.motor_enable(print_time, 1)
-            self.printer.send_event('motor_state', 'on')
-            self.need_motor_enable = False
         axis_d = move.axes_d[3]
-        axis_r = axis_d / move.move_d
+        axis_r = move.axes_r[3]
         accel = move.accel * axis_r
         start_v = move.start_v * axis_r
         cruise_v = move.cruise_v * axis_r
@@ -223,10 +220,9 @@ class PrinterExtruder:
                     extra_decel_v = extra_decel_d / decel_t
 
         # Generate steps
-        self.extruder_move_fill(
-            self.cmove, print_time, accel_t, cruise_t, decel_t, start_pos,
+        self.extruder_add_move(
+            self.trapq, print_time, accel_t, cruise_t, decel_t, start_pos,
             start_v, cruise_v, accel, extra_accel_v, extra_decel_v)
-        self.stepper.step_itersolve(self.cmove)
         self.extrude_pos = start_pos + axis_d
     cmd_SET_PRESSURE_ADVANCE_help = "args: [EXTRUDER=] [ADVANCE=] [ADVANCE_LOOKAHEAD_TIME=]"
     def cmd_default_SET_PRESSURE_ADVANCE(self, params):
@@ -282,22 +278,22 @@ class DummyExtruder:
 def add_printer_objects(config):
     printer = config.get_printer()
     for i in range(99):
-        section = 'extruder%d' % (i,)
+        section = 'extruder'
+        if i:
+            section = 'extruder%d' % (i,)
         if not config.has_section(section):
-            if not i and config.has_section('extruder'):
-                pe = PrinterExtruder(config.getsection('extruder'), 0)
-                printer.add_object('extruder0', pe)
-                continue
             break
         pe = PrinterExtruder(config.getsection(section), i)
         printer.extruder_add(pe)
         printer.add_object(section, pe)
 
 def get_printer_extruders(printer):
-    # return printer.extruder_get().values()
     out = []
     for i in range(99):
-        extruder = printer.lookup_object('extruder%d' % (i,), None)
+        section = 'extruder'
+        if i:
+            section = 'extruder%d' % (i,)
+        extruder = printer.lookup_object(section, None)
         if extruder is None:
             break
         out.append(extruder)

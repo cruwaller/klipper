@@ -72,7 +72,7 @@ def lookup_endstop_pin(ppins, pin):
 class PrinterStepper:
     def __init__(self, config, logger=None):
         self.driver = self.mcu_stepper = None
-        printer = config.get_printer()
+        self.printer = printer = config.get_printer()
         self.name = config.get_name()
         if logger is None:
             self.logger = printer.get_logger(self.name)
@@ -95,15 +95,16 @@ class PrinterStepper:
             dir_pin_params = ppins.lookup_pin(dir_pin, can_invert=True)
             mcu_stepper.setup_dir_pin(dir_pin_params)
             mcu_stepper.setup_step_distance(step_dist)
+            mcu_stepper.add_active_callback(self._stepper_active)
         self.enable = lookup_enable_pin(ppins, config.get('enable_pin', None))
         # Register STEPPER_BUZZ command
         force_move = printer.try_load_module(config, 'force_move')
         force_move.register_stepper(self)
         # Wrappers
-        self.step_itersolve = mcu_stepper.step_itersolve
         self.setup_itersolve = mcu_stepper.setup_itersolve
+        self.generate_steps = mcu_stepper.generate_steps
+        self.set_trapq = mcu_stepper.set_trapq
         self.set_stepper_kinematics = mcu_stepper.set_stepper_kinematics
-        self.set_ignore_move = mcu_stepper.set_ignore_move
         self.calc_position_from_coord = mcu_stepper.calc_position_from_coord
         self.set_position = mcu_stepper.set_position
         self.get_commanded_position = mcu_stepper.get_commanded_position
@@ -138,10 +139,16 @@ class PrinterStepper:
             2. * step_dist, max_halt_velocity, max_accel)
         min_stop_interval = second_last_step_time - last_step_time
         self.mcu_stepper.setup_min_stop_interval(min_stop_interval)
+    def _stepper_active(self, active_time):
+        self.motor_enable(active_time, 1)
     def motor_enable(self, print_time, enable=0):
         if self.need_motor_enable != (not enable):
             self.enable.set_enable(print_time, enable)
+        self.printer.send_event('motor_state', ['off', 'on'][enable])
         self.need_motor_enable = not enable
+        if not enable:
+            # Enable stepper on future stepper movement
+            self.mcu_stepper.add_active_callback(self._stepper_active)
     def is_motor_enabled(self):
         return not self.need_motor_enable
     def get_driver(self):
@@ -185,7 +192,6 @@ class PrinterRail:
         self.logger = stepper.logger
         self.steppers = [stepper]
         self.name = stepper.get_name(short=True)
-        self.step_itersolve = stepper.step_itersolve
         self.get_commanded_position = stepper.get_commanded_position
         self.is_motor_enabled = stepper.is_motor_enabled
         # Primary endstop and its position
@@ -307,7 +313,6 @@ class PrinterRail:
     def add_extra_stepper(self, config):
         stepper = PrinterStepper(config)
         self.steppers.append(stepper)
-        self.step_itersolve = self.step_multi_itersolve
         mcu_endstop = self.endstops[0][0]
         homing_dir, endstop_pin = self.__get_endstop_pin(config)
         endstop_pin = config.get(endstop_pin, None)
@@ -326,12 +331,15 @@ class PrinterRail:
     def add_to_endstop(self, mcu_endstop):
         for stepper in self.steppers:
             stepper.add_to_endstop(mcu_endstop)
-    def step_multi_itersolve(self, cmove):
-        for stepper in self.steppers:
-            stepper.step_itersolve(cmove)
     def setup_itersolve(self, alloc_func, *params):
         for stepper in self.steppers:
             stepper.setup_itersolve(alloc_func, *params)
+    def generate_steps(self, flush_time):
+        for stepper in self.steppers:
+            stepper.generate_steps(flush_time)
+    def set_trapq(self, trapq):
+        for stepper in self.steppers:
+            stepper.set_trapq(trapq)
     def set_max_jerk(self, max_halt_velocity, max_accel):
         for stepper in self.steppers:
             stepper.set_max_jerk(max_halt_velocity, max_accel)

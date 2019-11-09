@@ -1,6 +1,6 @@
 # Code for handling the kinematics of linear delta robots
 #
-# Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2016-2019  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math, logging
@@ -64,8 +64,11 @@ class DeltaKinematics:
                        for angle in self.angles]
         for r, a, t in zip(self.rails, self.arm2, self.towers):
             r.setup_itersolve('delta_stepper_alloc', a, t[0], t[1])
+        for s in self.get_steppers():
+            s.set_trapq(toolhead.get_trapq())
+            toolhead.register_step_generator(s.generate_steps)
         # Setup boundary checks
-        self.need_motor_enable = self.need_home = True
+        self.need_home = True
         self.limit_xy2 = -1.
         self.home_position = tuple(
             self._actuator_to_cartesian(self.abs_endstops))
@@ -123,12 +126,6 @@ class DeltaKinematics:
             rail.motor_enable(print_time, 0)
         if self.toolhead.require_home_after_motor_off is True:
             self.need_home = True
-        self.need_motor_enable = True
-    def _check_motor_enable(self, print_time):
-        for rail in self.rails:
-            rail.motor_enable(print_time, 1)
-        self.need_motor_enable = False
-        self.printer.send_event('motor_state', 'on')
     def check_move(self, move):
         end_pos = move.end_pos
         end_xy2 = end_pos[0]**2 + end_pos[1]**2
@@ -163,11 +160,6 @@ class DeltaKinematics:
             move.limit_speed(max_velocity * r, self.max_accel * r)
             limit_xy2 = -1.
         self.limit_xy2 = min(limit_xy2, self.slow_xy2)
-    def move(self, print_time, move):
-        if self.need_motor_enable:
-            self._check_motor_enable(print_time)
-        for rail in self.rails:
-            rail.step_itersolve(move.cmove)
     def get_status(self):
         return {'homed_axes': '' if self.need_home else 'XYZ'}
 

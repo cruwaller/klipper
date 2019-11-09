@@ -715,8 +715,8 @@ class GCodeParser:
         self.homing_position = list(state['homing_position'])
         self.speed = state['speed']
         self.speed_factor = state['speed_factor']
-        self.extruder = state['extruder']
         self.extruder.set_extrude_factor(state['extrude_factor'])
+        self.extruder = state['extruder']
         # Restore the relative E position
         e_diff = self.last_position[3] - state['last_position'][3]
         self.base_position[3] += e_diff

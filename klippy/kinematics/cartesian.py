@@ -1,6 +1,6 @@
 # Code for handling the kinematics of cartesian robots
 #
-# Copyright (C) 2016-2018  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2016-2019  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
@@ -14,16 +14,18 @@ class CartKinematics:
         self.toolhead = toolhead
         # Setup axis rails
         self.rails = [stepper.LookupMultiRail(config.getsection('stepper_' + n))
-                      for n in ['x', 'y', 'z']]
+                      for n in 'xyz']
         for rail, axis in zip(self.rails, 'xyz'):
             rail.setup_itersolve('cartesian_stepper_alloc', axis)
+        for s in self.get_steppers():
+            s.set_trapq(toolhead.get_trapq())
+            toolhead.register_step_generator(s.generate_steps)
         # Setup boundary checks
         max_velocity, max_accel = toolhead.get_max_velocity()
         self.max_z_velocity = config.getfloat(
             'max_z_velocity', max_velocity, above=0., maxval=max_velocity)
         self.max_z_accel = config.getfloat(
             'max_z_accel', max_accel, above=0., maxval=max_accel)
-        self.need_motor_enable = True
         self.max_velocity = max_velocity
         self.max_accel = max_accel
         if toolhead.allow_move_wo_homing is False:
@@ -46,6 +48,8 @@ class CartKinematics:
             self.dual_carriage_axis = {'x': 0, 'y': 1}[dc_axis]
             dc_rail = stepper.LookupMultiRail(dc_config)
             dc_rail.setup_itersolve('cartesian_stepper_alloc', dc_axis)
+            for s in dc_rail.get_steppers():
+                toolhead.register_step_generator(s.generate_steps)
             dc_rail.set_max_jerk(max_halt_velocity, max_accel)
             self.dual_carriage_rails = [
                 self.rails[self.dual_carriage_axis], dc_rail]
@@ -108,15 +112,6 @@ class CartKinematics:
             rail.motor_enable(print_time, 0)
         for rail in self.dual_carriage_rails:
             rail.motor_enable(print_time, 0)
-        self.need_motor_enable = True
-    def _check_motor_enable(self, print_time, move):
-        need_motor_enable = False
-        for i, rail in enumerate(self.rails):
-            if move.axes_d[i]:
-                rail.motor_enable(print_time, 1)
-            need_motor_enable |= not rail.is_motor_enabled()
-        self.need_motor_enable = need_motor_enable
-        self.printer.send_event('motor_state', 'on')
     def _check_endstops(self, move):
         end_pos = move.end_pos
         for i in (0, 1, 2):
@@ -143,12 +138,6 @@ class CartKinematics:
         z_ratio = move.move_d / abs(move.axes_d[2])
         move.limit_speed(
             self.max_z_velocity * z_ratio, self.max_z_accel * z_ratio)
-    def move(self, print_time, move):
-        if self.need_motor_enable:
-            self._check_motor_enable(print_time, move)
-        for i, rail in enumerate(self.rails):
-            if move.axes_d[i]:
-                rail.step_itersolve(move.cmove)
     def get_status(self):
         return {'homed_axes': "".join([a
                     for a, (l, h) in zip("XYZ", self.limits) if l <= h])
@@ -159,6 +148,8 @@ class CartKinematics:
         toolhead.get_last_move_time()
         dc_rail = self.dual_carriage_rails[carriage]
         dc_axis = self.dual_carriage_axis
+        self.rails[dc_axis].set_trapq(None)
+        dc_rail.set_trapq(toolhead.get_trapq())
         self.rails[dc_axis] = dc_rail
         extruder_pos = toolhead.get_position()[3]
         toolhead.set_position(self.calc_position() + [extruder_pos])
