@@ -271,6 +271,8 @@ class GuiStats:
 
     # Statistics
     def get_config_stats(self):
+        if self.toolhead is None:
+            return {"err": 1}
         printer = self.printer
         _extrs = printer.extruder_get()
         kinematic = self.toolhead.get_kinematics()
@@ -332,6 +334,8 @@ class GuiStats:
         return config
 
     def get_status_stats(self, _type=1):
+        if self.toolhead is None:
+            return {"err": 1, "seq": 0}
         pheater = self.printer.lookup_object('heater')
         # STATES = 0: off, 1: standby, 2: active, 3: fault (same for bed)
         states = {False : 0, True  : 2}

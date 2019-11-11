@@ -200,7 +200,9 @@ class Heater:
             self.index = -1 # bed is always -1
         elif index is None:
             try:
-                if 'extruder' in self.name:
+                if 'extruder' == self.name:
+                    self.index = 0
+                elif 'extruder' in self.name:
                     self.index = int(self.name.replace('extruder', '').strip())
                 else:
                     self.index = int(self.name.replace('heater', '').strip())
