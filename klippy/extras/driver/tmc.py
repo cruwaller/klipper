@@ -182,7 +182,7 @@ class TMCVirtualEndstop:
         self.home_wait = self.mcu_endstop.home_wait
         self.query_endstop = self.mcu_endstop.query_endstop
         self.TimeoutError = self.mcu_endstop.TimeoutError
-    def home_prepare(self, speed):
+    def home_prepare(self):
         reg = self.fields.lookup_register("en_pwm_mode", None)
         if reg is None:
             # On "stallguard4" drivers, "stealthchop" must be enabled
@@ -194,7 +194,7 @@ class TMCVirtualEndstop:
             val = self.fields.set_field("diag1_stall", 1)
         self.mcu_tmc.set_register("GCONF", val)
         self.mcu_tmc.set_register("TCOOLTHRS", 0xfffff)
-        self.mcu_endstop.home_prepare(speed)
+        self.mcu_endstop.home_prepare()
     def home_finalize(self):
         reg = self.fields.lookup_register("en_pwm_mode", None)
         if reg is None:

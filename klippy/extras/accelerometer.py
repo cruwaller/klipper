@@ -55,7 +55,7 @@ class Accelerometer:
         pass
     def ready_handler(self):
         pass
-    def home_prepare(self, *args):
+    def home_prepare(self):
         pass
     def home_finalize(self):
         pass
@@ -97,12 +97,12 @@ class VirtualEndstop:
             'toolhead').get_kinematics()
         for stepper in kin.get_steppers('Z'):
             stepper.add_to_endstop(self)
-    def home_prepare(self, speed):
+    def home_prepare(self):
         if self.prepare_done: # shared pin protect
             return
         self.prepare_done = True
-        self.accelerometer.home_prepare(speed)
-        self.mcu_endstop.home_prepare(speed)
+        self.accelerometer.home_prepare()
+        self.mcu_endstop.home_prepare()
     def home_finalize(self):
         if not self.prepare_done:
             return
@@ -199,7 +199,7 @@ class ADXL345(Accelerometer):
 
     def prepare_pin(self, pin_params):
         self.data_format(invert=pin_params['invert'])
-    def home_prepare(self, *args):
+    def home_prepare(self):
         self.int_enable(self.isr_type)
         self.power_control(measure='measure')
     def home_finalize(self):
@@ -410,7 +410,7 @@ class ADXL362(Accelerometer):
                            inact=inact, act=act)
     def ready_handler(self):
         pass
-    def home_prepare(self, *args):
+    def home_prepare(self):
         self.act_inact_control(type=self.isr_type,
             absolute_overthreshold=self.isr_act_absolute,
             absolute_underthreshold=self.isr_inact_absolute)

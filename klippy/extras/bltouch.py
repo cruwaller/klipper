@@ -140,14 +140,14 @@ class BLTouchEndstopWrapper:
         # Test was successful
         self.next_test_time = check_end_time + TEST_TIME
         self.sync_print_time()
-    def home_prepare(self, speed):
+    def home_prepare(self):
         self.test_sensor()
         self.sync_print_time()
         duration = max(MIN_CMD_TIME, self.pin_move_time - MIN_CMD_TIME)
         self.send_cmd('pin_down', duration=duration)
         self.send_cmd(None)
         self.sync_print_time()
-        self.mcu_endstop.home_prepare(speed)
+        self.mcu_endstop.home_prepare()
         self.start_mcu_pos = [(s, s.get_mcu_position())
                               for s in self.mcu_endstop.get_steppers()]
     def home_finalize(self):

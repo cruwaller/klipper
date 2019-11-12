@@ -43,7 +43,7 @@ class Homing:
                     init_home_funcs=[]):
         # Notify endstops of upcoming home
         for mcu_endstop, name in endstops:
-            mcu_endstop.home_prepare(speed)
+            mcu_endstop.home_prepare()
         for sensor_func in init_home_funcs:
             if sensor_func is not None:
                 sensor_func(enable=True)

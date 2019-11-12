@@ -188,7 +188,7 @@ class MCU_endstop:
             " rest_ticks=%u pin_value=%c", cq=cmd_queue)
         self._query_cmd = self._mcu.lookup_command(
             "endstop_query_state oid=%c", cq=cmd_queue)
-    def home_prepare(self, *args):
+    def home_prepare(self):
         pass
     def home_start(self, print_time, sample_time, sample_count, rest_time,
                    triggered=True, notify=None):
