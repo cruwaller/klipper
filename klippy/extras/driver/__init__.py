@@ -6,7 +6,6 @@
 
 import driverbase
 import tmc2130
-import tmc51xx
 import tmc2130_tmp
 import tmc2208
 import tmc2209
@@ -15,8 +14,6 @@ import tmc5160
 
 DRV_MAPPING = {
     'TMC2130': tmc2130.TMC2130,
-    'TMC5130_SPI': tmc51xx.TMC51xx,
-    'TMC5160_SPI': tmc51xx.TMC51xx,
     # Original versions
     'TMC2130_ORIG': tmc2130_tmp.TMC2130,
     'TMC2208': tmc2208.TMC2208,

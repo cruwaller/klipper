@@ -68,8 +68,6 @@ itersolve_gen_steps_range(struct stepper_kinematics *sk, struct move *m
     double seek_time_delta = 0.000100;
     int sdir = stepcompress_get_step_dir(sc);
     struct queue_append qa = queue_append_start(sc, m->print_time, .5);
-    //errorf(" === BEG: last %lf movedist %lf, print_time %lf, move_t %lf, cruise_v %lf  [accel_t %lf : cruise_t %lf : decel_t %lf]",
-    //       sk->commanded_pos, calc_position(sk, m, m->move_t), m->print_time, m->move_t, m->cruise_v, m->accel_t, m->cruise_t, (m->move_t - m->accel_t - m->cruise_t));
     for (;;) {
         // Determine if next step is in forward or reverse direction
         double dist = high.position - last.position;
@@ -123,7 +121,6 @@ itersolve_gen_steps_range(struct stepper_kinematics *sk, struct move *m
             // The high range is no longer valid - recalculate it
             goto seek_new_high_range;
     }
-    //errorf(" === END! last.pos %lf", last.position);
     queue_append_finish(qa);
     sk->commanded_pos = last.position;
     if (sk->post_cb)
@@ -234,73 +231,3 @@ itersolve_get_commanded_pos(struct stepper_kinematics *sk)
 {
     return sk->commanded_pos;
 }
-
-
-#if 0
-// Generate step times for a TMC51xx stepper driver during a move
-int32_t __visible
-itersolve_gen_steps_tmc5x(struct stepper_kinematics *sk, struct move *m)
-{
-    struct stepcompress *sc = sk->sc;
-    sk_calc_callback calc_position_cb = sk->calc_position_cb;
-    double half_step = .5 * sk->step_dist;
-    double step_dist = sk->step_dist;
-    double mcu_freq = stepcompress_get_mcu_freq(sc);
-    struct timepos last = { 0., sk->commanded_pos }, low = last, high = last;
-    double seek_time_delta = 0.000100;
-    struct queue_append qa = queue_append_start(sc, m->print_time, .5);
-    double move_to = calc_position_cb(sk, m, m->move_t), dist;
-    double factor = stepcompress_get_tmc5x_speed_factor(sc);
-    //double vmax = m->accel_t ? abs(move_to - last.position) / m->move_t : m->cruise_v; // Verify!
-    double vmax = abs(move_to - last.position) / m->move_t; // Verify!
-    //double vmax = abs(move_to - last.position) / m->cruise_t; // Verify!
-    vmax = (vmax < m->accel.c1 ? m->accel.c1 : vmax);
-    /*
-    errorf(" === TMC51X: last %lf movedist %lf, print_time %lf, move_t %lf, cruise_v %lf -> Vmax %lf [accel_t %lf : cruise_t %lf : decel_t %lf]",
-           sk->commanded_pos, move_to, m->print_time, m->move_t, m->cruise_v, vmax, m->accel_t, m->cruise_t, (m->move_t - m->accel_t - m->cruise_t));
-    //*/
-    for (dist = 0;
-           fabs(dist) < half_step && high.time < m->move_t;
-           dist = high.position - last.position) {
-        // Determine if next step is in forward or reverse direction
-        dist = high.position - last.position;
-        // Need to increase next step search range
-        low = high;
-        high.time = last.time + seek_time_delta;
-        seek_time_delta += seek_time_delta;
-        if (high.time > m->move_t)
-            high.time = m->move_t;
-        high.position = calc_position_cb(sk, m, high.time);
-    }
-    double target = last.position + ((move_to >= last.position) ? half_step : -half_step);
-    struct timepos next = itersolve_find_step(sk, m, low, high, target);
-
-    uint32_t VMAX = (vmax * factor);
-    /*
-    uint32_t AMAX = m->accel_t
-        ? VMAX * stepcompress_get_tmc5x_accel_factor_t(sc) / m->accel_t
-        : 0xFFFF;
-    //*/
-    //*
-    uint32_t AMAX = m->accel_t
-        ? (2 * m->accel.c2) * stepcompress_get_tmc5x_accel_factor(sc)
-        : 0xFFFF;
-    //*/
-    // Fill move data
-    struct move_q move = (struct move_q){
-        .time=0, .pos=(uint32_t)(move_to / step_dist),
-        .amax=AMAX, .dmax=AMAX,
-        .vstart=(m->accel.c1 * factor),
-        .vmax=VMAX
-    };
-    // Add step at given time
-    int ret = queue_append_tmc5x(&qa, &move, next.time * mcu_freq);
-    if (ret)
-        return ret;
-    queue_append_finish(qa);
-    //errorf(" === END! from %lf -> %lf [in steps %u]",
-    //       sk->commanded_pos, move_to, (uint32_t)(move_to / step_dist));
-    sk->commanded_pos = move_to;
-    return 0;
-}
-#endif

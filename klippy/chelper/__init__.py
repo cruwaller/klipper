@@ -30,10 +30,6 @@ defs_stepcompress = """
     void stepcompress_fill(struct stepcompress *sc, uint32_t max_error
         , uint32_t invert_sdir, uint32_t queue_step_msgid
         , uint32_t set_next_step_dir_msgid);
-    void stepcompress_fill_tmc5x(struct stepcompress *sc
-        , uint32_t max_error, uint32_t queue_step_msgid
-        , double speed_factor, double accel_factor
-        , double accel_factor_t);
     void stepcompress_free(struct stepcompress *sc);
     int stepcompress_reset(struct stepcompress *sc, uint64_t last_step_clock);
     int stepcompress_queue_msg(struct stepcompress *sc
@@ -59,7 +55,6 @@ defs_itersolve = """
         , double x, double y, double z);
     void itersolve_set_commanded_pos(struct stepper_kinematics *sk, double pos);
     double itersolve_get_commanded_pos(struct stepper_kinematics *sk);
-    int32_t itersolve_gen_steps_tmc5x(struct stepper_kinematics *sk, struct move *m);
 """
 
 defs_trapq = """

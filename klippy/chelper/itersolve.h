@@ -35,6 +35,4 @@ double itersolve_calc_position_from_coord(struct stepper_kinematics *sk
 void itersolve_set_commanded_pos(struct stepper_kinematics *sk, double pos);
 double itersolve_get_commanded_pos(struct stepper_kinematics *sk);
 
-int32_t itersolve_gen_steps_tmc5x(struct stepper_kinematics *sk, struct move *m);
-
 #endif // itersolve.h
