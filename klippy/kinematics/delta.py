@@ -37,13 +37,7 @@ class DeltaKinematics:
         for rail in self.rails:
             rail.set_max_jerk(max_halt_velocity, max_halt_accel)
         # Read radius and arm lengths
-        self.radius = radius = config.getfloat('delta_radius', above=0., default=None)
-        if radius is None:
-            smooth_rod_offset = config.getfloat('delta_smooth_rod_offset', above=0)
-            carriage_offset = config.getfloat('delta_carriage_offset', above=0)
-            effector_offset = config.getfloat('delta_effector_offset', above=0)
-            self.radius = radius = smooth_rod_offset - carriage_offset - effector_offset
-        self.logger.info("Delta radius: %s" % radius)
+        self.radius = radius = config.getfloat('delta_radius', above=0.)
         arm_length_a = stepper_configs[0].getfloat('arm_length', above=radius, default=None)
         if arm_length_a is None:
             arm_length_a = config.getfloat('arm_length', above=radius)
@@ -68,7 +62,7 @@ class DeltaKinematics:
             s.set_trapq(toolhead.get_trapq())
             toolhead.register_step_generator(s.generate_steps)
         # Setup boundary checks
-        self.need_home = True
+        self.need_home = not toolhead.allow_move_wo_homing
         self.limit_xy2 = -1.
         self.home_position = tuple(
             self._actuator_to_cartesian(self.abs_endstops))
@@ -98,8 +92,6 @@ class DeltaKinematics:
                              math.sqrt(self.max_xy2), math.sqrt(self.slow_xy2),
                              math.sqrt(self.very_slow_xy2)))
         self.set_position([0., 0., 0.], ())
-        if toolhead.allow_move_wo_homing is True:
-            self.need_home = False
     def get_steppers(self, flags=""):
         return [s for rail in self.rails for s in rail.get_steppers()]
     def _actuator_to_cartesian(self, spos):

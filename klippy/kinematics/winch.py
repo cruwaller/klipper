@@ -8,7 +8,6 @@ import stepper, mathutil
 class WinchKinematics:
     name = "winch"
     def __init__(self, toolhead, config):
-        self.printer = config.get_printer()
         # Setup steppers at each anchor
         self.steppers = []
         self.anchors = []

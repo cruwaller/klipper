@@ -10,11 +10,11 @@ EXTRUDE_DIFF_IGNORE = 1.02
 
 class PrinterExtruder:
     def __init__(self, config, extruder_num):
-        self.printer = printer = config.get_printer()
-        printer.register_event_handler('vsd:status', self._sd_status)
+        self.printer = config.get_printer()
         self.name = config.get_name()
+        self.printer.register_event_handler('vsd:status', self._sd_status)
         self.extruder_num = extruder_num
-        self.logger = printer.get_logger(self.name)
+        self.logger = self.printer.get_logger(self.name)
         shared_heater = config.get('shared_heater', None)
         pheater = self.printer.lookup_object('heater')
         gcode_id = 'T%d' % (extruder_num,)
@@ -58,8 +58,6 @@ class PrinterExtruder:
         self.pressure_advance_lookahead_time = config.getfloat(
             'pressure_advance_lookahead_time', 0.010, minval=0.)
         self.extrude_pos = 0.
-        self.raw_filament = 0.
-        self.extrude_factor = config.getfloat('extrusion_factor', 1.0, minval=0.1)
         # Setup iterative solver
         ffi_main, ffi_lib = chelper.get_ffi()
         self.extruder_add_move = ffi_lib.extruder_add_move
@@ -75,10 +73,11 @@ class PrinterExtruder:
             gcode.register_mux_command("SET_PRESSURE_ADVANCE", "EXTRUDER", None,
                                        self.cmd_default_SET_PRESSURE_ADVANCE,
                                        desc=self.cmd_SET_PRESSURE_ADVANCE_help)
-        for key in [self.name, str(extruder_num)]:
-            gcode.register_mux_command("SET_PRESSURE_ADVANCE", "EXTRUDER",
-                                       key, self.cmd_SET_PRESSURE_ADVANCE,
-                                       desc=self.cmd_SET_PRESSURE_ADVANCE_help)
+        gcode.register_mux_command("SET_PRESSURE_ADVANCE", "EXTRUDER",
+                                   self.name, self.cmd_SET_PRESSURE_ADVANCE,
+                                   desc=self.cmd_SET_PRESSURE_ADVANCE_help)
+        self.raw_filament = 0.
+        self.extrude_factor = config.getfloat('extrusion_factor', 1.0, minval=0.1)
         self.logger.debug("index=%d, heater=%s" % (extruder_num, self.heater.name))
     def _sd_status(self, status):
         if status == 'loaded':

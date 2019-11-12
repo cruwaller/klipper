@@ -15,11 +15,10 @@ class PIDCalibrate:
             desc=self.cmd_PID_CALIBRATE_help)
         self.logger = self.printer.get_logger('PID_calibrate')
     cmd_PID_CALIBRATE_help = "Run PID calibration test. " \
-                             "args: HEATER=name TARGET=temp [COUNT=]"
+                             "args: HEATER=name TARGET=temp"
     def cmd_PID_CALIBRATE(self, params):
         heater_name = self.gcode.get_str('HEATER', params)
         target = self.gcode.get_float('TARGET', params)
-        count = self.gcode.get_int('COUNT', params, 12)
         write_file = self.gcode.get_int('WRITE_FILE', params, 0)
         pheater = self.printer.lookup_object('heater')
         try:
@@ -28,7 +27,7 @@ class PIDCalibrate:
         except self.printer.config_error as e:
             raise self.gcode.error(str(e))
         print_time = self.printer.lookup_object('toolhead').get_last_move_time()
-        calibrate = ControlAutoTune(heater, target, self.logger, count)
+        calibrate = ControlAutoTune(heater, target, self.logger)
         old_control = heater.set_control(calibrate)
         try:
             heater.set_temp(print_time, target, auto_tune=True)
@@ -56,9 +55,8 @@ class PIDCalibrate:
 TUNE_PID_DELTA = 5.0
 
 class ControlAutoTune:
-    def __init__(self, heater, target, logger, count):
+    def __init__(self, heater, target, logger):
         self.logger = logger
-        self.count = count
         self.heater = heater
         self.heater_max_power = heater.get_max_power()
         self.calibrate_temp = target
@@ -103,7 +101,7 @@ class ControlAutoTune:
                 self.peak = temp
                 self.peak_time = read_time
     def check_busy(self, eventtime, smoothed_temp, target_temp):
-        if self.heating or len(self.peaks) < self.count:
+        if self.heating or len(self.peaks) < 12:
             return True
         return False
     # Analysis
@@ -133,12 +131,8 @@ class ControlAutoTune:
                          temp_diff, self.heater_max_power, Ku, Tu, Kp, Ki, Kd)
         return Kp, Ki, Kd
     def calc_final_pid(self):
-        if len(self.peaks) == 0:
-            raise Exception("Internal error with peaks!")
         cycle_times = [(self.peaks[pos][1] - self.peaks[pos-2][1], pos)
                        for pos in range(4, len(self.peaks))]
-        if len(cycle_times) == 0:
-            raise Exception("Internal error with cycle_timers!")
         midpoint_pos = sorted(cycle_times)[len(cycle_times)/2][1]
         return self.calc_pid(midpoint_pos)
     # Offline analysis helper
