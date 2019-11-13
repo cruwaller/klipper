@@ -3,8 +3,8 @@
 # Copyright (C) 2018-2019  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import driverbase
-import tmc, tmc_uart, tmc2130_tmp as tmc2130
+import logging
+import tmc, tmc_uart, tmc2130
 
 TMC_FREQUENCY=12000000.
 
@@ -182,9 +182,8 @@ FieldFormatters.update({
 # TMC2208 printer object
 ######################################################################
 
-class TMC2208(driverbase.DriverBase):
-    def __init__(self, config, stepper_config):
-        driverbase.DriverBase.__init__(self, config, stepper_config)
+class TMC2208:
+    def __init__(self, config):
         # Setup mcu communication
         self.fields = tmc.FieldHelper(Fields, SignedFields, FieldFormatters)
         self.mcu_tmc = tmc_uart.MCU_TMC_uart(config, Registers, self.fields)
@@ -199,7 +198,7 @@ class TMC2208(driverbase.DriverBase):
         mh = tmc.TMCMicrostepHelper(config, self.mcu_tmc)
         self.get_microsteps = mh.get_microsteps
         self.get_phase = mh.get_phase
-        tmc.TMCStealthchopHelper(config, self.mcu_tmc, TMC_FREQUENCY, self.step_dist)
+        tmc.TMCStealthchopHelper(config, self.mcu_tmc, TMC_FREQUENCY)
         # Allow other registers to be set from the config
         set_config_field = self.fields.set_config_field
         set_config_field(config, "toff", 3)

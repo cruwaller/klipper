@@ -4,10 +4,8 @@
 # Copyright (C) 2019  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import driverbase
-
 import math, logging
-import extras.bus as bus, tmc
+import bus, tmc
 
 Registers = {
     "DRVCONF": 0xE, "SGCSCONF": 0xC, "SMARTEN": 0xA,
@@ -238,9 +236,8 @@ class MCU_TMC2660_SPI:
 # TMC2660 printer object
 ######################################################################
 
-class TMC2660(driverbase.DriverBase):
-    def __init__(self, config, stepper_config):
-        driverbase.DriverBase.__init__(self, config, stepper_config)
+class TMC2660:
+    def __init__(self, config):
         # Setup mcu communication
         self.fields = tmc.FieldHelper(Fields, SignedFields, FieldFormatters)
         self.fields.set_field("SDOFF", 0) # Access DRVCTRL in step/dir mode

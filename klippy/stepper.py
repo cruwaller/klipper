@@ -5,7 +5,6 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math, logging, collections
 import homing, chelper
-import extras.driver as driver_base
 
 class error(Exception):
     pass
@@ -159,27 +158,18 @@ class MCU_stepper:
         if ret:
             raise error("Internal error in stepcompress")
 
-    _driver = None
-    def set_driver(self, driver):
-        self._driver = driver
-    def get_driver(self):
-        return self._driver
-
 # Helper code to build a stepper object from a config section
 def PrinterStepper(config):
     printer = config.get_printer()
     name = config.get_name()
-    driver = driver_base.load_driver(config)
-    step_dist = driver.step_dist
     # Stepper definition
     ppins = printer.lookup_object('pins')
     step_pin = config.get('step_pin')
     step_pin_params = ppins.lookup_pin(step_pin, can_invert=True)
     dir_pin = config.get('dir_pin')
     dir_pin_params = ppins.lookup_pin(dir_pin, can_invert=True)
-    #step_dist = config.getfloat('step_distance', above=0.)
+    step_dist = config.getfloat('step_distance', above=0.)
     mcu_stepper = MCU_stepper(name, step_pin_params, dir_pin_params, step_dist)
-    mcu_stepper.set_driver(driver)
     # Support for stepper enable pin handling
     stepper_enable = printer.try_load_module(config, 'stepper_enable')
     stepper_enable.register_stepper(mcu_stepper, config.get('enable_pin', None))
@@ -244,14 +234,6 @@ class PrinterRail:
                 raise config.error(
                     "Unable to infer homing_positive_dir in section '%s'" % (
                         config.get_name(),))
-        # Note for old configs:
-        config_check = [config.getfloat(key, default=None) for key in [
-            'homing_pos_x', 'homing_pos_x', 'homing_z_raise',
-            'homing_travel_speed', 'homing_retract_dist_after']]
-        if any(config_check):
-            raise config.error("Please use homing_override!")
-        if config.getfloat('homing_offset', None):
-            raise config.error("Please set position_endstop instead!")
     def get_range(self):
         return self.position_min, self.position_max
     def get_homing_info(self):

@@ -97,10 +97,10 @@ class TMCCommandHelper:
         # Register commands
         self.gcode = self.printer.lookup_object("gcode")
         self.gcode.register_mux_command(
-            "SET_TMC_FIELD", "DRIVER", self.name,
+            "SET_TMC_FIELD", "STEPPER", self.name,
             self.cmd_SET_TMC_FIELD, desc=self.cmd_SET_TMC_FIELD_help)
         self.gcode.register_mux_command(
-            "INIT_TMC", "DRIVER", self.name,
+            "INIT_TMC", "STEPPER", self.name,
             self.cmd_INIT_TMC, desc=self.cmd_INIT_TMC_help)
     def _init_registers(self, print_time=None):
         # Send registers
@@ -163,7 +163,7 @@ class TMCCommandHelper:
         self.read_registers = read_registers
         self.read_translate = read_translate
         self.gcode.register_mux_command(
-            "DUMP_TMC", "DRIVER", self.name,
+            "DUMP_TMC", "STEPPER", self.name,
             self.cmd_DUMP_TMC, desc=self.cmd_DUMP_TMC_help)
     cmd_DUMP_TMC_help = "Read and display TMC stepper driver registers"
     def cmd_DUMP_TMC(self, params):
@@ -278,15 +278,14 @@ class TMCMicrostepHelper:
         return (1023 - mscnt) >> self.fields.get_field("MRES")
 
 # Helper to configure "stealthchop" mode
-def TMCStealthchopHelper(config, mcu_tmc, tmc_freq, step_dist=None):
+def TMCStealthchopHelper(config, mcu_tmc, tmc_freq):
     fields = mcu_tmc.get_fields()
     en_pwm_mode = False
     velocity = config.getfloat('stealthchop_threshold', 0., minval=0.)
     if velocity:
         stepper_name = " ".join(config.get_name().split()[1:])
-        if step_dist is None:
-            stepper_config = config.getsection(stepper_name)
-            step_dist = stepper_config.getfloat('step_distance')
+        stepper_config = config.getsection(stepper_name)
+        step_dist = stepper_config.getfloat('step_distance')
         step_dist_256 = step_dist / (1 << fields.get_field("MRES"))
         threshold = int(tmc_freq * step_dist_256 / velocity + .5)
         fields.set_field("TPWMTHRS", max(0, min(0xfffff, threshold)))

@@ -3,10 +3,8 @@
 # Copyright (C) 2018-2019  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import driverbase
 import math, logging
-import extras.bus as bus
-import tmc
+import bus, tmc
 
 TMC_FREQUENCY=13200000.
 
@@ -114,6 +112,7 @@ class TMCCurrentHelper:
         gcode.register_mux_command(
             "SET_TMC_CURRENT", "STEPPER", self.name,
             self.cmd_SET_TMC_CURRENT, desc=self.cmd_SET_TMC_CURRENT_help)
+        self.printer.add_object('driver_current '+self.name, self)
     def _calc_current_bits(self, current, vsense):
         sense_resistor = self.sense_resistor + 0.020
         vref = 0.32
@@ -165,6 +164,8 @@ class TMCCurrentHelper:
         self.fields.set_field("IHOLD", ihold)
         val = self.fields.set_field("IRUN", irun)
         self.mcu_tmc.set_register("IHOLD_IRUN", val, print_time)
+    def get_current(self):
+        return self._calc_current_from_field("IRUN")
 
 
 ######################################################################
@@ -197,7 +198,6 @@ class MCU_TMC_SPI:
         reg = Registers[reg_name]
         data = [(reg | 0x80) & 0xff, (val >> 24) & 0xff, (val >> 16) & 0xff,
                 (val >> 8) & 0xff, val & 0xff]
-        logging.debug("==>> cmd 0x%02X : 0x%08X (%s)" % (reg, val, reg_name))
         with self.mutex:
             self.spi.spi_send(data, minclock)
 
@@ -206,9 +206,8 @@ class MCU_TMC_SPI:
 # TMC2130 printer object
 ######################################################################
 
-class TMC2130(driverbase.DriverBase):
-    def __init__(self, config, stepper_config):
-        driverbase.DriverBase.__init__(self, config, stepper_config)
+class TMC2130:
+    def __init__(self, config):
         # Setup mcu communication
         self.fields = tmc.FieldHelper(Fields, SignedFields, FieldFormatters)
         self.mcu_tmc = MCU_TMC_SPI(config, Registers, self.fields)
@@ -223,7 +222,7 @@ class TMC2130(driverbase.DriverBase):
         mh = tmc.TMCMicrostepHelper(config, self.mcu_tmc)
         self.get_microsteps = mh.get_microsteps
         self.get_phase = mh.get_phase
-        tmc.TMCStealthchopHelper(config, self.mcu_tmc, TMC_FREQUENCY, self.step_dist)
+        tmc.TMCStealthchopHelper(config, self.mcu_tmc, TMC_FREQUENCY)
         # Allow other registers to be set from the config
         set_config_field = self.fields.set_config_field
         set_config_field(config, "toff", 4)

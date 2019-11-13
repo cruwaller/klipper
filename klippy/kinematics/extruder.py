@@ -255,7 +255,6 @@ class PrinterExtruder:
 
 # Dummy extruder class used when a printer has no extruder at all
 class DummyExtruder:
-    extrude_factor = 1.
     def set_active(self, print_time, is_active):
         return 0.
     def check_move(self, move):
@@ -265,6 +264,12 @@ class DummyExtruder:
         return move.max_cruise_v2
     def lookahead(self, moves, flush_count, lazy):
         return flush_count
+    def set_extrude_factor(self, factor):
+        pass
+    def get_extrude_factor(self, procent=False):
+        if procent:
+            return 100.
+        return 1.
     def get_index(self):
         return -99
     def get_max_e_limits(self):
