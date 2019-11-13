@@ -76,26 +76,17 @@ class CoreXYKinematics:
                 forcepos[axis] -= 1.5 * (hi.position_endstop - position_min)
             else:
                 forcepos[axis] += 1.5 * (position_max - hi.position_endstop)
-            # Move to homing position if defined
-            homing_state.retract(hi.homing_pos, hi.travel_speed)
             # Perform homing
             homing_state.home_rails([rail], forcepos, homepos)
-            # retract from endstop
-            if 0. < hi.retract_after_home:
-                movepos = [None, None, None, None]
-                # Retract
-                if hi.positive_dir:
-                    movepos[axis] = hi.position_endstop - hi.retract_after_home
-                else:
-                    movepos[axis] = hi.position_endstop + hi.retract_after_home
-                homing_state.retract(movepos, hi.speed)
     def motor_off(self, print_time):
-        if self.toolhead.require_home_after_motor_off is True \
-           and self.toolhead.sw_limit_check_enabled is True:
+        if self.toolhead.require_home_after_motor_off \
+           and self.toolhead.sw_limit_check_enabled:
             self.limits = [(1.0, -1.0)] * 3
         for rail in self.rails:
             rail.motor_enable(print_time, 0)
     def _check_endstops(self, move):
+        if not self.toolhead.sw_limit_check_enabled:
+            return
         end_pos = move.end_pos
         for i in (0, 1, 2):
             if (move.axes_d[i]
@@ -106,18 +97,16 @@ class CoreXYKinematics:
                         end_pos, "Must home axis first")
                 raise homing.EndstopMoveError(end_pos)
     def check_move(self, move):
+        limits = self.limits
         xpos, ypos = move.end_pos[:2]
-        if self.toolhead.sw_limit_check_enabled is True:
-            limits = self.limits
-            if (xpos < limits[0][0] or xpos > limits[0][1]
-                or ypos < limits[1][0] or ypos > limits[1][1]):
-                self._check_endstops(move)
+        if (xpos < limits[0][0] or xpos > limits[0][1]
+            or ypos < limits[1][0] or ypos > limits[1][1]):
+            self._check_endstops(move)
         if not move.axes_d[2]:
             # Normal XY move - use defaults
             return
         # Move with Z - update velocity and accel for slower Z axis
-        if self.toolhead.sw_limit_check_enabled is True:
-            self._check_endstops(move)
+        self._check_endstops(move)
         z_ratio = move.move_d / abs(move.axes_d[2])
         move.limit_speed(
             self.max_z_velocity * z_ratio, self.max_z_accel * z_ratio)

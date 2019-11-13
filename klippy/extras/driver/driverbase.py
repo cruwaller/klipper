@@ -13,11 +13,8 @@ import binascii, types, struct, math, collections
 ######################################################################
 
 class DriverBase(object):
-    def __init__(self, config, stepper_config,
-                 has_step_dir_pins=True, has_endstop=False):
+    def __init__(self, config, stepper_config):
         self.__inv_step_dist = self.__step_dist = self.microsteps = None
-        self.__has_step_dir_pins = has_step_dir_pins
-        self.__has_endstop = has_endstop
         self.printer = config.get_printer()
         self.name = logger_name = config.get_name().split()[-1]
         stepper_name = stepper_config.get_name()
@@ -43,8 +40,8 @@ class DriverBase(object):
                 raise config.error('Cannot detect proper step distance!!')
             self.calculate_steps(stepper_config)
         self.logger.debug("Driver '%s' base loaded", self.name)
-        self.logger.debug("step_dist:%s, inv_step_dist:%s" % (self.step_dist,
-            self.inv_step_dist))
+        self.logger.info("step in mm: %s, steps per mm: %s" % (
+            self.step_dist, self.inv_step_dist))
     def calculate_steps(self, config):
         motor_deg = config.getfloat('motor_step_angle', above=0.)
         # Calculate base on settings
@@ -72,14 +69,6 @@ class DriverBase(object):
             self.__inv_step_dist = 1. / dist
     def get_step_dist(self):
         return self.__step_dist
-    @property
-    def has_step_dir_pins(self):
-        return self.__has_step_dir_pins
-    @property
-    def has_endstop(self):
-        return self.__has_endstop
-    def setup_step_distance(self, step_dist): # needed?
-        self.step_dist = step_dist
 
 
 ######################################################################
@@ -87,10 +76,8 @@ class DriverBase(object):
 ######################################################################
 
 class SpiDriver(DriverBase):
-    def __init__(self, config, stepper_config,
-                 has_step_dir_pins=True, has_endstop=False):
-        DriverBase.__init__(self, config, stepper_config,
-            has_step_dir_pins, has_endstop)
+    def __init__(self, config, stepper_config):
+        DriverBase.__init__(self, config, stepper_config)
         # ========== SPI config ==========
         self.spi = spi = bus.MCU_SPI_from_config(
             config, 3, pin_option="ss_pin", default_speed=2000000)
@@ -116,10 +103,8 @@ class SpiDriver(DriverBase):
 class TmcSpiDriver(SpiDriver):
     def __init__(self, config, stepper_config,
                  registers, fields, field_formatters, signed_fields,
-                 has_step_dir_pins=True, has_endstop=False,
                  max_current=1000.):
-        SpiDriver.__init__(self, config, stepper_config,
-            has_step_dir_pins, has_endstop)
+        SpiDriver.__init__(self, config, stepper_config)
         self.printer.register_event_handler("klippy:ready", self.handle_ready)
         self.min_current = 100.
         self.max_current = max_current

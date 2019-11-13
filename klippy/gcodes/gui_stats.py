@@ -1,6 +1,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import time, util, json, math
+import kinematics.extruder
 
 class GuiStats:
     def __init__(self, config):
@@ -24,6 +25,7 @@ class GuiStats:
         self._stats_type_1 = {}
         self._stats_type_2 = {}
         self._stats_type_3 = {}
+        self.extruders = []
         self.print_start_time = self.starttime
         self.last_print_layer_change = .0
         # register callbacks
@@ -94,6 +96,7 @@ class GuiStats:
 
     def _config_ready(self):
         self.toolhead = self.printer.lookup_object('toolhead')
+        self.extruders = kinematics.extruder.get_printer_extruders(self.printer)
         self._stats_type_1_reset()
         self._stats_type_2_reset()
         self._stats_type_3_reset()
@@ -203,15 +206,13 @@ class GuiStats:
     def _stats_type_2_reset(self):
         # Fill stats type 2
         kinematic = self.toolhead.get_kinematics()
-        _extrs = self.printer.extruder_get()
         heaters = self.printer.lookup_object('heater')
         max_temp = 0.0
         for _heater in heaters.get_heaters().values():
             if _heater.max_temp > max_temp:
                 max_temp = _heater.max_temp
         tools = []
-        for extr in _extrs.values():
-            index = extr.get_index()
+        for index, extr in enumerate(self.extruders):
             values = {
                 "number"   : index,
                 "name"     : extr.name,
@@ -274,7 +275,6 @@ class GuiStats:
         if self.toolhead is None:
             return {"err": 1}
         printer = self.printer
-        _extrs = printer.extruder_get()
         kinematic = self.toolhead.get_kinematics()
         motor_off_time = printer.lookup_object('idle_timeout').idle_timeout
         currents = []
@@ -301,14 +301,14 @@ class GuiStats:
                     currents.append(int(get_current()))
                 else:
                     currents.append(-1)
-        # read extrudersl
-        for e in _extrs.values():
+        # read extruders
+        for index, e in enumerate(self.extruders):
             limits = e.get_max_e_limits()
             max_feedrates.append(int(limits['velocity']))
             accelerations.append(int(limits['acc']))
             axisMins.append(0)
             axisMaxes.append(limits['max_e_dist'])
-            axisName.append("e%s" % e.get_index())
+            axisName.append("e%s" % index)
             get_current = getattr(limits['stepper'].get_driver(),
                                   "get_current", None)
             if get_current is not None:
@@ -344,7 +344,7 @@ class GuiStats:
         fans = [fan.last_fan_value * 100.0 for n, fan in
                 self.printer.lookup_objects("fan")]
         heatbed = pheater.lookup_heater('bed', None)
-        _extrs = self.printer.extruder_get()
+        _extrs = self.extruders
 
         babysteps = self.babysteps.babysteps if self.babysteps else 0.
 
@@ -355,8 +355,7 @@ class GuiStats:
         status_block["time"] = time.time() - self.starttime
 
         # update coordinates
-        status_block['coords']["extr"] = [
-            e.extrude_pos for i, e in _extrs.items()]
+        status_block['coords']["extr"] = [e.extrude_pos for e in _extrs]
         status_block['coords']["xyz"] = curr_pos[:3]
 
         # update ATX status
@@ -370,8 +369,7 @@ class GuiStats:
             # "atxPower":    atx_state,
             "fanPercent":  fans,
             "speedFactor": self.gcode.speed_factor * 60. * 100.0,
-            "extrFactors": [e.get_extrude_factor(procent=True)
-                for i, e in _extrs.items()],
+            "extrFactors": [e.get_extrude_factor(procent=True) for e in _extrs],
             "babystep":    float("%.3f" % babysteps),
         })
 
@@ -407,10 +405,10 @@ class GuiStats:
             "active"  : [],
             "standby" : [[ .0 ]] * num_extruders
         }
-        for extr in _extrs.values():
+        for index, extr in enumerate(_extrs):
             htr = extr.get_heater()
             temp, target = htr.get_temp(0)
-            index = extr.get_index() + heatbed_add
+            index = index + heatbed_add
             htr_current[index] = float("%.2f" % temp)
             htr_state[index] = states[(target > 0.0)]
             extr_states['active'].append([float("%.2f" % target)])
@@ -487,8 +485,7 @@ class GuiStats:
                 progress = self.sd.get_progress()
 
             # How much filament would have been printed without extrusion factors applied
-            stat["extrRaw"] = [float("%0.1f" % e.raw_filament)
-                for i, e in _extrs.items()]
+            stat["extrRaw"] = [float("%0.1f" % e.raw_filament) for e in _extrs]
 
             # ===== Print time estimation =====
             timesLeft = stat["timesLeft"]

@@ -290,10 +290,10 @@ class VirtualEndstop:
         self.query_endstop = mcu_endstop.query_endstop
         self.TimeoutError = mcu_endstop.TimeoutError
     def home_prepare(self):
-        self.tmc.init_homing(True)
+        self.tmc.homing_prepare()
         self.mcu_endstop.home_prepare()
     def home_finalize(self):
-        self.tmc.init_homing(False)
+        self.tmc.homing_ready()
         self.mcu_endstop.home_finalize()
 
 
@@ -302,6 +302,9 @@ class TMC2130(TmcSpiDriver):
         TmcSpiDriver.__init__(self, config, stepper_config,
             Registers, Fields, FieldFormatters, SignedFields, max_current=1400.)
         printer = config.get_printer()
+        if self.sensor_less_homing:
+            printer.register_event_handler("homing:prepare", self.homing_prepare)
+            printer.register_event_handler("homing:finalize", self.homing_ready)
         # Prepare virtual endstop support
         ppins = printer.lookup_object('pins')
         ppins.register_chip(self.name, self)
@@ -406,12 +409,10 @@ class TMC2130(TmcSpiDriver):
     #**************************************************************************
     # PUBLIC METHODS
     #**************************************************************************
-    def init_homing(self, enable=True, *args):
-        if self.sensor_less_homing:
-            if enable is True:
-                self._command_write('TCOOLTHRS', 0xFFFFF)
-            else:
-                self._command_write('TCOOLTHRS', 0)
+    def homing_prepare(self):
+        self._command_write('TCOOLTHRS', 0xFFFFF)
+    def homing_ready(self):
+        self._command_write('TCOOLTHRS', 0)
 
     def dump_registers(self):
         res = [

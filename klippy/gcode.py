@@ -201,8 +201,9 @@ class GCodeParser:
         if self.move_transform is None:
             self.move_with_transform = self.toolhead.move
             self.position_with_transform = self.toolhead.get_position
-        self.extruder = self.printer.extruder_get(0, default=None)
-        if self.extruder is not None:
+        extruders = kinematics.extruder.get_printer_extruders(self.printer)
+        if extruders:
+            self.extruder = extruders[0]
             self.toolhead.set_extruder(self.extruder)
         if self.is_fileinput and self.fd_handle is None:
             self.fd_handle = self.reactor.register_fd(self.fd,
@@ -451,9 +452,9 @@ class GCodeParser:
         if is_bed:
             heater = self.printer.lookup_object('heater_bed', None)
         elif 'T' in params or 'P' in params:
-            index = self.get_int('T', params, default=None, minval=0)
+            index = self.get_int('P', params, default=None, minval=0)
             if index is None:
-                index = self.get_int('P', params, 999, minval=0)
+                index = self.get_int('T', params, minval=0)
             section = 'extruder'
             if index:
                 section = 'extruder%d' % (index,)
@@ -512,23 +513,20 @@ class GCodeParser:
         self.respond_info('Unknown command:"%s"' % (cmd,))
     def cmd_Tn(self, params):
         # Select Tool
-        index = self.get_int('T', params)
+        extruders = kinematics.extruder.get_printer_extruders(self.printer)
+        index = self.get_int('T', params, minval=-1, maxval=len(extruders)-1)
         if index < 0:
             # Reprap WebGui uses T-1 to deselect filament, skip it
             return
-        e = self.printer.extruder_get(index, None)
-        if e is None:
-            raise self.error("Extruder %s not configured" % (index,))
+        e = extruders[index]
         if self.extruder is e:
             return
-        if self.extruder is not None:
-            self.run_script_from_command(self.extruder.get_activate_gcode(False))
+        self.run_script_from_command(self.extruder.get_activate_gcode(False))
         self.toolhead.set_extruder(e)
         self.extruder = e
         self.reset_last_position()
         self.base_position[3] = self.last_position[3]
-        if self.extruder is not None:
-            self.run_script_from_command(self.extruder.get_activate_gcode(True))
+        self.run_script_from_command(self.extruder.get_activate_gcode(True))
     def _cmd_mux(self, params):
         key, values = self.mux_commands[params['#command']]
         if None in values:
@@ -648,23 +646,25 @@ class GCodeParser:
         self.speed = self._get_gcode_speed() * value
         self.speed_factor = value
     def cmd_M221(self, params):
+        extr = self.extruder
+        # extruder number
+        extruders = kinematics.extruder.get_printer_extruders(self.printer)
+        if 'D' in params:
+            index = self.get_int('D', params,
+                                 minval=0, maxval=len(extruders)-1)
+            extr = extruders[index]
+        elif 'T' in params:
+            index = self.get_int('T', params,
+                                 minval=0, maxval=len(extruders) - 1)
+            extr = extruders[index]
+        if extr is None:
+            return
         # Set extrude factor override percentage
         new_extrude_factor = self.get_float('S', params, 100., above=0.) / 100.
-        index = None
-        # extruder number
-        if 'D' in params:
-            index = self.get_int('D', params, None)
-        elif 'T' in params:
-            index = self.get_int('T', params, None)
-        if index is None:
-            extr = self.extruder
-        else:
-            extr = self.printer.extruder_get(index)
-        if extr is not None:
-            last_e_pos = self.last_position[3]
-            e_value = (last_e_pos - self.base_position[3]) / extr.get_extrude_factor()
-            self.base_position[3] = last_e_pos - e_value * new_extrude_factor
-            extr.set_extrude_factor(new_extrude_factor)
+        last_e_pos = self.last_position[3]
+        e_value = (last_e_pos - self.base_position[3]) / extr.get_extrude_factor()
+        self.base_position[3] = last_e_pos - e_value * new_extrude_factor
+        extr.set_extrude_factor(new_extrude_factor)
     cmd_SET_GCODE_OFFSET_help = \
         "Set a virtual offset to positions. " \
         "args: [X|Y|Z_ADJUST=offset]"
@@ -761,12 +761,10 @@ class GCodeParser:
         # Turn fan off
         self._set_fan_speed(0., self.get_int('P', params, 0))
     # G-Code miscellaneous commands
-    cmd_M112_help = "Emergency shutdown"
     cmd_M112_when_not_ready = True
     def cmd_M112(self, params):
         # Emergency Stop
         self.printer.invoke_shutdown("Shutdown due to M112 command")
-    cmd_M115_help = "Get firmware version and capabilities"
     cmd_M115_when_not_ready = True
     def cmd_M115(self, params):
         # Get Firmware Version and Capabilities
@@ -825,7 +823,6 @@ class GCodeParser:
     cmd_FIRMWARE_RESTART_help = "Restart firmware, host, and reload config"
     def cmd_FIRMWARE_RESTART(self, params):
         self.request_restart('firmware_restart')
-    cmd_ECHO_help = "Repond same command back to sender"
     cmd_ECHO_when_not_ready = True
     def cmd_ECHO(self, params):
         self.respond_info(params['#original'], log=False)

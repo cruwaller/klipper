@@ -193,8 +193,8 @@ class DripModeEndSignal(Exception):
 # Main code to track events (and their timing) on the printer toolhead
 class ToolHead:
     def __init__(self, config):
-        self.printer = printer = config.get_printer()
-        self.logger = printer.get_logger('toolhead')
+        self.printer = config.get_printer()
+        self.logger = self.printer.get_logger('toolhead')
         self.logger.info("toolhead '{}' created".format(config.section))
         self.reactor = self.printer.get_reactor()
         self.all_mcus = [

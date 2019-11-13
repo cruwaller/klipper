@@ -1,12 +1,13 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
+import kinematics.extruder
 
 class GenericGcode:
     def __init__(self, config):
         self.printer = config.get_printer()
         gcode = self.printer.lookup_object('gcode')
-        for cmd in ['G29', 'G32', 'M1', 'M120', 'M121', 'M302', 'M561', 'M851',
+        for cmd in ['G29', 'G32', 'M1', 'M120', 'M121', 'M302', 'M561',
                     'QUERY_COMPENSATION']:
             wnr = getattr(self, 'cmd_' + cmd + '_when_not_ready', False)
             gcode.register_command(
@@ -91,46 +92,17 @@ class GenericGcode:
         #       M302 S170    ; only allow extrusion above 170
         #       M302 S170 P1 ; set min extrude temp to 170 but leave disabled
         gcode = self.printer.lookup_object('gcode')
-        disable = None
-        temperature = None
+        disable = temperature = None
         if 'P' in params:
             disable = gcode.get_int('P', params, 0) == 1
         if 'S' in params:
             temperature = gcode.get_int('S', params, -1)
         resp = []
-        for extruder in self.printer.extruder_get().values():
+        extruders = kinematics.extruder.get_printer_extruders(self.printer)
+        for extruder in extruders:
             heater = extruder.get_heater()
             heater.set_min_extrude_temp(temperature, disable)
             status, temp = heater.get_min_extrude_status()
-            resp.append("Heater '%s' cold extrude: %s, min temp %.2fC"
-                        % (heater.name, status, temp))
+            resp.append("Extruder '%s' cold extrude: %s, min temp %.2fC"
+                        % (extruder.name, status, temp))
         gcode.respond("\n".join(resp))
-
-    cmd_M851_help = "Set axis offset. Args [X<offset] [Y<offset>] [Z<offset>]"
-    cmd_M851_when_not_ready = True
-    def cmd_M851(self, params):
-        gcode = self.printer.lookup_object('gcode')
-        toolhead = self.printer.lookup_object('toolhead')
-        axis2pos = gcode.axis2pos
-        # Set X, Y, Z offsets
-        rails = toolhead.get_kinematics().get_rails()
-        offsets = {axis2pos[a]: gcode.get_float(a, params)
-            for a, p in axis2pos.items() if a in params}
-        for p, offset in offsets.items():
-            rails[p].set_homing_offset(offset)
-        gcode.respond("Current offsets: X=%.2f Y=%.2f Z=%.2f" %
-                      (rails[0].homing_offset,
-                       rails[1].homing_offset,
-                       rails[2].homing_offset))
-    def cmd_M851_new_way(self, params):
-        gcode = self.printer.lookup_object('gcode')
-        cmd = []
-        for axis in "XYZ":
-            if axis in params:
-                cmd.append("%s_ADJUST=%f" % (
-                    axis, gcode.get_float(axis, params)))
-        if cmd:
-            gcode.run_script_from_command(
-                "SET_GCODE_OFFSET %s\n" % " ".join(cmd))
-        # print out the current position + offsets
-        gcode.run_script_from_command("GET_POSITION\n")

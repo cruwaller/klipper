@@ -11,7 +11,6 @@ ENDSTOP_SAMPLE_COUNT = 4
 
 class Homing:
     def __init__(self, printer):
-        self.logger = logging.getLogger('homing')
         self.printer = printer
         self.toolhead = printer.lookup_object('toolhead')
         self.changed_axes = []
@@ -30,8 +29,6 @@ class Homing:
             if coord[i] is not None:
                 thcoord[i] = coord[i]
         return thcoord
-    def retract(self, newpos, speed, check=True):
-        self.toolhead.move(self._fill_coord(newpos), speed, check=check)
     def set_homed_position(self, pos):
         self.toolhead.set_position(self._fill_coord(pos))
     def _endstop_notify(self):
@@ -39,14 +36,11 @@ class Homing:
         if not self.endstops_pending:
             self.toolhead.signal_drip_mode_end()
     def homing_move(self, movepos, endstops, speed,
-                    probe_pos=False, verify_movement=False,
-                    init_home_funcs=[]):
+                    probe_pos=False, verify_movement=False):
+        self.printer.send_event('homing:prepare')
         # Notify endstops of upcoming home
         for mcu_endstop, name in endstops:
             mcu_endstop.home_prepare()
-        for sensor_func in init_home_funcs:
-            if sensor_func is not None:
-                sensor_func(enable=True)
         # Start endstop checking
         print_time = self.toolhead.get_last_move_time()
         start_mcu_pos = [(s, name, s.get_mcu_position())
@@ -84,6 +78,7 @@ class Homing:
             except CommandError as e:
                 if error is None:
                     error = str(e)
+        self.printer.send_event('homing:finalize')
         if error is not None:
             raise CommandError(error)
         # Check if some movement occurred
@@ -94,9 +89,6 @@ class Homing:
                         raise EndstopError("Probe triggered prior to movement")
                     raise EndstopError(
                         "Endstop %s still triggered after retract" % (name,))
-        for sensor_func in init_home_funcs:
-            if sensor_func is not None:
-                sensor_func(enable=False)
     def home_rails(self, rails, forcepos, movepos):
         # Alter kinematics class to think printer is at forcepos
         homing_axes = [axis for axis in range(3) if forcepos[axis] is not None]
@@ -105,11 +97,8 @@ class Homing:
         self.toolhead.set_position(forcepos, homing_axes=homing_axes)
         # Perform first home
         endstops = [es for rail in rails for es in rail.get_endstops()]
-        init_home_funcs = [f for rail in rails
-                           for f in rail.get_homing_init_func()]
         hi = rails[0].get_homing_info()
-        self.homing_move(movepos, endstops, hi.speed,
-            init_home_funcs=init_home_funcs)
+        self.homing_move(movepos, endstops, hi.speed)
         # Perform second home
         if hi.retract_dist:
             # Retract
@@ -124,16 +113,9 @@ class Homing:
                         for rp, ad in zip(retractpos, axes_d)]
             self.toolhead.set_position(forcepos)
             self.homing_move(movepos, endstops, hi.second_homing_speed,
-                             verify_movement=self.verify_retract,
-                             init_home_funcs=init_home_funcs)
-        # Apply endstop correction (basically for deltas)
-        for rail in rails:
-            rail.apply_endstop_correction()
+                             verify_movement=self.verify_retract)
         # Signal home operation complete
         ret = self.printer.send_event("homing:homed_rails", self, rails)
-        # Apply homing offsets
-        for rail in rails:
-            ret.append(rail.apply_homing_offset())
         if any(ret):
             # Apply any homing offsets
             adjustpos = self.toolhead.get_kinematics().calc_position()

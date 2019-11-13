@@ -116,8 +116,7 @@ class DeltaKinematics:
         self.limit_xy2 = -1.
         for rail in self.rails:
             rail.motor_enable(print_time, 0)
-        if self.toolhead.require_home_after_motor_off is True:
-            self.need_home = True
+        self.need_home = self.toolhead.require_home_after_motor_off
     def check_move(self, move):
         end_pos = move.end_pos
         end_xy2 = end_pos[0]**2 + end_pos[1]**2

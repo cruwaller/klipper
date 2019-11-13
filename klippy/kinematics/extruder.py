@@ -283,7 +283,6 @@ def add_printer_objects(config):
         if not config.has_section(section):
             break
         pe = PrinterExtruder(config.getsection(section), i)
-        printer.extruder_add(pe)
         printer.add_object(section, pe)
 
 def get_printer_extruders(printer):

@@ -58,8 +58,7 @@ def lookup_endstop_pin(ppins, pin):
                                   share_type='shared_endstop')
     mcu_endstop = pin_params.get('endstop_mcu')
     if mcu_endstop is None:
-        chip = pin_params.get('virtual_chip', pin_params['chip'])
-        mcu_endstop = chip.setup_pin('endstop', pin_params)
+        mcu_endstop = pin_params['chip'].setup_pin('endstop', pin_params)
         pin_params['endstop_mcu'] = mcu_endstop
     return mcu_endstop
 
@@ -71,7 +70,6 @@ def lookup_endstop_pin(ppins, pin):
 # Code storing the definitions for a stepper motor
 class PrinterStepper:
     def __init__(self, config, logger=None):
-        self.driver = self.mcu_stepper = None
         self.printer = printer = config.get_printer()
         self.name = config.get_name()
         if logger is None:
@@ -80,22 +78,17 @@ class PrinterStepper:
             self.logger = logger.getChild(self.name)
         self.need_motor_enable = True
         # Configure driver
-        mcu_stepper = None
         self.driver = driver = driver_base.load_driver(config)
         step_dist = driver.step_dist
-        inv_step_dist = driver.inv_step_dist
-        if not driver.has_step_dir_pins:
-            self.mcu_stepper = mcu_stepper = driver
         # Stepper definition
         ppins = printer.lookup_object('pins')
-        if mcu_stepper is None:
-            step_pin = config.get('step_pin')
-            self.mcu_stepper = mcu_stepper = ppins.setup_pin('stepper', step_pin)
-            dir_pin = config.get('dir_pin')
-            dir_pin_params = ppins.lookup_pin(dir_pin, can_invert=True)
-            mcu_stepper.setup_dir_pin(dir_pin_params)
-            mcu_stepper.setup_step_distance(step_dist)
-            mcu_stepper.add_active_callback(self._stepper_active)
+        step_pin = config.get('step_pin')
+        self.mcu_stepper = mcu_stepper = ppins.setup_pin('stepper', step_pin)
+        dir_pin = config.get('dir_pin')
+        dir_pin_params = ppins.lookup_pin(dir_pin, can_invert=True)
+        mcu_stepper.setup_dir_pin(dir_pin_params)
+        mcu_stepper.setup_step_distance(step_dist)
+        mcu_stepper.add_active_callback(self._stepper_active)
         self.enable = lookup_enable_pin(ppins, config.get('enable_pin', None))
         # Register STEPPER_BUZZ command
         force_move = printer.try_load_module(config, 'force_move')
@@ -112,14 +105,6 @@ class PrinterStepper:
         self.get_mcu_position = mcu_stepper.get_mcu_position
         self.get_step_dist = mcu_stepper.get_step_dist
         self.is_dir_inverted = mcu_stepper.is_dir_inverted
-        # Homing finetune after enstop hit
-        self.tune_after_homing = \
-            config.getfloat('endstop_correction', None) # in mm
-        if self.tune_after_homing is None:
-            self.tune_after_homing = config.getfloat(
-                'endstop_correction_steps', 0.) * self.get_step_dist()
-        self.logger.info("steps per mm {} , step in mm {}".
-                         format(inv_step_dist, step_dist))
     def get_name(self, short=False):
         if short and self.name.startswith('stepper_'):
             return self.name[8:]
@@ -153,15 +138,6 @@ class PrinterStepper:
         return not self.need_motor_enable
     def get_driver(self):
         return self.driver
-    def has_driver_endstop(self):
-        return getattr(self.mcu_stepper, "has_endstop", False)
-    def set_homing_dir(self, homing_dir):
-        self.logger.debug("Homing dir: %s" % ['min', 'max'][homing_dir])
-        if hasattr(self.mcu_stepper, 'set_homing_dir'):
-            self.mcu_stepper.set_homing_dir(homing_dir)
-    def apply_endstop_correction(self):
-        pos = self.get_commanded_position()
-        self.set_commanded_position(pos - self.tune_after_homing)
 
 
 ######################################################################
@@ -196,13 +172,8 @@ class PrinterRail:
         self.is_motor_enabled = stepper.is_motor_enabled
         # Primary endstop and its position
         printer = config.get_printer()
-        driver = stepper.get_driver()
-        if driver and driver.has_endstop:
-            mcu_endstop = driver
-        else:
-            ppins = printer.lookup_object('pins')
-            # mcu_endstop = ppins.setup_pin('endstop', config.get(endstop_pin))
-            mcu_endstop = lookup_endstop_pin(ppins, config.get(endstop_pin))
+        ppins = printer.lookup_object('pins')
+        mcu_endstop = lookup_endstop_pin(ppins, config.get(endstop_pin))
         self.endstops = [(mcu_endstop, self.name)]
         stepper.add_to_endstop(mcu_endstop)
         if hasattr(mcu_endstop, "get_position_endstop"):
@@ -246,70 +217,28 @@ class PrinterRail:
                 raise config.error(
                     "Unable to infer homing_positive_dir in section '%s'" % (
                         config.get_name(),))
-        # Valid for CoreXY and Cartesian Z axis
-        self.homing_position = [None, None, None, None]
-        name_test = self.name[:1].upper()
-        if 'Z' in name_test:
-            self.homing_position[0] = config.getfloat(
-                'homing_pos_x', default=None,
-                minval=0.,
-                maxval=200.)
-            self.homing_position[1] = config.getfloat(
-                'homing_pos_y', default=None,
-                minval=0.,
-                maxval=200.)
-            # TODO: Add support for Z raise before homing!
-            self.homing_position[2] = config.getfloat(
-                'homing_z_raise', default=None,
-                minval=self.position_min,
-                maxval=self.position_max)
-        self.retract_after_home = self.homing_travel_speed = .0
-        if name_test in 'XYZ':
-            # Only for cartesian machines
-            self.homing_travel_speed = config.getfloat(
-                'homing_travel_speed', default=self.homing_speed, above=0)
-            self.retract_after_home = config.getfloat(
-                'homing_retract_dist_after', 0., minval=0.)
-        # Homing offset will be substracted from homed position
-        self.homing_offset = config.getfloat('homing_offset', None)
-        if self.homing_offset is None:
-            # Try in steps and convert steps to mm
-            self.homing_offset = (config.getfloat('homing_offset_steps', 0.) *
-                                  stepper.get_step_dist())
-        # Set homing direction to stepper
-        stepper.set_homing_dir(self.homing_positive_dir)
-    def apply_endstop_correction(self):
-        for s in self.steppers:
-            s.apply_endstop_correction()
-    def set_homing_offset(self, offset):
-        self.homing_offset = offset
-    def apply_homing_offset(self):
-        if not self.homing_offset:
-            return False
-        for stepper in self.steppers:
-            cp = stepper.get_commanded_position()
-            stepper.set_commanded_position(cp - self.homing_offset)
-        return True
+        # Note for old configs:
+        config_check = [config.getfloat(key, default=None) for key in [
+            'homing_pos_x', 'homing_pos_x', 'homing_z_raise',
+            'homing_travel_speed', 'homing_retract_dist_after']]
+        if any(config_check):
+            raise config.error("Please use homing_override!")
+        if config.getfloat('homing_offset', None):
+            raise config.error("Please set position_endstop instead!")
     def get_range(self):
         return self.position_min, self.position_max
     def get_homing_info(self):
         homing_info = collections.namedtuple('homing_info', [
             'speed', 'position_endstop', 'retract_dist', 'positive_dir',
-            'second_homing_speed',
-            'homing_pos', 'travel_speed', 'retract_after_home'])(
+            'second_homing_speed'])(
                 self.homing_speed, self.position_endstop,
                 self.homing_retract_dist, self.homing_positive_dir,
-                self.second_homing_speed,
-                self.homing_position,
-                self.homing_travel_speed, self.retract_after_home)
+                self.second_homing_speed)
         return homing_info
     def get_steppers(self):
         return list(self.steppers)
     def get_endstops(self):
         return list(self.endstops)
-    def get_homing_init_func(self):
-        return [s.driver.init_homing for s in self.steppers
-                if hasattr(s.driver, 'init_homing')]
     def add_extra_stepper(self, config):
         stepper = PrinterStepper(config)
         self.steppers.append(stepper)
@@ -319,15 +248,12 @@ class PrinterRail:
         if endstop_pin is not None:
             printer = config.get_printer()
             ppins = printer.lookup_object('pins')
-            #mcu_endstop = ppins.setup_pin('endstop', endstop_pin)
             mcu_endstop = lookup_endstop_pin(ppins, endstop_pin)
             name = stepper.get_name(short=True)
             self.endstops.append((mcu_endstop, name))
             query_endstops = printer.try_load_module(config, 'query_endstops')
             query_endstops.register_endstop(mcu_endstop, name)
         stepper.add_to_endstop(mcu_endstop)
-        # Set homing direction to stepper
-        stepper.set_homing_dir(self.homing_positive_dir)
     def add_to_endstop(self, mcu_endstop):
         for stepper in self.steppers:
             stepper.add_to_endstop(mcu_endstop)

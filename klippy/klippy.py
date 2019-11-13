@@ -58,7 +58,6 @@ class Printer:
         self.is_shutdown = False
         self.run_result = None
         self.event_handlers = {}
-        self._extruders = {}
         gc = gcode.GCodeParser(self, input_fd)
         self.objects = collections.OrderedDict({'gcode': gc})
     class sentinel:
@@ -78,19 +77,6 @@ class Printer:
         return self.reactor
     def get_state_message(self):
         return self.state_message
-    def extruder_add(self, extr):
-        extruders = self._extruders
-        index = extr.get_index()
-        if index in extruders:
-            raise self.config_error("Extruders cannot have same index!")
-        extruders[index] = extr
-    def extruder_get(self, index=None, default=sentinel):
-        extruders = self._extruders
-        if index is None:
-            return dict(extruders)
-        if default is self.sentinel:
-            return extruders.get(index)
-        return extruders.get(index, default)
     def _set_state(self, msg):
         if self.state_message in (message_ready, message_startup):
             self.state_message = msg
@@ -133,12 +119,13 @@ class Printer:
             return self.objects[section]
         module_parts = section.split()
         module_name = module_parts[0]
-        try:
-            if folder is not None:
-                module_name = ".".join([folder, module_name])
-            mod = importlib.import_module(module_name)
-        except ImportError:
+        py_name = os.path.join(os.path.dirname(__file__),
+                               folder, module_name + '.py')
+        py_dirname = os.path.join(os.path.dirname(__file__),
+                                  folder, module_name, '__init__.py')
+        if not os.path.exists(py_name) and not os.path.exists(py_dirname):
             return None
+        mod = importlib.import_module(folder + '.' + module_name)
         init_func = 'load_config'
         if len(module_parts) > 1:
             init_func = 'load_config_prefix'
@@ -153,12 +140,10 @@ class Printer:
         config = pconfig.read_main_config()
         if self.bglogger is not None:
             pconfig.log_config(config)
-        self._extruders = {}
-        all_sections = config.get_prefix_sections('')
         # Create printer components
         for m in [pins, heater, mcu]:
             m.add_printer_objects(config)
-        for section_config in all_sections:
+        for section_config in config.get_prefix_sections(''):
             if not self.try_load_module(config, section_config.get_name()):
                 self.try_load_module(config, section_config.get_name(),
                                      folder="modules")
