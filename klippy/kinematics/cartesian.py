@@ -20,6 +20,8 @@ class CartKinematics:
         for s in self.get_steppers():
             s.set_trapq(toolhead.get_trapq())
             toolhead.register_step_generator(s.generate_steps)
+        self.printer.register_event_handler("stepper_enable:motor_off",
+                                            self._motor_off)
         # Setup boundary checks
         max_velocity, max_accel = toolhead.get_max_velocity()
         self.max_z_velocity = config.getfloat(
@@ -93,14 +95,10 @@ class CartKinematics:
                 self._activate_carriage(altc)
             else:
                 self._home_axis(homing_state, axis, self.rails[axis])
-    def motor_off(self, print_time):
+    def _motor_off(self, print_time):
         if self.toolhead.require_home_after_motor_off \
            and self.toolhead.sw_limit_check_enabled:
             self.limits = [(1.0, -1.0)] * 3
-        for rail in self.rails:
-            rail.motor_enable(print_time, 0)
-        for rail in self.dual_carriage_rails:
-            rail.motor_enable(print_time, 0)
     def _check_endstops(self, move):
         if not self.toolhead.sw_limit_check_enabled:
             return
@@ -144,7 +142,6 @@ class CartKinematics:
         toolhead.set_position(self.calc_position() + [extruder_pos])
         if self.limits[dc_axis][0] <= self.limits[dc_axis][1]:
             self.limits[dc_axis] = dc_rail.get_range()
-        self.need_motor_enable = True
     cmd_SET_DUAL_CARRIAGE_help = "Set which carriage is active"
     def cmd_SET_DUAL_CARRIAGE(self, params):
         gcode = self.printer.lookup_object('gcode')

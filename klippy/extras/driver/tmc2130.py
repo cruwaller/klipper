@@ -302,13 +302,13 @@ class TMC2130(TmcSpiDriver):
         TmcSpiDriver.__init__(self, config, stepper_config,
             Registers, Fields, FieldFormatters, SignedFields, max_current=1400.)
         printer = config.get_printer()
-        if self.sensor_less_homing:
-            printer.register_event_handler("homing:prepare", self.homing_prepare)
-            printer.register_event_handler("homing:finalize", self.homing_ready)
         # Prepare virtual endstop support
         ppins = printer.lookup_object('pins')
         ppins.register_chip(self.name, self)
         self.endstop_pin = config.get('endstop_pin', default=None)
+        if self.sensor_less_homing and self.endstop_pin is None:
+            printer.register_event_handler("homing:prepare", self.homing_prepare)
+            printer.register_event_handler("homing:finalize", self.homing_ready)
         # Driver configuration
         set_field = self.fields.set_field
         # Diag pins configuration
