@@ -735,10 +735,10 @@ class MCU:
         self._is_timeout = True
         self.logger.info("Timeout with MCU '%s' (eventtime=%f)",
                      self._name, eventtime)
-        #self._printer.invoke_shutdown("Lost communication with MCU '%s'" % (
-        #    self._name,))
+        self._printer.invoke_shutdown("Lost communication with MCU '%s'" % (
+            self._name,))
         # Connection lost, request reset
-        self._printer.request_exit('firmware_restart')
+        #self._printer.request_exit('firmware_restart')
     def stats(self, eventtime):
         msg = "%s: mcu_awake=%.03f mcu_task_avg=%.06f mcu_task_stddev=%.06f" % (
             self._name, self._mcu_tick_awake, self._mcu_tick_avg,
