@@ -43,7 +43,7 @@ var settings = {
 	doTpost: true,					// options
 
 	useHtmlNotifications: false,	// whether HTML5-based notifications can be used
-	notificationTimeout: 5000,		// in ms
+	notificationTimeout: 1000,		// in ms
 	autoCloseUserMessages: false,	// whether M117 messages are automatically closed
 
 	webcamURL: "",
@@ -53,7 +53,7 @@ var settings = {
 
 	defaultActiveTemps: [0, 180, 190, 200, 210, 220, 235],
 	defaultStandbyTemps: [0, 95, 120, 140, 155, 170],
-	defaultBedTemps: [0, 50, 55, 60, 65, 90, 110, 120],
+	defaultBedTemps: [0, 50, 55, 60, 65, 70, 90, 110, 120],
 	defaultGCodes: [
 		["M0", "Stop"],
 		["M1", "Sleep"],
@@ -71,6 +71,7 @@ var themeInclude;
 /* Setting methods */
 
 function loadSettings() {
+  console.log("loadSettings()");
 	// Delete cookie and use localStorage instead
 	document.cookie = "settings=; expires=Thu, 01 Jan 1970 00:00:00 UTC";
 

@@ -1632,7 +1632,7 @@ function setATXPower(value) {
 function setBoardType(type) {
 	boardType = type;
 
-	var isWiFi, isDuetNG;
+	var isWiFi, isDuetNG, update = true;
 	if (type.indexOf("duetwifi") == 0) {
 		firmwareFileName = "DuetWiFiFirmware";
 		isWiFi = isDuetNG = true;
@@ -1640,12 +1640,19 @@ function setBoardType(type) {
 		firmwareFileName = "DuetEthernetFirmware";
 		isWiFi = false;
 		isDuetNG = true;
+	} else if (type.indexOf("klipper") == 0) {
+		firmwareFileName = "none";
+		isWiFi = isDuetNG = update = false;
+		settings.haltedReconnectDelay = 2000;
+		applySettings();
+		console.log("Klipper type board!");
 	} else {
 		firmwareFileName = "RepRapFirmware";
 		isWiFi = isDuetNG = false;
 	}
 	$(".duet-ng").toggleClass("hidden", !isDuetNG);
 	$(".wifi-setting").toggleClass("hidden", !isWiFi);
+	$(".firmware-update").toggleClass("hidden", !update);
 }
 
 function setCurrentTemperature(heater, temperature) {
