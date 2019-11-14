@@ -112,7 +112,7 @@ class TMCCurrentHelper:
         gcode.register_mux_command(
             "SET_TMC_CURRENT", "STEPPER", self.name,
             self.cmd_SET_TMC_CURRENT, desc=self.cmd_SET_TMC_CURRENT_help)
-        self.printer.add_object('driver_current '+self.name, self)
+        self.printer.add_object('driver_current '+self.name, self.get_current)
     def _calc_current_bits(self, current, vsense):
         sense_resistor = self.sense_resistor + 0.020
         vref = 0.32

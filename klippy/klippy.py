@@ -93,6 +93,7 @@ class Printer:
         if obj in self.objects:
             raise self.config_error(
                 "Printer object '%s' already created" % (name,))
+        logging.debug("object '%s' added" % name)
         self.objects[name] = obj
     def lookup_object(self, name, default=configfile.sentinel):
         if name in self.objects:
@@ -116,6 +117,7 @@ class Printer:
             self.bglogger.set_rollover_info(name, info)
     def try_load_module(self, config, section, folder="extras"):
         if section in self.objects:
+            # logging.debug("section '%s' already configured" % section)
             return self.objects[section]
         module_parts = section.split()
         module_name = module_parts[0]
@@ -133,6 +135,7 @@ class Printer:
         if init_func is not None:
             module = init_func(config.getsection(section))
             if module is not None:
+                logging.debug("config section '%s' loaded" % section)
                 self.objects[section] = module
         return self.objects.get(section, None)
     def _read_config(self):

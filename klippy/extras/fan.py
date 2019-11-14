@@ -49,8 +49,8 @@ class PrinterFan:
         return {'speed': self.last_fan_value}
 
 def load_config(config):
-    raise config.get_printer().config_error(
-        "Naming without index ([0-9]+) is not allowed")
+    # fan is mapped to fan0
+    config.get_printer().add_object('fan0', PrinterFan(config))
 
 def load_config_prefix(config):
     return PrinterFan(config)

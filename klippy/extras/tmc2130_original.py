@@ -346,7 +346,7 @@ class SpiDriver(DriverBase):
         DriverBase.__init__(self, config)
         # ========== SPI config ==========
         self.spi = spi = bus.MCU_SPI_from_config(
-            config, 3, pin_option="ss_pin", default_speed=2000000)
+            config, 3, pin_option="ss_pin", default_speed=4000000)
         self.mcu = spi.get_mcu()
         self._oid = spi.get_oid()
     # ============ SETUP ===============
@@ -371,6 +371,7 @@ class TmcSpiDriver(SpiDriver):
                  signed_fields, max_current=1000.):
         SpiDriver.__init__(self, config)
         self.printer.register_event_handler("klippy:ready", self.handle_ready)
+        self.printer.add_object('driver_current ' + self.name, self.get_current)
         self.min_current = 100.
         self.max_current = max_current
         self.registers = registers
@@ -514,7 +515,7 @@ class TmcSpiDriver(SpiDriver):
     def get_current(self):
         rms = self._get_rms_current()
         self.logger.debug("get_current = %.3fA" % rms)
-        return rms * 1000.
+        return rms
 
     # **************************************************************************
     # === Protected handlers ===

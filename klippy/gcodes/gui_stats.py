@@ -296,10 +296,10 @@ class GuiStats:
                 axisMins.append(_min)
                 axisMaxes.append(_max)
                 axisName.append(stp.get_name(short=True))
-                driver = printer.lookup_object(
+                get_current = printer.lookup_object(
                     'driver_current ' + stp.get_name(), None)
-                if driver is not None:
-                    currents.append(int(driver.get_current() * 1000.))
+                if get_current is not None:
+                    currents.append(int(get_current() * 1000.))
                 else:
                     currents.append(-1)
         # read extruders
@@ -310,10 +310,10 @@ class GuiStats:
             axisMins.append(0)
             axisMaxes.append(limits['max_e_dist'])
             axisName.append("e%s" % index)
-            driver = printer.lookup_object(
+            get_current = printer.lookup_object(
                 'driver_current ' + limits['stepper'].get_name(), None)
-            if driver is not None:
-                currents.append(int(driver.get_current() * 1000.))
+            if get_current is not None:
+                currents.append(int(get_current() * 1000.))
             else:
                 currents.append(-1)
         config = {
