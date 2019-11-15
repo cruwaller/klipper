@@ -29,7 +29,7 @@ class MCU_stepper:
                 "Stepper dir pin must be on same mcu as step pin")
         self._dir_pin = dir_pin_params['pin']
         self._invert_dir = dir_pin_params['invert']
-        self._mcu_position_offset = 0.
+        self._mcu_position_offset = self._tag_position = 0.
         self._min_stop_interval = 0.
         self._reset_cmd_id = self._get_position_cmd = None
         self._active_callbacks = []
@@ -90,23 +90,24 @@ class MCU_stepper:
         return self._step_dist
     def is_dir_inverted(self):
         return self._invert_dir
-    def calc_position_from_coord(self, coord):
-        return self._ffi_lib.itersolve_calc_position_from_coord(
-            self._stepper_kinematics, coord[0], coord[1], coord[2])
     def set_position(self, coord):
-        self.set_commanded_position(self.calc_position_from_coord(coord))
+        opos = self.get_commanded_position()
+        sk = self._stepper_kinematics
+        self._ffi_lib.itersolve_set_position(sk, coord[0], coord[1], coord[2])
+        self._mcu_position_offset += opos - self.get_commanded_position()
     def get_commanded_position(self):
-        return self._ffi_lib.itersolve_get_commanded_pos(
-            self._stepper_kinematics)
-    def set_commanded_position(self, pos):
-        self._mcu_position_offset += self.get_commanded_position() - pos
-        self._ffi_lib.itersolve_set_commanded_pos(self._stepper_kinematics, pos)
+        sk = self._stepper_kinematics
+        return self._ffi_lib.itersolve_get_commanded_pos(sk)
     def get_mcu_position(self):
         mcu_pos_dist = self.get_commanded_position() + self._mcu_position_offset
         mcu_pos = mcu_pos_dist / self._step_dist
         if mcu_pos >= 0.:
             return int(mcu_pos + 0.5)
         return int(mcu_pos - 0.5)
+    def get_tag_position(self):
+        return self._tag_position
+    def set_tag_position(self, position):
+        self._tag_position = position
     def set_stepper_kinematics(self, sk):
         old_sk = self._stepper_kinematics
         self._stepper_kinematics = sk
@@ -130,8 +131,7 @@ class MCU_stepper:
         mcu_pos_dist = params['pos'] * self._step_dist
         if self._invert_dir:
             mcu_pos_dist = -mcu_pos_dist
-        self._ffi_lib.itersolve_set_commanded_pos(
-            self._stepper_kinematics, mcu_pos_dist - self._mcu_position_offset)
+        self._mcu_position_offset = mcu_pos_dist - self.get_commanded_position()
     def set_trapq(self, tq):
         if tq is None:
             ffi_main, self._ffi_lib = chelper.get_ffi()
@@ -193,6 +193,8 @@ class PrinterRail:
         self.endstops = []
         self.add_extra_stepper(config)
         self.get_commanded_position = self.steppers[0].get_commanded_position
+        self.get_tag_position = self.steppers[0].get_tag_position
+        self.set_tag_position = self.steppers[0].set_tag_position
         # Primary endstop position
         mcu_endstop = self.endstops[0][0]
         if hasattr(mcu_endstop, "get_position_endstop"):
@@ -275,9 +277,6 @@ class PrinterRail:
     def set_max_jerk(self, max_halt_velocity, max_accel):
         for stepper in self.steppers:
             stepper.set_max_jerk(max_halt_velocity, max_accel)
-    def set_commanded_position(self, pos):
-        for stepper in self.steppers:
-            stepper.set_commanded_position(pos)
     def set_position(self, coord):
         for stepper in self.steppers:
             stepper.set_position(coord)

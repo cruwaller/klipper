@@ -1,7 +1,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import time, util, json, math
-import kinematics.extruder
+
 
 class GuiStats:
     def __init__(self, config):
@@ -96,7 +96,15 @@ class GuiStats:
 
     def _config_ready(self):
         self.toolhead = self.printer.lookup_object('toolhead')
-        self.extruders = kinematics.extruder.get_printer_extruders(self.printer)
+        self.extruders = []
+        for i in range(99):
+            section = 'extruder'
+            if i:
+                section = 'extruder%d' % (i,)
+            extruder = self.printer.lookup_object(section, None)
+            if extruder is None:
+                break
+            self.extruders.append(extruder)
         self._stats_type_1_reset()
         self._stats_type_2_reset()
         self._stats_type_3_reset()

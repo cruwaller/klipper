@@ -330,15 +330,17 @@ Useful steps:
    seconds) to a cartesian coordinate (in millimeters), and then
    calculate the desired stepper position (in millimeters) from that
    cartesian coordinate.
-4. Implement the `calc_position()` method in the new kinematics class.
-   This method calculates the position of the toolhead in cartesian
-   coordinates from the current position of each stepper. It does not
-   need to be efficient as it is typically only called during homing
-   and probing operations.
-5. Other methods. Implement the `check_move()`, `home()`,
-   `set_position()`, and `get_steppers()` methods. These functions are
-   typically used to provide kinematic specific checks. However, at
-   the start of development one can use boiler-plate code here.
+4. Implement the `calc_tag_position()` method in the new kinematics
+   class. This method calculates the position of the toolhead in
+   cartesian coordinates from the position of each stepper (as
+   returned by `stepper.get_tag_position()`). It does not need to be
+   efficient as it is typically only called during homing and probing
+   operations.
+5. Other methods. Implement the `check_move()`, `get_status()`,
+   `get_steppers()`, `home()`, and `set_position()` methods. These
+   functions are typically used to provide kinematic specific
+   checks. However, at the start of development one can use
+   boiler-plate code here.
 6. Implement test cases. Create a g-code file with a series of moves
    that can test important cases for the given kinematics. Follow the
    [debugging documentation](Debugging.md) to convert this g-code file

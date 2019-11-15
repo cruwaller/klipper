@@ -40,13 +40,10 @@ class DeltaKinematics:
             rail.set_max_jerk(max_halt_velocity, max_halt_accel)
         # Read radius and arm lengths
         self.radius = radius = config.getfloat('delta_radius', above=0.)
-        arm_length_a = stepper_configs[0].getfloat('arm_length', above=radius, default=None)
-        if arm_length_a is None:
-            arm_length_a = config.getfloat('arm_length', above=radius)
+        arm_length_a = stepper_configs[0].getfloat('arm_length', above=radius)
         self.arm_lengths = arm_lengths = [
             sconfig.getfloat('arm_length', arm_length_a, above=radius)
             for sconfig in stepper_configs]
-        self.logger.info("arm lengths: %s" % arm_lengths)
         self.arm2 = [arm**2 for arm in arm_lengths]
         self.abs_endstops = [(rail.get_homing_info().position_endstop
                               + math.sqrt(arm2 - radius**2))
@@ -99,8 +96,8 @@ class DeltaKinematics:
     def _actuator_to_cartesian(self, spos):
         sphere_coords = [(t[0], t[1], sp) for t, sp in zip(self.towers, spos)]
         return mathutil.trilateration(sphere_coords, self.arm2)
-    def calc_position(self):
-        spos = [rail.get_commanded_position() for rail in self.rails]
+    def calc_tag_position(self):
+        spos = [rail.get_tag_position() for rail in self.rails]
         return self._actuator_to_cartesian(spos)
     def set_position(self, newpos, homing_axes):
         for rail in self.rails:
