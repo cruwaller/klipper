@@ -12,6 +12,8 @@ class CartKinematics:
         self.logger = self.printer.get_logger("cartesian")
         self.toolhead = toolhead
         # Setup axis rails
+        self.dual_carriage_axis = None
+        self.dual_carriage_rails = []
         self.rails = [stepper.LookupMultiRail(config.getsection('stepper_' + n))
                       for n in 'xyz']
         for rail, axis in zip(self.rails, 'xyz'):
@@ -41,8 +43,6 @@ class CartKinematics:
         self.rails[2].set_max_jerk(
             min(max_halt_velocity, self.max_z_velocity), max_accel)
         # Check for dual carriage support
-        self.dual_carriage_axis = None
-        self.dual_carriage_rails = []
         if config.has_section('dual_carriage'):
             dc_config = config.getsection('dual_carriage')
             dc_axis = dc_config.getchoice('axis', {'x': 'x', 'y': 'y'})
@@ -60,7 +60,11 @@ class CartKinematics:
     def get_steppers(self, flags=""):
         if flags == "Z":
             return self.rails[2].get_steppers()
-        return [s for rail in self.rails for s in rail.get_steppers()]
+        rails = self.rails
+        if self.dual_carriage_axis is not None:
+            dca = self.dual_carriage_axis
+            rails = rails[:dca] + self.dual_carriage_rails + rails[dca+1:]
+        return [s for rail in rails for s in rail.get_steppers()]
     def calc_tag_position(self):
         return [rail.get_tag_position() for rail in self.rails]
     def set_position(self, newpos, homing_axes):

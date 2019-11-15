@@ -167,10 +167,12 @@ class MoveQueue:
             return
         # Allow extruder to do its lookahead
         move_count = self.extruder_lookahead(queue, flush_count, lazy)
+        self.leftover = flush_count - move_count
+        if not move_count:
+            return
         # Generate step times for all moves ready to be flushed
         self.toolhead._process_moves(queue[:move_count])
         # Remove processed moves from the queue
-        self.leftover = flush_count - move_count
         del queue[:move_count]
     def add_move(self, move):
         self.queue.append(move)
@@ -476,6 +478,8 @@ class ToolHead:
             m.check_active(self.print_time, eventtime)
         buffer_time = self.print_time - self.mcu.estimated_print_time(eventtime)
         is_active = buffer_time > -60. or not self.special_queuing_state
+        if self.special_queuing_state == "Drip":
+            buffer_time = 0.
         return is_active, "print_time=%.3f buffer_time=%.3f print_stall=%d" % (
             self.print_time, max(buffer_time, 0.), self.print_stall)
     def check_busy(self, eventtime):
