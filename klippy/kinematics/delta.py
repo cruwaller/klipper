@@ -10,11 +10,10 @@ import stepper, homing, mathutil
 SLOW_RATIO = 3.
 
 class DeltaKinematics:
-    name = "delta"
     def __init__(self, toolhead, config):
         self.toolhead = toolhead
         self.printer = config.get_printer()
-        self.logger = self.printer.get_logger(self.name)
+        self.logger = self.printer.get_logger("delta")
         # Setup tower rails
         stepper_configs = [config.getsection('stepper_' + a) for a in 'abc']
         rail_a = stepper.PrinterRail(
@@ -162,13 +161,6 @@ class DeltaKinematics:
             out['stepdist_'+axis] = rail.get_steppers()[0].get_step_dist()
         return out
 
-    def get_rails(self):
-        return list(self.rails)
-    def is_homed(self):
-        ret = [1, 1, 1]
-        if self.need_home is True:
-            ret = [0, 0, 0]
-        return ret
     def get_max_limits(self):
         return [
             {'rail': self.rails[0],

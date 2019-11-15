@@ -28,31 +28,6 @@ http: 80
 ;camera_index: 0
 """
 
-'''
-Status info:
-? 'C'    // Reading the configuration file - init type
-? 'F'    // Flashing a new firmware binary - IGNORE
-? 'H'    // Halted
-? 'D'    // Pausing / Decelerating - IGNORE?
-? 'R'    // Resuming
-? 'T'    // Changing tool - IGNORE?
-? 'S'    // Paused / Stopped
-? 'P'    // Printing
-? 'B'    // Busy
-: 'I'    // Idle
-'''
-
-"""
-Usage
-  G10 Pnnn Xnnn Ynnn Znnn
-Parameters
-  Pnnn Tool number - SKIP
-  Xnnn X offset - SKIP
-  Ynnn Y offset - SKIP
-  U,V,Wnnn U, V and W axis offsets - SKIP
-  Znnn Z offset - SKIP
-"""
-
 import time, sys, os, errno, threading, json, logging
 
 try:
@@ -277,6 +252,7 @@ class rrHandler(tornado.web.RequestHandler):
                 pass
             else:
                 try:
+                    # self.logger.debug(" ==> GCODE: %s", gcode)
                     self.parent.printer_write(gcode)
                 except self.parent.gcode.error:
                     respdata["err"] = 1

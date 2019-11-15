@@ -111,11 +111,11 @@ class VirtualSD:
         raise self.gcode.error("SD write not supported")
     def cmd_M0(self, params):
         # reprap gui uses M0 to stop paused print
-        heaters_on = self.gcode.get_int('H', params, 0)
-        if heaters_on is 0:
-            self.toolhead.motor_heater_off()
+        if self.gcode.get_int('H', params, 0) == 0:
+            #self.gcode.run_script_from_command("M1")
+            self.gcode.run_script_from_command("TURN_OFF_HEATERS\nM84")
         elif self.toolhead is not None:
-            self.toolhead.motor_off()
+            self.gcode.run_script_from_command("M84")
         self.printer.send_event('vsd:status', 'stop')
     cmd_M20_when_not_ready = True
     def cmd_M20(self, params):

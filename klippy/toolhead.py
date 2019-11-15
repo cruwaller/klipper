@@ -284,12 +284,6 @@ class ToolHead:
         return self.mcu.estimated_print_time(self.reactor.monotonic())
     def get_print_time(self):
         return self.print_time - self.last_print_start_time
-    def motor_heater_off(self):
-        self.motor_off()
-        print_time = self.get_last_move_time()
-        self.printer.lookup_object("heater").turn_off_all_heaters(print_time)
-        for n, fan in self.printer.lookup_objects('fan'):
-            fan.set_speed(print_time, 0.0)
     # Print time tracking
     def _update_move_time(self, next_print_time, lazy=True):
         batch_time = MOVE_BATCH_TIME

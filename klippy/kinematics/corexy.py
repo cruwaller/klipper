@@ -7,11 +7,10 @@ import logging, math
 import stepper, homing
 
 class CoreXYKinematics:
-    name = "coreXY"
     def __init__(self, toolhead, config):
         self.printer = config.get_printer()
         self.toolhead = toolhead
-        self.logger = self.printer.get_logger(self.name)
+        self.logger = self.printer.get_logger("corexy")
         # Setup axis rails
         self.rails = [ stepper.PrinterRail(config.getsection('stepper_x')),
                        stepper.PrinterRail(config.getsection('stepper_y')),
@@ -117,14 +116,6 @@ class CoreXYKinematics:
                     for a, (l, h) in zip("XYZ", self.limits) if l <= h])
         }
 
-    def get_rails(self):
-        return list(self.rails)
-    def is_homed(self):
-        ret = [1, 1, 1]
-        for i in (0, 1, 2):
-            if self.limits[i][0] > self.limits[i][1]:
-                ret[i] = 0
-        return ret
     def get_max_limits(self):
         return [
             {'rail': self.rails[0],

@@ -6,7 +6,6 @@
 import stepper, mathutil
 
 class WinchKinematics:
-    name = "winch"
     def __init__(self, toolhead, config):
         # Setup steppers at each anchor
         self.steppers = []
@@ -30,6 +29,8 @@ class WinchKinematics:
             s.set_max_jerk(max_halt_velocity, max_accel)
         # Setup boundary checks
         self.set_position([0., 0., 0.], ())
+        self.max_velocity = max_velocity
+        self.max_accel = max_accel
     def get_steppers(self, flags=""):
         return list(self.steppers)
     def calc_tag_position(self):
@@ -49,6 +50,10 @@ class WinchKinematics:
     def get_status(self):
         # XXX - homed_checks and rail limits not implemented
         return {'homed_axes': 'XYZ'}
+
+    def get_max_limits(self):
+        return [{'steppers': self.steppers,
+            'acc': self.max_accel, 'velocity': self.max_velocity}]
 
 def load_kinematics(toolhead, config):
     return WinchKinematics(toolhead, config)

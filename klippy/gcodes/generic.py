@@ -66,10 +66,12 @@ class GenericGcode:
         gcode.respond(" ".join(out))
 
     def cmd_M1(self, params):
-        toolhead = self.printer.lookup_object('toolhead')
         # Wait for current moves to finish
+        toolhead = self.printer.lookup_object('toolhead')
         toolhead.wait_moves()
-        toolhead.motor_heater_off()
+        # turn of heaters and motors
+        gcode = self.printer.lookup_object('gcode')
+        gcode.run_script_from_command("TURN_OFF_HEATERS\nM84")
 
     cmd_M120_help = "Push state to stack"
     def cmd_M120(self, params):

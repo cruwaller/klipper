@@ -267,6 +267,8 @@ class DummyExtruder:
         return flush_count
     def get_heater(self):
         raise homing.CommandError("Extruder not configured")
+    def move(self, print_time, move):
+        pass
     def set_extrude_factor(self, factor):
         pass
     def get_extrude_factor(self, procent=False):

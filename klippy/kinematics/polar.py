@@ -7,8 +7,8 @@ import logging, math
 import stepper, homing
 
 class PolarKinematics:
-    name = "polar"
     def __init__(self, toolhead, config):
+        self.toolhead = toolhead
         # Setup axis steppers
         stepper_bed = stepper.PrinterStepper(config.getsection('stepper_bed'))
         rail_arm = stepper.PrinterRail(config.getsection('stepper_arm'))
@@ -30,6 +30,8 @@ class PolarKinematics:
             'max_z_velocity', max_velocity, above=0., maxval=max_velocity)
         self.max_z_accel = config.getfloat(
             'max_z_accel', max_accel, above=0., maxval=max_accel)
+        self.max_velocity = max_velocity
+        self.max_accel = max_accel
         self.limit_z = [(1.0, -1.0)]
         self.limit_xy2 = -1.
         # Setup stepper max halt velocity
@@ -86,6 +88,8 @@ class PolarKinematics:
         if home_z:
             self._home_axis(homing_state, 2, self.rails[1])
     def _motor_off(self, print_time):
+        if not self.toolhead.require_home_after_motor_off:
+            return
         self.limit_z = [(1.0, -1.0)]
         self.limit_xy2 = -1.
     def check_move(self, move):
@@ -108,6 +112,16 @@ class PolarKinematics:
     def get_status(self):
         return {'homed_axes': (("XY" if self.limit_xy2 >= 0. else "") +
                         ("Z" if self.limit_z[0] <= self.limit_z[1] else ""))}
+
+    def get_max_limits(self):
+        return [
+            {'rail': self.rails[0],
+             'acc': self.max_accel, 'velocity': self.max_velocity},
+            {'rail': self.rails[1],
+             'acc': self.max_accel, 'velocity': self.max_velocity},
+            {'rail': self.rails[2],
+             'acc': self.max_z_accel, 'velocity': self.max_z_velocity},
+        ]
 
 def load_kinematics(toolhead, config):
     return PolarKinematics(toolhead, config)

@@ -20,5 +20,8 @@ class NoneKinematics:
     def get_status(self):
         return {'homed_axes': ''}
 
+    def get_max_limits(self):
+        return []
+
 def load_kinematics(toolhead, config):
     return NoneKinematics(toolhead, config)

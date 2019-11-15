@@ -1,6 +1,6 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
-import time, util, json, math
+import time, util, json
 
 
 class GuiStats:
@@ -19,6 +19,7 @@ class GuiStats:
         self.curr_state = 'PNR'
         self.name = config.getsection('printer').get(
             'name', default="Klipper printer")
+        self.geometry = config.getsection('printer').get('kinematics')
         self.auto_report = False
         self.auto_report_timer = None
         # Print statistics
@@ -124,7 +125,6 @@ class GuiStats:
         self.curr_state = "B"
 
     def _homing_ready(self, homing_state, rails):
-        # self._parse_homed_states()
         for axis in homing_state.get_axes():
             self.logger.info("Homed axis '%s'", axis)
             self._stats_type_1["coords"]["axesHomed"][axis] = 1
@@ -171,23 +171,6 @@ class GuiStats:
         self.last_print_layer_change = current_time
 
     # ================================================================================
-    def _parse_homed_states(self):
-        homed_axes = [0] * 3
-        kinematic = self.toolhead.get_kinematics()
-        if hasattr(kinematic, "is_homed"):
-            homed_axes = kinematic.is_homed()
-            self._stats_type_1["coords"]["axesHomed"] = homed_axes
-        if any(homed_axes):
-            endstops_hit = 0
-            index = 0
-            for home_state, rail in zip(homed_axes, kinematic.get_rails()):
-                num_steppers = len(rail.get_steppers())
-                if home_state and num_steppers:
-                    endstops_hit |= (
-                            (int(math.pow(2, num_steppers)) - 1) << index)
-                index += num_steppers
-            self._stats_type_2["endstops"] = endstops_hit
-
     def _stats_type_1_reset(self):
         self._stats_type_1 = {
             "status": self.curr_state,
@@ -213,7 +196,7 @@ class GuiStats:
 
     def _stats_type_2_reset(self):
         # Fill stats type 2
-        kinematic = self.toolhead.get_kinematics()
+        # kinematic = self.toolhead.get_kinematics()
         heaters = self.printer.lookup_object('heater')
         max_temp = 0.0
         for _heater in heaters.get_heaters().values():
@@ -235,7 +218,7 @@ class GuiStats:
             "tempLimit":       max_temp,
             "endstops":        0,
             "firmwareName":    "Klipper",
-            "geometry":        kinematic.name,  # cartesian, coreXY, delta
+            "geometry":        self.geometry,
             "axes":            3,  # Subject to deprecation - may be dropped in RRF 1.20
             "volumes":         1,  # Num of SD cards
             "mountedVolumes":  1,  # Bitmap of all mounted volumes
@@ -293,14 +276,18 @@ class GuiStats:
         axisName = []
         # read rails
         for limit in kinematic.get_max_limits():
-            rail = limit['rail']
-            accel = limit['acc']
-            velocity = limit['velocity']
-            _min, _max = rail.get_range()
-            steppers = rail.get_steppers()
+            accel = int(limit.get('acc', 0))
+            velocity = int(limit.get('velocity', 0))
+            rail = limit.get('rail', None)
+            if rail is not None:
+                _min, _max = rail.get_range()
+                steppers = rail.get_steppers()
+            else:
+                _min = _max = 0
+                steppers = limit.get('steppers', [])
             for stp in steppers:
-                max_feedrates.append(int(velocity))
-                accelerations.append(int(accel))
+                max_feedrates.append(velocity)
+                accelerations.append(accel)
                 axisMins.append(_min)
                 axisMaxes.append(_max)
                 axisName.append(stp.get_name(short=True))

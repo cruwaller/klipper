@@ -7,10 +7,9 @@ import logging
 import stepper, homing
 
 class CartKinematics:
-    name = "cartesian"
     def __init__(self, toolhead, config):
         self.printer = config.get_printer()
-        self.logger = self.printer.get_logger(self.name)
+        self.logger = self.printer.get_logger("cartesian")
         self.toolhead = toolhead
         # Setup axis rails
         self.rails = [stepper.LookupMultiRail(config.getsection('stepper_' + n))
@@ -150,14 +149,6 @@ class CartKinematics:
         self._activate_carriage(carriage)
         gcode.reset_last_position()
 
-    def is_homed(self):
-        ret = [1, 1, 1]
-        for i in (0, 1, 2):
-            if self.limits[i][0] > self.limits[i][1]:
-                ret[i] = 0
-        return ret
-    def get_rails(self):
-        return list(self.rails)
     def get_max_limits(self):
         return [
             {'rail': self.rails[0],
