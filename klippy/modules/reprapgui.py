@@ -468,7 +468,8 @@ class rrHandler(tornado.web.RequestHandler):
 
         elif "rr_reply" in path:
             try:
-                self.write(self.parent.gcode_resps.pop(0))
+                while self.parent.gcode_resps:
+                    self.write(self.parent.gcode_resps.pop(0))
             except IndexError:
                 self.write("")
             return
@@ -636,7 +637,6 @@ class RepRapGuiModule(object):
                 ],
                 cookie_secret="16d35553-3331-4569-b419-8748d22aa599",
                 log_function=self.Tornado_LoggerCb,
-                # max_buffer_size=104857600*20,
                 login_url = "/login",
                 xsrf_cookies = False)
 
@@ -709,20 +709,20 @@ class RepRapGuiModule(object):
     def gcode_resp_handler(self, msg):
         self.resp += msg
         if "ok" not in self.resp:
+            # wait until whole resp is received
             return
         resp = self.resp
-        self.logger.debug("GCode resps: %s" % (repr(resp),))
+        self.resp = ""
+        # self.logger.debug("GCode resps: %s" % (repr(resp),))
         if "Klipper state" in resp:
             self.append_gcode_resp(resp)
         elif not self.resp_rcvd or "Error:" in resp or "Warning:" in resp:
-            self.resp_rcvd = True
+            # self.resp_rcvd = True
             resp = resp.strip()
-            if len(resp) > 2:
-                resp = resp.replace("ok", "")
+            #if len(resp) > 2:
+            resp = resp.replace("ok", "")
             if self.store_resp or "Error:" in resp or "Warning:" in resp:
                 self.append_gcode_resp(resp)
-            # self.resp_rcvd = True
-        self.resp = ""
     def append_gcode_resp(self, msg):
         self.gcode_resps.append(msg)
 
