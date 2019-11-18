@@ -1,6 +1,6 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
-import time, util, json
+import time, util, json, math
 
 
 class GuiStats:
@@ -464,6 +464,7 @@ class GuiStats:
                 else:
                     cold_temp = heater.min_extrude_temp
             stat2["coldExtrudeTemp"] = stat2["coldRetractTemp"] = cold_temp
+            stat2["controllableFans"] = int(math.pow(2, len(fans))) - 1
             status_resp.update(stat2)
 
         if _type >= 3:

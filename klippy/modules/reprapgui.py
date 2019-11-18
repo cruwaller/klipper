@@ -270,7 +270,7 @@ class rrHandler(tornado.web.RequestHandler):
             elif "heightmap.csv" in path:
                 bed_mesh = self.printer.lookup_object('bed_mesh', None)
                 calibrate = getattr(bed_mesh, "calibrate", None)
-                if bed_mesh.z_mesh and calibrate:
+                if bed_mesh is not None and bed_mesh.z_mesh and calibrate:
                     # calibrate.print_probed_positions_to_csv()
                     self.set_header('Content-Type',
                                     'application/force-download')
@@ -330,7 +330,7 @@ class rrHandler(tornado.web.RequestHandler):
                     respdata["err"] = 1
 
         # rr_filelist?dir=XXX
-        elif "rr_filelist" in path:
+        elif path in ["rr_filelist", 'rr_files']:
             '''
             resp: `{"type":[type],"name":"[name]","size":[size],"lastModified":"[datetime]"}`
             resp error: `{"err":[code]}`
@@ -338,18 +338,15 @@ class rrHandler(tornado.web.RequestHandler):
                     1 = the directory doesn't exist
                     2 = the requested volume is not mounted
             '''
+            lst_dirs = bool(self.get_argument('flagDirs', True))
             _dir = self.get_argument('dir')
-            respdata["dir"]   = _dir
-            respdata["files"] = []
-
             _dir = _dir.replace("0:/", "").replace("0%3A%2F", "")
             path = os.path.abspath(os.path.join(sd_path, _dir))
-
-            if not os.path.exists(path):
-                respdata["err"] = 1
-            else:
-                respdata["err"] = 0
-                del respdata["err"] # err keyword need to be deleted
+            respdata["dir"]   = _dir
+            respdata["files"] = []
+            respdata['next']  = 0
+            respdata["err"] = int(not os.path.exists(path))
+            if os.path.exists(path):
                 for _local in os.listdir(path):
                     if _local.startswith("."):
                         continue
@@ -363,7 +360,7 @@ class rrHandler(tornado.web.RequestHandler):
                                                    time.localtime(os.path.getmtime(filepath))),
                         }
                         respdata["files"].append(data)
-                    elif os.path.isdir(filepath):
+                    elif os.path.isdir(filepath) and lst_dirs:
                         data = {
                             "type" : "d",
                             "name" : os.path.relpath(filepath, path),
@@ -578,8 +575,10 @@ class RepRapGuiModule(object):
         self.gcode_resps = []
         self.lock = threading.Lock()
         # Read config
-        htmlroot = os.path.normpath(os.path.join(os.path.dirname(__file__)))
-        htmlroot = os.path.join(htmlroot, "DuetWebControl")
+        htmlroot = config.get('htmlroot', '')
+        if not htmlroot:
+            htmlroot = os.path.normpath(os.path.join(os.path.dirname(__file__)))
+            htmlroot = os.path.join(htmlroot, "DuetWebControl")
         if not os.path.exists(os.path.join(htmlroot, 'reprap.htm')):
             raise printer.config_error("DuetWebControl files not found '%s'" % htmlroot)
         self.logger.debug("html root: %s" % (htmlroot,))
