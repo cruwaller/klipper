@@ -1856,7 +1856,7 @@ function setProbeValue(value, secondaryValue) {
 		$("#td_probe").html("z: " + value);
 	} else {
 		//$("#td_probe").html(value + " (" + secondaryValue.reduce(function(a, b) { return a + b; }) + ")");
-		$("#td_probe").html("z: " + value + " x: " + secondaryValue[0] + " y: " + secondaryValue[1])
+		$("#td_probe").html("z: " + value + " x: " + secondaryValue[0] + " y: " + secondaryValue[1]);
 	}
 
 	if (probeTriggerValue != undefined && value > probeTriggerValue && !isPrinting) {

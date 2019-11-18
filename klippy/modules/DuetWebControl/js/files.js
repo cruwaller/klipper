@@ -174,7 +174,7 @@ function updateScanFiles() {
 		dataType: "json",
 		success: function(response) {
 			if (isConnected) {
-				if (response.hasOwnProperty("err")) {
+				if (response.hasOwnProperty("err") && response.err != 0) {
 					// don't proceed if the firmware has reported an error
 					$("#page_scanner h1").text(T("Failed to retrieve files of this directory"));
 				} else {
@@ -557,7 +557,7 @@ function updateGCodeFiles() {
 			dataType: "json",
 			success: function(response) {
 				if (isConnected) {
-					if (response.hasOwnProperty("err")) {
+					if (response.hasOwnProperty("err") && response.err != 0) {
 						// don't proceed if the firmware has reported an error
 						$("#page_files h1").text(T("Failed to retrieve files of this directory"));
 
@@ -850,7 +850,7 @@ function updateMacroFiles() {
 		dataType: "json",
 		success: function(response) {
 			if (isConnected) {
-				if (response.hasOwnProperty("err")) {
+				if (response.hasOwnProperty("err") && response.err != 0) {
 					// don't proceed if the firmware has reported an error
 					$("#page_macros h1").text(T("Failed to retrieve files of this directory"));
 					if (currentMacroDirectory == "0:/macros") {
@@ -944,7 +944,7 @@ function loadMacroDropdown(directory, dropdown) {
 		directory: directory,
 		dropdown: dropdown,
 		success: function(response) {
-			if (response.hasOwnProperty("err")) {
+			if (response.hasOwnProperty("err") && response.err != 0) {
 				dropdown.html('<li><a href="#" class="disabled" style="color:#777;">' + T("Failed to retrieve files of this directory") + '</a></li>');
 			} else if (response.files.length == 0) {
 				dropdown.html('<li><a href="#" class="disabled" style="color:#777;">' + T("No files found!") + '</a></li>');
@@ -1063,7 +1063,7 @@ function updateFilaments() {
 		dataType: "json",
 		success: function(response) {
 			if (isConnected) {
-				if (response.hasOwnProperty("err")) {
+				if (response.hasOwnProperty("err") && response.err != 0) {
 					// don't proceed if the firmware has reported an error
 					filamentsExist = false;
 					$("#page_filaments h1").text(T("Failed to retrieve Filaments"));
@@ -1201,7 +1201,7 @@ function updateSysFiles() {
 		dataType: "json",
 		success: function(response) {
 			if (isConnected) {
-				if (response.hasOwnProperty("err")) {
+				if (response.hasOwnProperty("err") && response.err != 0) {
 					// don't proceed if the firmware has reported an error
 					$("#page_sysedit h1").text(T("Failed to retrieve files of this directory"));
 				} else {
@@ -1822,7 +1822,7 @@ function doFileTask() {
 					dataType: "json",
 					success: function(response) {
 						if (isConnected) {
-							if (response.hasOwnProperty("err")) {
+							if (response.hasOwnProperty("err") && response.err != 0) {
 								showMessage("warning", T("Warning"), T("Could not delete filament {0}", task.filament));
 							} else {
 								for(var i = 0; i < response.files.length; i++) {
