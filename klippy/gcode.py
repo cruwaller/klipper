@@ -113,6 +113,10 @@ class GCodeParser:
             raise self.printer.config_error(
                 "mux command %s %s %s may have only one key (%s)" % (
                     cmd, key, value, prev_key))
+        if func is None:
+            if value in prev_values:
+                del prev_values[value]
+            return
         if value in prev_values:
             raise self.printer.config_error(
                 "mux command %s %s %s already registered (%s)" % (

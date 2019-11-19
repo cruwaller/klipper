@@ -1,7 +1,7 @@
 /* Communication routines between RepRapFirmware and Duet Web Control
- * 
+ *
  * written by Christian Hammacher (c) 2016-2018
- * 
+ *
  * licensed under the terms of the GPL v3
  * see http://www.gnu.org/licenses/gpl-3.0.html
  */
@@ -698,6 +698,10 @@ function updateStatus() {
 				if ($("tr[data-fan='tool'] button.fan-visibility").hasClass("active") && fanValues.length > 0) {
 					// Set Tool fan value
 					var toolFan = 0;
+					if (status.hasOwnProperty("currentFan")) {
+						toolFan = status.currentFan;
+					}
+					/*
 					var tool = getTool(status.currentTool);
 					if (tool != undefined && tool.hasOwnProperty("fans")) {
 						for(var fan = 0; fan < Math.min(maxFans, fanValues.length); fan++) {
@@ -707,8 +711,9 @@ function updateStatus() {
 							}
 						}
 					}
+					*/
 
-					if (fanSliderActive != "tool" && (lastStatusResponse == undefined || $("tr[data-fan='tool'] .fan-slider > input").slider("getValue") != fanValues[toolFan])) {
+					if (toolFan < fanValues.length && fanSliderActive != "tool" && (lastStatusResponse == undefined || $("tr[data-fan='tool'] .fan-slider > input").slider("getValue") != fanValues[toolFan])) {
 						$("tr[data-fan='tool'] .fan-slider > input").slider("setValue", fanValues[toolFan]);
 					}
 				}
@@ -915,7 +920,7 @@ function updateStatus() {
 						// No z-probe, hide fields
 						$(".z_probe_control").addClass("hidden");
 					}
-				
+
 					if (status.sensors.hasOwnProperty("fanRPM")) {
 						$(".td.fan-rpm").removeClass("hidden")
 						if (status.sensors.fanRPM.constructor === Array) {
@@ -1523,7 +1528,7 @@ function getConfigResponse() {
 					}
 				}
 			}
-			
+
 			if (response.hasOwnProperty("idleCurrentFactor")) {
 				$("#dd_idle_current").text(response.idleCurrentFactor.toFixed(0) + "%");
 			}

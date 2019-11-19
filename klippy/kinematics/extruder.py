@@ -77,6 +77,12 @@ class PrinterExtruder:
         gcode.register_mux_command("SET_PRESSURE_ADVANCE", "EXTRUDER",
                                    self.name, self.cmd_SET_PRESSURE_ADVANCE,
                                    desc=self.cmd_SET_PRESSURE_ADVANCE_help)
+        self.fan = None
+        fan_name = config.get('tool_fan', '')
+        if fan_name:
+            self.fan = self.printer.try_load_module(config, fan_name)
+            if self.fan and self.name == 'extruder':
+                self.fan.register_to_default_fan()
         self.raw_filament = 0.
         self.extrude_factor = config.getfloat('extrusion_factor', 1.0, minval=0.1)
         self.logger.debug("index=%d, heater=%s" % (extruder_num, self.heater.name))
@@ -98,6 +104,8 @@ class PrinterExtruder:
         return self.extrude_pos
     def get_activate_gcode(self, is_active):
         if is_active:
+            if self.fan is not None:
+                self.fan.register_to_default_fan()
             return self.activate_gcode.render()
         return self.deactivate_gcode.render()
     def stats(self, eventtime):
@@ -253,6 +261,8 @@ class PrinterExtruder:
     def get_max_e_limits(self):
         return {'stepper': self.stepper, 'max_e_dist': self.max_e_dist,
                 'acc': self.max_e_accel, 'velocity': self.max_e_velocity}
+    def get_tool_fan(self):
+        return self.fan
 
 # Dummy extruder class used when a printer has no extruder at all
 class DummyExtruder:

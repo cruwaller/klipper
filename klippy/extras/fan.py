@@ -34,12 +34,12 @@ class PrinterFan:
             gcode = self.printer.lookup_object('gcode')
             if name in ['fan', 'fan 0']:
                 index = "0"
-                gcode.register_mux_command("M106", "P", None, self.cmd_M106)
-                gcode.register_mux_command("M107", "P", None, self.cmd_M107)
+                self.register_to_default_fan()
             else:
                 index = name[3:].strip()
             gcode.register_mux_command("M106", "P", index, self.cmd_M106)
             gcode.register_mux_command("M107", "P", index, self.cmd_M107)
+            self.fan_index = int(index)
     def handle_request_restart(self, print_time):
         self.set_speed(print_time, 0.)
     def set_speed(self, print_time, value):
@@ -69,6 +69,15 @@ class PrinterFan:
         # Turn fan off
         print_time = self.printer.lookup_object('toolhead').get_last_move_time()
         self.set_speed(print_time, 0.)
+    def register_to_default_fan(self):
+        gcode = self.printer.lookup_object('gcode')
+        for cmd in ['M106', 'M107']:
+            gcode.register_mux_command(cmd, "P", None, None)
+            gcode.register_mux_command(cmd, "P", None,
+                                       getattr(self, 'cmd_' + cmd))
+    def get_index(self):
+        return getattr(self, 'fan_index', None)
+
 
 def load_config(config):
     # fan is mapped to fan0

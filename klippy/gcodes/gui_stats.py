@@ -453,6 +453,9 @@ class GuiStats:
         })
 
         status_resp = dict(status_block)
+        tool_fan = curr_extruder.get_tool_fan()
+        if tool_fan is not None:
+            status_resp["currentFan"] = tool_fan.get_index()
 
         if _type >= 2:
             stat2 = self._stats_type_2
