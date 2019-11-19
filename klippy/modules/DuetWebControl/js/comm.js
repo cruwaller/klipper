@@ -400,12 +400,6 @@ function updateStatus() {
 				getConfigResponse();
 			}
 
-			// Fan Names
-			if (status.params.hasOwnProperty("fanNames") && (lastStatusResponse == undefined || !arraysEqual(status.params.fanNames, fanNames))) {
-				fanNames = status.params.fanNames;
-				needGuiUpdate = true;
-			}
-
 			// Machine Mode
 			if (status.hasOwnProperty("mode")) {
 				$("#span_mode").removeClass("hidden");
@@ -676,6 +670,12 @@ function updateStatus() {
 			}
 
 			if (status.hasOwnProperty("params")) {
+				// Fan Names
+				if (status.params.hasOwnProperty("fanNames") && (lastStatusResponse == undefined || !arraysEqual(status.params.fanNames, fanNames))) {
+					fanNames = status.params.fanNames;
+					needGuiUpdate = true;
+				}
+
 				// ATX Power
 				if (status.params.hasOwnProperty("atxPower")) {
 					if (!settings.showATXControl) {
@@ -908,6 +908,7 @@ function updateStatus() {
 				if (lastStatusResponse == undefined && !Object.keys(status.sensors).length) {
 					// No sensors, hide it
 					$(".sensors_control").addClass("hidden");
+                    $(".z_probe_control").addClass("hidden");
 				} else {
 					// Sensors
 					if (status.sensors.hasOwnProperty("probe")) {
@@ -935,6 +936,7 @@ function updateStatus() {
 			} else if (lastStatusResponse == undefined) {
 				// No sensors, hide it
 				$(".sensors_control").addClass("hidden");
+                $(".z_probe_control").addClass("hidden");
 			}
 
 			if (status.hasOwnProperty("temps")) {
