@@ -29,6 +29,7 @@ http: 80
 """
 
 import time, sys, os, errno, threading, json, logging
+import base64, uuid
 
 try:
     sys.path.append(os.path.normpath(
@@ -612,6 +613,8 @@ class RepRapGuiModule(object):
         # ------------------------------
         # Start tornado webserver
         if _TORNADO_THREAD is None or not _TORNADO_THREAD.isAlive():
+            cookie_secret = base64.b64encode(
+                uuid.uuid4().bytes + uuid.uuid4().bytes)
             application = tornado.web.Application(
                 [
                     tornado.web.url(r"/", MainHandler,
@@ -635,7 +638,7 @@ class RepRapGuiModule(object):
                                     { "camera": self.camera,
                                       "interval": self.feed_interval}),
                 ],
-                cookie_secret="16d35553-3331-4569-b419-8748d22aa599",
+                cookie_secret=cookie_secret,
                 log_function=self.Tornado_LoggerCb,
                 login_url = "/login",
                 xsrf_cookies = False)
@@ -684,9 +687,7 @@ class RepRapGuiModule(object):
             port, ssl_options is not None))
 
         http_server = tornado.httpserver.HTTPServer(
-            application,
-            # max_buffer_size=1 * 1024 ** 3,  # 1GB
-            ssl_options=ssl_options)
+            application, ssl_options=ssl_options)
         http_server.listen(port)
         tornado.ioloop.IOLoop.current().start()
         self.logger.warning("Something went wrong, server exited!")
