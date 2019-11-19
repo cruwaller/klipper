@@ -81,7 +81,9 @@ class PrinterExtruder:
         fan_name = config.get('tool_fan', '')
         if fan_name:
             self.fan = self.printer.try_load_module(config, fan_name)
-            if self.fan and self.name == 'extruder':
+            if self.fan is None:
+                raise config.error("Cannot load tool fan '%s'" % fan_name)
+            if self.name == 'extruder':
                 self.fan.register_to_default_fan()
         self.raw_filament = 0.
         self.extrude_factor = config.getfloat('extrusion_factor', 1.0, minval=0.1)
