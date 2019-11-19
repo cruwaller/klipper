@@ -80,8 +80,10 @@ class PrinterFan:
 
 
 def load_config(config):
-    # fan is mapped to fan0
-    config.get_printer().add_object('fan 0', PrinterFan(config))
+    fan = PrinterFan(config)
+    # fan is mapped to 'fan 0'
+    config.get_printer().add_object('fan 0', fan)
+    return fan
 
 def load_config_prefix(config):
     return PrinterFan(config)
