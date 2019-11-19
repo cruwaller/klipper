@@ -912,7 +912,7 @@ function updateStatus() {
 				} else {
 					// Sensors
 					if (status.sensors.hasOwnProperty("probe")) {
-						$("#th_probe").html("Probe");l
+						$("#th_probe").html("Probe");
 						setProbeValue(status.sensors.probe.probeValue, status.sensors.probe.probeSecondary);
 					} else if (status.sensors.hasOwnProperty("z_offset")) {
 						$("#th_probe").html("Z-offset");
