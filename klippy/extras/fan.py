@@ -29,7 +29,7 @@ class PrinterFan:
         self.mcu_fan.setup_start_value(
             0., max(0., min(self.max_power, shutdown_speed)))
         # Register commands
-        name = config.get_name()
+        self.name = name = config.get_name()
         if name.startswith('fan'):
             gcode = self.printer.lookup_object('gcode')
             if name in ['fan', 'fan 0']:
@@ -64,6 +64,8 @@ class PrinterFan:
         print_time = self.printer.lookup_object('toolhead').get_last_move_time()
         gcode = self.printer.lookup_object('gcode')
         value = gcode.get_float('S', params, 255., minval=0.) / 255.
+        if value < .005:
+            value *= 255.
         self.set_speed(print_time, value)
     def cmd_M107(self, params):
         # Turn fan off
