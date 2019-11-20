@@ -1,7 +1,7 @@
 /* File management logic for Duet Web Control
- * 
+ *
  * written by Christian Hammacher (c) 2016-2018
- * 
+ *
  * licensed under the terms of the GPL v2
  * see http://www.gnu.org/licenses/gpl-2.0.html
  */
@@ -396,7 +396,7 @@ function setGCodeDirectory(directory) {
 	currentGCodeDirectory = directory;
 	var basePath = (currentGCodeVolume == 0) ? "0:/gcodes" : currentGCodeVolume + ":";
 	var baseCaption = (currentGCodeVolume == 0) ? T("G-Codes Directory") : T("Root Directory");
-	
+
 	$("#ol_gcode_directory > li.content:not(:first-child)").remove();
 	if (directory == basePath) {
 		$("#ol_gcode_directory > li.content").replaceWith('<li class="active content"><span class="glyphicon glyphicon-folder-open"></span> ' + baseCaption + '</li>');
@@ -526,7 +526,7 @@ function setGCodeFileItem(row, size, lastModified, height, firstLayerHeight, lay
 
 function clearGCodeFiles() {
 	gcodeLastDirectory = undefined;
-	
+
 	$("#table_gcode_files > thead input[type='checkbox']:first-child").prop("checked", false);
 	$("#table_gcode_files > tbody").children().remove();
 	$("#table_gcode_files").addClass("hidden");
@@ -621,7 +621,7 @@ function getGCodeFiles(first) {
 						// add each file and directory
 						for(var i = 0; i < response.files.length; i++) {
 							if (response.files[i].type == 'd') {
-								addGCodeDirectory(response.files[i].name.substr(1));
+								addGCodeDirectory(response.files[i].name);
 							} else {
 								knownGCodeFiles.push(response.files[i].name);
 								addGCodeFile(response.files[i].name);
