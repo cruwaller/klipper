@@ -677,7 +677,7 @@ function updateStatus() {
 				}
 
 				// ATX Power
-				if (status.params.hasOwnProperty("atxPower")) {
+				if (status.params.hasOwnProperty("atxPower") && status.params.atxPower != -1) {
 					if (!settings.showATXControl) {
 						// Show ATX buttons
 						settings.showATXControl = true;
