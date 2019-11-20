@@ -16,7 +16,7 @@ class GuiStats:
         # variables
         self.toolhead = None
         self.starttime = time.time()
-        self.curr_state = 'PNR'
+        self.curr_state = 'O' # 'PNR'
         self.name = config.getsection('printer').get(
             'name', default="Klipper printer")
         self.geometry = config.getsection('printer').get('kinematics')
@@ -112,7 +112,7 @@ class GuiStats:
     def _handle_shutdown(self):
         self.curr_state = "H"
     def _handle_disconnect(self):
-        self.curr_state = "C"
+        self.curr_state = "B"
     def handle_ready(self):
         self.curr_state = "I"
         if self.auto_report and self.auto_report_timer is None:
@@ -179,10 +179,12 @@ class GuiStats:
                 "axesHomed": [0] * 3,
                 "extr": [0],
                 "xyz": [0] * 3,
+                "machine": [0] * 3,
             },
+            # "speeds": {},
             "currentTool": 0,
             "params": {
-                # "atxPower": 0,
+                "atxPower": -1,
                 "fanPercent": [0],
                 "speedFactor": 100.,
                 "extrFactors": [100.],
@@ -191,12 +193,19 @@ class GuiStats:
             },
             "sensors": {},
             "time": (time.time() - self.starttime),
-            "temps": {},
+            "temps": {
+                "extra": [
+                    #{
+                    #    "name": "*MCU",
+                    #    "temp": 0,
+                    #}
+                ],
+            },
         }
 
     def _stats_type_2_reset(self):
         # Fill stats type 2
-        # kinematic = self.toolhead.get_kinematics()
+        fans = self.printer.lookup_objects("fan")
         heaters = self.printer.lookup_object('heater')
         max_temp = 0.0
         for _heater in heaters.get_heaters().values():
@@ -204,14 +213,22 @@ class GuiStats:
                 max_temp = _heater.max_temp
         tools = []
         for index, extr in enumerate(self.extruders):
+            fan_index = 0
+            tool_fan = extr.get_tool_fan()
+            if tool_fan is not None:
+                fan_index = tool_fan.get_index()
             values = {
-                "number"   : index,
+                "number"   : extr.get_index(),
                 "name"     : extr.name,
                 "heaters"  : [ extr.heater.get_index() + 1 ],
-                "drives"   : [ 3 + index ],
-                #"filament" : "N/A",
+                "drives"   : [ 3 + extr.get_index() ],
+                "fans": 1 << fan_index,
+                # "axisMap":  [1],
+                # "filament": "",
+                # "offsets":  [0, 0, 0]
             }
             tools.append(values)
+
         self._stats_type_2 = {
             "coldExtrudeTemp": 170.,
             "coldRetractTemp": 170.,
@@ -223,6 +240,9 @@ class GuiStats:
             "volumes":         1,  # Num of SD cards
             "mountedVolumes":  1,  # Bitmap of all mounted volumes
             "name":            self.name,
+            "controllableFans": int(math.pow(2, len(fans))) - 1,
+            "tools": tools,
+
             # "probe": {
             #    "threshold" : 500,
             #    "height"    : 2.6,
@@ -238,7 +258,15 @@ class GuiStats:
             #    "cur": 12.3,
             #    "max": 12.5
             # },
-            "tools": tools,
+
+            "totalAxes": 3+len(self.extruders),
+            "axisNames": "XYZ",
+            "compensation": "None",
+            #"probe": {
+            #    "threshold": 100,
+            #    "height":    0,
+            #    "type":      8
+            #},
         }
 
     def _stats_type_3_reset(self, first_layer_height=0.):
@@ -337,8 +365,7 @@ class GuiStats:
         states = {False : 0, True  : 2}
         curr_extruder = self.toolhead.get_extruder()
         curr_pos = self.toolhead.get_position()
-        fans = [fan.last_fan_value * 100.0 for n, fan in
-                self.printer.lookup_objects("fan")]
+        fans = self.printer.lookup_objects("fan")
         heatbed = pheater.lookup_heater('bed', None)
         _extrs = self.extruders
 
@@ -356,14 +383,13 @@ class GuiStats:
 
         # update ATX status
         atx_pwr = self.printer.lookup_object('atx_power', None)
-        # atx_state = atx_pwr.get_state() if atx_pwr else 0
         if atx_pwr is not None:
-            status_block["params"]["atxPower"] = atx_pwr.get_state()
+            status_block["params"]["atxPower"] = int(atx_pwr.get_state())
 
         # update params
         status_block["params"].update({
-            # "atxPower":    atx_state,
-            "fanPercent":  fans,
+            "fanPercent": [fan.last_fan_value * 100.0 for key, fan in fans],
+            "fanNames": [name for name, fan in fans],
             "speedFactor": self.gcode.speed_factor * 60. * 100.0,
             "extrFactors": [e.get_extrude_factor(procent=True) for e in _extrs],
             "babystep":    float("%.3f" % babysteps),
@@ -386,10 +412,6 @@ class GuiStats:
         #if calibrate:
         #    # calibrate.probed_z_table
         #    pass
-
-        #if fans:
-        #    fan0 = self.printer.lookup_objects("fan 0")
-        #    # status_block['sensors']['fanRPM'] = 0
 
         heatbed_add = (heatbed is not None)
         num_extruders = len(_extrs)
@@ -467,7 +489,6 @@ class GuiStats:
                 else:
                     cold_temp = heater.min_extrude_temp
             stat2["coldExtrudeTemp"] = stat2["coldRetractTemp"] = cold_temp
-            stat2["controllableFans"] = int(math.pow(2, len(fans))) - 1
             status_resp.update(stat2)
 
         if _type >= 3:

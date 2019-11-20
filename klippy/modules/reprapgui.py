@@ -60,11 +60,12 @@ class BaseHandler(tornado.web.RequestHandler):
 
 class MainHandler(BaseHandler):
     path = None
-    def initialize(self, path):
+    def initialize(self, path, file):
         self.path = path
+        self.file = file
     @tornado.web.authenticated
     def get(self):
-        self.render(os.path.join(self.path, "reprap.htm"))
+        self.render(os.path.join(self.path, self.file))
 
 class LoginHandler(BaseHandler):
     path = parent = None
@@ -197,6 +198,8 @@ class rrHandler(tornado.web.RequestHandler):
         sd_path = self.sd_path
         respdata = {"err" : 10}
 
+        #self.logger.info("uri: %s", self.request.uri)
+
         # rr_connect?password=XXX&time=YYY
         if "rr_connect" in path:
             respdata["err"] = 0
@@ -272,12 +275,28 @@ class rrHandler(tornado.web.RequestHandler):
                 bed_mesh = self.printer.lookup_object('bed_mesh', None)
                 calibrate = getattr(bed_mesh, "calibrate", None)
                 if bed_mesh is not None and bed_mesh.z_mesh and calibrate:
-                    # calibrate.print_probed_positions_to_csv()
                     self.set_header('Content-Type',
                                     'application/force-download')
                     self.set_header('Content-Disposition',
                                     'attachment; filename=heightmap.csv')
-                    self.write(calibrate.print_probed_positions_to_csv())
+                    params = calibrate.get_probe_params()
+                    spacing_x = (params['max_x'] - params['min_x']) / (params['x_count'] - 1)
+                    spacing_y = (params['max_y'] - params['min_y']) / (params['y_count'] - 1)
+                    csv = [
+                        "Klipper height map",
+                        "xmin,xmax,ymin,ymax,radius,xspacing,yspacing,xnum,ynum",
+                        "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d" % (
+                            params['min_x'], params['max_x'],
+                            params['min_y'], params['max_y'],
+                            params.get('radius', -1),
+                            params.get('xspacing', spacing_x),
+                            params.get('yspacing', spacing_y),
+                            params['x_count'], params['y_count']),
+                    ]
+                    points_csv = calibrate.print_probed_positions_to_csv()
+                    data = "\n".join(csv) + "\n" + points_csv
+                    # self.logger.debug("heightmap.csv:\n%s", data)
+                    self.write(data)
                     self.finish()
                     return
                 else:
@@ -578,11 +597,18 @@ class RepRapGuiModule(object):
         self.lock = threading.Lock()
         # Read config
         htmlroot = config.get('htmlroot', '')
+        dwc_htm = 'reprap.htm'
+        dwc2 = config.getboolean('dwc2', False)
         if not htmlroot:
             htmlroot = os.path.normpath(os.path.join(os.path.dirname(__file__)))
-            htmlroot = os.path.join(htmlroot, "DuetWebControl")
-        if not os.path.exists(os.path.join(htmlroot, 'reprap.htm')):
-            raise printer.config_error("DuetWebControl files not found '%s'" % htmlroot)
+            folder = ["DuetWebControl", "DuetWebControl2"][dwc2]
+            htmlroot = os.path.join(htmlroot, folder)
+        if dwc2 or not os.path.exists(os.path.join(htmlroot, 'reprap.htm')):
+            if os.path.exists(os.path.join(htmlroot, 'index.html')):
+                dwc_htm = 'index.html'
+            else:
+                raise printer.config_error(
+                    "DuetWebControl files not found '%s'" % htmlroot)
         self.logger.debug("html root: %s" % (htmlroot,))
         self.user = config.get('user', '')
         self.passwd = config.get('password', '')
@@ -615,29 +641,31 @@ class RepRapGuiModule(object):
         if _TORNADO_THREAD is None or not _TORNADO_THREAD.isAlive():
             cookie_secret = base64.b64encode(
                 uuid.uuid4().bytes + uuid.uuid4().bytes)
+            app_urls = [
+                tornado.web.url(r'/login', LoginHandler,
+                                {"path": htmlroot}, name="login"),
+                tornado.web.url(r'/logout', LogoutHandler, name="logout"),
+                tornado.web.url(r"/(.*\.ico)", tornado.web.StaticFileHandler,
+                                {"path": htmlroot}),
+                tornado.web.url(r"/(.*\.xml)", tornado.web.StaticFileHandler,
+                                {"path": htmlroot}),
+                tornado.web.url(r"/fonts/(.*)", tornado.web.StaticFileHandler,
+                                {"path": os.path.join(htmlroot, "fonts")}),
+                tornado.web.url(r"/js/(.*)", tornado.web.StaticFileHandler,
+                                {"path": os.path.join(htmlroot, "js")}),
+                tornado.web.url(r"/css/(.*)", tornado.web.StaticFileHandler,
+                                {"path": os.path.join(htmlroot, "css")}),
+                tornado.web.url(r"/(rr_.*)", rrHandler, {"sd_path": sdcard_dirname}),
+                tornado.web.url(r"/jpeg", JpegHandler, {"camera": self.camera}),
+                tornado.web.url(r"/video", JpegStreamHandler,
+                                {"camera": self.camera,
+                                    "interval": self.feed_interval}),
+                tornado.web.url(r"/.*", MainHandler,
+                                {"path": htmlroot, "file": dwc_htm},
+                                name="main"),
+            ]
             application = tornado.web.Application(
-                [
-                    tornado.web.url(r"/", MainHandler,
-                                    {"path": htmlroot}, name="main"),
-                    tornado.web.url(r'/login', LoginHandler,
-                                    {"path": htmlroot}, name="login"),
-                    tornado.web.url(r'/logout', LogoutHandler, name="logout"),
-                    tornado.web.url(r"/(.*\.ico)", tornado.web.StaticFileHandler,
-                                    {"path": htmlroot}),
-                    tornado.web.url(r"/(.*\.xml)", tornado.web.StaticFileHandler,
-                                    {"path": htmlroot}),
-                    tornado.web.url(r"/fonts/(.*)", tornado.web.StaticFileHandler,
-                                    {"path": os.path.join(htmlroot, "fonts")}),
-                    tornado.web.url(r"/js/(.*)", tornado.web.StaticFileHandler,
-                                    {"path": os.path.join(htmlroot, "js")}),
-                    tornado.web.url(r"/css/(.*)", tornado.web.StaticFileHandler,
-                                    {"path": os.path.join(htmlroot, "css")}),
-                    tornado.web.url(r"/(rr_.*)", rrHandler, {"sd_path": sdcard_dirname}),
-                    tornado.web.url(r"/jpeg", JpegHandler, {"camera": self.camera}),
-                    tornado.web.url(r"/video", JpegStreamHandler,
-                                    { "camera": self.camera,
-                                      "interval": self.feed_interval}),
-                ],
+                app_urls,
                 cookie_secret=cookie_secret,
                 log_function=self.Tornado_LoggerCb,
                 login_url = "/login",

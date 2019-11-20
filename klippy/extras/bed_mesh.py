@@ -496,12 +496,17 @@ class BedMeshCalibrate:
             self.bedmesh.set_mesh(mesh)
             self.gcode.respond_info("Mesh Bed Leveling Complete")
             self.save_profile("default")
+    def get_probe_params(self):
+        params = dict(self.probe_params)
+        if self.radius is not None:
+            params['radius'] = self.radius
+        return params
     def print_probed_positions_to_csv(self):
         if self.probed_z_table is not None:
             msg = ""
             for line in self.probed_z_table:
                 for x in line:
-                    msg += " %f" % x
+                    msg += "%7.3f," % x
                 msg += "\n"
             return msg
         return ""
