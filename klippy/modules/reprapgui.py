@@ -60,17 +60,15 @@ class BaseHandler(tornado.web.RequestHandler):
 
 class MainHandler(BaseHandler):
     path = None
-    def initialize(self, path, file):
-        self.path = path
+    def initialize(self, file):
         self.file = file
     @tornado.web.authenticated
-    def get(self):
-        self.render(os.path.join(self.path, self.file))
+    def get(self, path):
+        self.render(self.file)
 
 class LoginHandler(BaseHandler):
-    path = parent = None
-    def initialize(self, path):
-        self.path = path
+    parent = None
+    def initialize(self):
         self.parent = _PARENT
     @tornado.gen.coroutine
     def get(self):
@@ -79,12 +77,26 @@ class LoginHandler(BaseHandler):
             self.write('<center>blocked</center>')
             return
         # Skip login if user or passwd is not set
-        if not len(self.parent.user) or not len(self.parent.passwd):
+        if not self.parent.user or not self.parent.passwd:
             self.set_secure_cookie("user", "John Doe")
             self.set_secure_cookie("incorrect", "0")
-            self.redirect(self.reverse_url("main"))
+            self.redirect(self.reverse_url("main", ""))
             return
-        self.render(os.path.join(self.path, 'login.html'))
+        login = '''
+        <html>
+        <head>
+        <title>Please Log In</title>
+        </head>        
+        <body>
+        <form action="/login" method="POST">
+            <p>Username: <input type="text" name="username" /><p>
+            <p>Password: <input type="password" name="password" /><p>
+            <p><input type="submit" value="Log In" /></p>        
+        </form>
+        </body>
+        </html>
+        '''
+        self.write(login)
 
     @tornado.gen.coroutine
     def post(self):
@@ -99,15 +111,12 @@ class LoginHandler(BaseHandler):
            self.parent.passwd == getpassword:
             self.set_secure_cookie("user", self.get_argument("username"))
             self.set_secure_cookie("incorrect", "0")
-            self.redirect(self.reverse_url("main"))
+            self.redirect(self.reverse_url("main", ""))
         else:
             incorrect = self.get_secure_cookie("incorrect") or 0
             increased = str(int(incorrect)+1)
             self.set_secure_cookie("incorrect", increased)
-            self.write("""<center>
-                            Something Wrong With Your Data (%s)<br />
-                            <a href="/">Go Home</a>
-                          </center>""" % increased)
+            raise tornado.web.HTTPError(401)
 
 class LogoutHandler(BaseHandler):
     def get(self):
@@ -181,7 +190,7 @@ class JpegStreamHandler(tornado.web.RequestHandler):
                                        ioloop.time() + self.interval)
 
 @tornado.web.stream_request_body
-class rrHandler(tornado.web.RequestHandler):
+class rrHandler(BaseHandler):
     parent = printer = sd_path = logger = None
 
     def initialize(self, sd_path):
@@ -194,22 +203,24 @@ class rrHandler(tornado.web.RequestHandler):
         self.sd_path = sd_path
         self.logger = self.parent.logger
 
+    @tornado.web.authenticated
     def get(self, path, *args, **kwargs):
         sd_path = self.sd_path
-        respdata = {"err" : 10}
+        respdata = {"err" : 1}
 
         #self.logger.info("uri: %s", self.request.uri)
 
         # rr_connect?password=XXX&time=YYY
         if "rr_connect" in path:
-            respdata["err"] = 0
+            respdata["err"] = 1
             #_passwd = self.get_argument('password')
-            #if self.parent.passwd != _passwd:
-            #    respdata["err"] = 1
-            # 0 = success, 1 = wrong passwd, 2 = No more HTTP sessions available
-            respdata["sessionTimeout"] = 30000 # ms
-            # duetwifi10, duetethernet10, radds15, alligator2, duet06, duet07, duet085, default: unknown
-            respdata["boardType"] = "klipper"
+            #if not self.parent.passwd or self.parent.passwd == _passwd:
+            if True:
+                respdata["err"] = 0
+                # 0 = success, 1 = wrong passwd, 2 = No more HTTP sessions available
+                respdata["sessionTimeout"] = 30000 # ms
+                # duetwifi10, duetethernet10, radds15, alligator2, duet06, duet07, duet085, default: unknown
+                respdata["boardType"] = "klipper"
 
         # rr_disconnect
         elif "rr_disconnect" in path:
@@ -237,7 +248,7 @@ class rrHandler(tornado.web.RequestHandler):
             gcode = self.get_argument('gcode')
             #self.logger.debug("rr_gcode={}".format(gcode))
             # Clean up gcode command
-            gcode = gcode.replace("0:/", "").replace("0%3A%2F", "")
+            gcode = gcode.replace("0:/", "")
 
             if "M80" in gcode and self.parent.atx_on is not None:
                 # ATX ON
@@ -264,7 +275,7 @@ class rrHandler(tornado.web.RequestHandler):
         # rr_download?name=XXX
         elif "rr_download" in path:
             # Download a specified file from the SD card.
-            path = self.get_argument('name').replace("0:/", "").replace("0%3A%2F", "")
+            path = self.get_argument('name').replace("0:/", "")
             if KLIPPER_CFG_NAME in path:
                 path = os.path.abspath(
                     self.printer.get_start_arg('config_file'))
@@ -308,7 +319,8 @@ class rrHandler(tornado.web.RequestHandler):
                 raise tornado.web.HTTPError(404)
             else:
                 self.set_header('Content-Type', 'application/force-download')
-                self.set_header('Content-Disposition', 'attachment; filename=%s' % os.path.basename(path))
+                self.set_header('Content-Disposition',
+                                'attachment; filename=%s' % os.path.basename(path))
                 try:
                     with open(path, "rb") as f:
                         self.write( f.read() )
@@ -322,7 +334,7 @@ class rrHandler(tornado.web.RequestHandler):
         elif "rr_delete" in path:
             # resp: `{"err":[code]}`
             respdata["err"] = 0
-            directory = self.get_argument('name').replace("0:/", "").replace("0%3A%2F", "")
+            directory = self.get_argument('name').replace("0:/", "")
             if KLIPPER_CFG_NAME in directory or KLIPPER_LOG_NAME in directory:
                 pass
             else:
@@ -359,14 +371,12 @@ class rrHandler(tornado.web.RequestHandler):
                     2 = the requested volume is not mounted
             '''
             lst_dirs = bool(self.get_argument('flagDirs', True))
-            _dir = self.get_argument('dir')
-            _dir = _dir.replace("0:/", "").replace("0%3A%2F", "")
-            path = os.path.abspath(os.path.join(sd_path, _dir))
-            respdata["dir"]   = _dir
+            path = self.get_argument('dir').replace("0:", sd_path)
+            #respdata["dir"]   = _dir
             respdata["files"] = []
             respdata['next']  = 0
-            respdata["err"] = int(not os.path.exists(path))
-            if os.path.exists(path):
+            respdata["err"] = error = int(not os.path.exists(path))
+            if not error:
                 for _local in os.listdir(path):
                     if _local.startswith("."):
                         continue
@@ -426,8 +436,7 @@ class rrHandler(tornado.web.RequestHandler):
                 except AttributeError:
                     path = None
             else:
-                path = self.get_argument('name').replace("0:/", "").replace("0%3A%2F", "")
-                path = os.path.abspath(os.path.join(sd_path, path))
+                path = name.replace("0:", sd_path)
             # info about the requested file
             if path is None or not os.path.exists(path):
                 respdata["err"] = 1
@@ -451,12 +460,12 @@ class rrHandler(tornado.web.RequestHandler):
         elif "rr_move" in path:
             # {"err":[code]} , code 0 if success
             respdata["err"] = 0
-            _from = self.get_argument('old').replace("0:/", "").replace("0%3A%2F", "")
+            _from = self.get_argument('old').replace("0:/", "")
             if KLIPPER_CFG_NAME in _from or KLIPPER_LOG_NAME in _from:
                 pass
             else:
                 _from = os.path.abspath(os.path.join(sd_path, _from))
-                _to   = self.get_argument('new').replace("0:/", "").replace("0%3A%2F", "")
+                _to   = self.get_argument('new').replace("0:/", "")
                 _to   = os.path.abspath(os.path.join(sd_path, _to))
                 try:
                     os.rename(_from, _to)
@@ -470,7 +479,7 @@ class rrHandler(tornado.web.RequestHandler):
         elif "rr_mkdir" in path:
             # {"err":[code]} , 0 if success
             respdata["err"] = 0
-            directory = self.get_argument('dir').replace("0:/", "").replace("0%3A%2F", "")
+            directory = self.get_argument('dir').replace("0:/", "")
             directory = os.path.abspath(os.path.join(sd_path, directory))
             try:
                 os.makedirs(directory)
@@ -481,6 +490,7 @@ class rrHandler(tornado.web.RequestHandler):
 
         # rr_config / rr_configfile
         elif "rr_configfile" in path:
+            self.logger.info("rr_configfile: {}".format(self.request.uri))
             respdata = { "err" : 0 }
 
         elif "rr_config" in path:
@@ -503,7 +513,7 @@ class rrHandler(tornado.web.RequestHandler):
         self.write(respstr)
 
     def _parse_file_path(self, filename):
-        filename = filename.replace("0:/", "").replace("0%3A%2F", "")
+        filename = filename.replace("0:/", "")
         if KLIPPER_CFG_NAME in filename:
             cfgname = os.path.abspath(
                 self.printer.get_start_arg('config_file'))
@@ -642,8 +652,7 @@ class RepRapGuiModule(object):
             cookie_secret = base64.b64encode(
                 uuid.uuid4().bytes + uuid.uuid4().bytes)
             app_urls = [
-                tornado.web.url(r'/login', LoginHandler,
-                                {"path": htmlroot}, name="login"),
+                tornado.web.url(r'/login', LoginHandler, name="login"),
                 tornado.web.url(r'/logout', LogoutHandler, name="logout"),
                 tornado.web.url(r"/(.*\.ico)", tornado.web.StaticFileHandler,
                                 {"path": htmlroot}),
@@ -660,8 +669,8 @@ class RepRapGuiModule(object):
                 tornado.web.url(r"/video", JpegStreamHandler,
                                 {"camera": self.camera,
                                     "interval": self.feed_interval}),
-                tornado.web.url(r"/.*", MainHandler,
-                                {"path": htmlroot, "file": dwc_htm},
+                tornado.web.url(r"/(.*)", MainHandler,
+                                {"file": os.path.join(htmlroot, dwc_htm)},
                                 name="main"),
             ]
             application = tornado.web.Application(
@@ -680,7 +689,6 @@ class RepRapGuiModule(object):
         # ------------------------------
         fd_r, self.pipe_write = os.pipe() # Change to PTY ?
         self.gcode.register_fd(fd_r)
-
         self.gcode.write_resp = self.gcode_resp_handler
         # Disable auto temperature reporting
         self.printer_write_no_update("AUTO_TEMP_REPORT AUTO=0")
