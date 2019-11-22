@@ -280,7 +280,7 @@ class TMCMicrostepHelper:
 # Helper to configure "stealthchop" mode
 def TMCStealthchopHelper(config, mcu_tmc, tmc_freq):
     fields = mcu_tmc.get_fields()
-    en_pwm_mode = False
+    en_pwm_mode = config.getboolean('stealthchop', False)
     velocity = config.getfloat('stealthchop_threshold', 0., minval=0.)
     if velocity:
         stepper_name = " ".join(config.get_name().split()[1:])
