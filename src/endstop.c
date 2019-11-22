@@ -88,10 +88,7 @@ uint_fast8_t
 endstop_checkpin(struct endstop *e)
 {
     uint8_t val = gpio_in_read(e->pin);
-    uint8_t res = (val ? e->flags : ~e->flags) & ESF_PIN_HIGH;
-#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-    printf("endstop_checkpin: val %u, res: %u\n", val, res);
-#endif
+    uint8_t res = (val ? ~e->flags : e->flags) & ESF_PIN_HIGH;
     if (res)
         // Match -> stop
         stop_steppers(e);

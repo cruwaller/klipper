@@ -52,14 +52,14 @@ struct stepper {
     uint32_t min_stop_interval;
     // gcc (pre v6) does better optimization when uint8_t are bitfields
     uint8_t flags : 8;
+    uint8_t flags_es : 8;
 };
 
 enum { POSITION_BIAS=0x40000000 };
 
 enum {
     SF_LAST_DIR=1<<0, SF_NEXT_DIR=1<<1, SF_INVERT_STEP=1<<2, SF_HAVE_ADD=1<<3,
-    SF_LAST_RESET=1<<4, SF_NO_NEXT_CHECK=1<<5, SF_NEED_RESET=1<<6,
-    ES_CHECK_ENDSTOP=1<<7
+    SF_LAST_RESET=1<<4, SF_NO_NEXT_CHECK=1<<5, SF_NEED_RESET=1<<6
 };
 
 // Setup a stepper for the next move in its queue
@@ -154,9 +154,15 @@ stepper_event(struct timer *t)
 {
     struct stepper *s = container_of(t, struct stepper, time);
 #if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
-//    printf("stepper_event: interval %u, count %u add %d next_step_time %u wakeup_time: %u\n",
-//           s->interval, s->count, s->add, s->next_step_time, s->time.waketime);
+//    printf("stepper_event: interval %u, count %u add %d next_step_time %u wakeup_time: %u, endstop: %u\n",
+//           s->interval, s->count, s->add, s->next_step_time, s->time.waketime, s->flags_es);
 #endif
+    if (likely(s->flags_es)) {
+        extern uint_fast8_t endstop_checkpin(struct endstop *e);
+        if (unlikely(endstop_checkpin(s->endstop)))
+            return SF_DONE; // Stop immediately
+    }
+
     if (CONFIG_STEP_DELAY <= 0 && CONFIG_MACH_AVR)
         return stepper_event_avr(s);
     if (CONFIG_STEP_DELAY <= 0)
@@ -179,11 +185,6 @@ stepper_event(struct timer *t)
         s->time.waketime = s->next_step_time;
         return SF_RESCHEDULE;
     }
-    if (likely(s->flags & ES_CHECK_ENDSTOP)) {
-        extern uint_fast8_t endstop_checkpin(struct endstop *e);
-        if (unlikely(endstop_checkpin(s->endstop)))
-            return SF_DONE; // Stop immediately
-    }
     return stepper_load_next(s, min_next_time);
 reschedule_min:
     s->time.waketime = min_next_time;
@@ -195,6 +196,7 @@ command_config_stepper(uint32_t *args)
 {
     struct stepper *s = oid_alloc(args[0], command_config_stepper, sizeof(*s));
     s->time.func = NULL;
+    s->flags_es =  0;
     if (!CONFIG_INLINE_STEPPER_HACK)
         s->time.func = stepper_event;
     s->flags = args[4] ? SF_INVERT_STEP : 0;
@@ -224,7 +226,9 @@ command_queue_step(uint32_t *args)
     //       args[1], args[2], args[3]);
     if (!args[2])
         shutdown("Invalid count parameter");
-    return;
+#if !CONFIG_STEPPER_POLL_ENDSTOP
+    return; // Skip actual stepping
+#endif
 #endif
     struct stepper *s = stepper_oid_lookup(args[0]);
     struct stepper_move *m = move_alloc();
@@ -371,6 +375,9 @@ DECL_SHUTDOWN(stepper_shutdown);
 void
 stepper_set_endstop(struct endstop *e, uint8_t oid)
 {
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    printf("stepper_set_endstop: oid %u\n", oid);
+#endif
     struct stepper *s = stepper_oid_lookup(oid);
     s->endstop = e;
 }
@@ -378,10 +385,10 @@ stepper_set_endstop(struct endstop *e, uint8_t oid)
 void
 stepper_endstop_enable(struct stepper *s, uint8_t enable)
 {
+#if (CONFIG_SIMULATOR == 1 && CONFIG_MACH_LINUX == 1)
+    printf("stepper_endstop_enable: enable %u\n", enable);
+#endif
     if (!s->endstop)
         shutdown("Endstop is not configured");
-    if (enable)
-        s->flags |= ES_CHECK_ENDSTOP;
-    else
-        s->flags &= ~ES_CHECK_ENDSTOP;
+    s->flags_es = enable;
 }
