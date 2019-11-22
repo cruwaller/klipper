@@ -57,28 +57,13 @@ choice
         bool "84 MHz (standard)"
     config SAM3X_FREQ_96
         bool "96 MHz (overclock)"
-    config SAM3X_FREQ_114
-        bool "114 MHz (overclock)"
-    config SAM3X_FREQ_132
-        bool "132 MHz (overclock)"
-    config SAM3X_FREQ_156
-        bool "156 MHz (overclock)"
-    config SAM3X_FREQ_168
-        bool "168 MHz (overclock)"
-    config SAM3X_FREQ_180
-        bool "180 MHz (overclock)"
-    config SAM3X_FREQ_192
-        bool "192 MHz (overclock)"
+    config SAM3X_FREQ_108
+        bool "108 MHz (overclock)"
 endchoice
 
 config CLOCK_FREQ
     int
-    default 192000000 if SAM3X_FREQ_192
-    default 180000000 if SAM3X_FREQ_180
-    default 168000000 if SAM3X_FREQ_168
-    default 156000000 if SAM3X_FREQ_156
-    default 132000000 if SAM3X_FREQ_132
-    default 114000000 if SAM3X_FREQ_114
+    default 108000000 if SAM3X_FREQ_108
     default 96000000 if SAM3X_FREQ_96
     default 84000000 if MACH_SAM3X
     default 120000000 if MACH_SAM4
