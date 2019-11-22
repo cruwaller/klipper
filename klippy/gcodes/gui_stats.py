@@ -358,7 +358,8 @@ class GuiStats:
         return config
 
     def get_status_stats(self, _type=1):
-        if self.toolhead is None:
+        status_block = self._stats_type_1
+        if self.toolhead is None or not status_block:
             return {"err": 1, "seq": 0}
         pheater = self.printer.lookup_object('heater')
         # STATES = 0: off, 1: standby, 2: active, 3: fault (same for bed)
@@ -372,7 +373,6 @@ class GuiStats:
         babysteps = self.babysteps.babysteps if self.babysteps else 0.
 
         # _type == 1 is always included
-        status_block = self._stats_type_1
         status_block["status"] = self.curr_state
         status_block["currentTool"] = curr_extruder.get_index()
         status_block["time"] = time.time() - self.starttime
