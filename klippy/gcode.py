@@ -249,10 +249,10 @@ class GCodeParser:
             try:
                 handler(params)
             except self.error as e:
-                self.respond_error(str(e))
                 self.reset_last_position()
                 if not need_ack:
                     raise
+                self.respond_error(str(e))
             except:
                 msg = 'Internal error on command:"%s"' % (cmd,)
                 self.logger.exception(msg)
