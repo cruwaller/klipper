@@ -380,7 +380,7 @@ class MCU:
                 config.get('reset_pin', '!host:GPIO22'), can_invert=True)
             self.hostgpio_rst = pin_params['chip'].setup_pin(
                 'digital_out', pin_params)
-            self.hostgpio_rst.set_digital(0, True)
+            self.hostgpio_rst.set_digital(0, False)
         self._reset_cmd = self._config_reset_cmd = None
         self._emergency_stop_cmd = None
         self._is_shutdown = self._is_timeout = False
@@ -697,9 +697,9 @@ class MCU:
     def _restart_rpi_gpio(self):
         self.logger.info("Attempting MCU '%s' reset via RPi gpio pin", self._name)
         self._disconnect()
-        self.hostgpio_rst.set_digital(0, False)
-        self._reactor.pause(self._reactor.monotonic() + 0.2)
         self.hostgpio_rst.set_digital(0, True)
+        self._reactor.pause(self._reactor.monotonic() + 0.2)
+        self.hostgpio_rst.set_digital(0, False)
     def microcontroller_restart(self):
         if self._restart_method == 'rpi_usb':
             self._restart_rpi_usb()
