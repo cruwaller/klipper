@@ -25,6 +25,7 @@ class StepperEnablePin:
 # Enable line tracking for each stepper motor
 class EnableTracking:
     def __init__(self, printer, stepper, pin):
+        self.printer = printer
         self.stepper = stepper
         self.callbacks = []
         self.is_enabled = False
@@ -49,6 +50,7 @@ class EnableTracking:
         self.callbacks.append(callback)
     def motor_enable(self, print_time):
         if not self.is_enabled:
+            self.printer.send_event("stepper_enable:motor_on", print_time)
             for cb in self.callbacks:
                 cb(print_time, True)
             self.enable.set_enable(print_time)

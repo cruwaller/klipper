@@ -1,4 +1,4 @@
-import fan, logging
+import fan
 
 PIN_MIN_TIME = 0.100
 
@@ -11,13 +11,16 @@ class MotorFan:
         self.fan_speed = config.getfloat("fan_speed", 1., minval=0., maxval=1.)
         self.reactor = self.printer.get_reactor()
         self.set_timer = self.reactor.register_timer(self.reactor_callback)
-        self.printer.register_event_handler('motor_state', self.event_handler)
         self.printer.register_event_handler(
-            'toolhead:motor_off', self.event_handler_motor_off)
-    def event_handler_motor_off(self, last_move_time):
-        self.event_handler('off')
-    def event_handler(self, state):
-        if state == 'off':
+            'stepper_enable:motor_on', self._event_handler_motor_on)
+        self.printer.register_event_handler(
+            'stepper_enable:motor_off', self.event_handler_motor_off)
+    def event_handler_motor_off(self, print_time):
+        self.__event_handler('off')
+    def _event_handler_motor_on(self, print_time):
+        self.__event_handler('on')
+    def __event_handler(self, state):
+        if state in ['off', False]:
             new_power = 0.
         else:
             new_power = self.fan_speed
