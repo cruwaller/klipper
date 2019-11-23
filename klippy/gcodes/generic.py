@@ -7,7 +7,7 @@ class GenericGcode:
     def __init__(self, config):
         self.printer = config.get_printer()
         gcode = self.printer.lookup_object('gcode')
-        for cmd in ['G29', 'G32', 'M1', 'M120', 'M121', 'M302', 'M561',
+        for cmd in ['G29', 'G32', 'M1', 'M302', 'M561',
                     'QUERY_COMPENSATION']:
             wnr = getattr(self, 'cmd_' + cmd + '_when_not_ready', False)
             gcode.register_command(
@@ -15,7 +15,7 @@ class GenericGcode:
                 when_not_ready=wnr,
                 desc=getattr(self, 'cmd_%s_help' % cmd, None))
         # Discard not used gcodes:
-        for cmd in ['M122', 'M291', 'M292',
+        for cmd in ['M120', 'M121', 'M122', 'M291', 'M292',
                     # skip scanner commands
                     'M752', 'M753', 'M754', 'M755', 'M756',
                     # skip in-app firmware update
@@ -72,16 +72,6 @@ class GenericGcode:
         # turn of heaters and motors
         gcode = self.printer.lookup_object('gcode')
         gcode.run_script_from_command("TURN_OFF_HEATERS\nM84")
-
-    cmd_M120_help = "Push state to stack"
-    def cmd_M120(self, params):
-        gcode = self.printer.lookup_object('gcode')
-        gcode.run_script_from_command("SAVE_GCODE_STATE STATE=PUSH_STACK")
-
-    cmd_M121_help = "Pop last state"
-    def cmd_M121(self, params):
-        gcode = self.printer.lookup_object('gcode')
-        gcode.run_script_from_command("RESTORE_GCODE_STATE STATE=PUSH_STACK")
 
     cmd_M302_help = "Cold Extrude. Args [P<bool>] [S<temp>]"
     cmd_M302_when_not_ready = True
