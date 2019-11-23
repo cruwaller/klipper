@@ -380,6 +380,7 @@ class MCU:
                 config.get('reset_pin', '!host:GPIO22'), can_invert=True)
             self.hostgpio_rst = pin_params['chip'].setup_pin(
                 'digital_out', pin_params)
+            self.hostgpio_rst.set_digital(0, True)
         self._reset_cmd = self._config_reset_cmd = None
         self._emergency_stop_cmd = None
         self._is_shutdown = self._is_timeout = False

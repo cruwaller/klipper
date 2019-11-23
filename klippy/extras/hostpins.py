@@ -116,12 +116,13 @@ class HostGpioEvent:
 
 class HostGpioOut:
     def __init__(self, pin_params, printer):
-        self.invert = invert = pin_params['invert']
+        self.invert = pin_params['invert']
         self._static = self.shutdown_value = False
-        state = GPIO.HIGH if invert else GPIO.LOW
         self.channel = channel = pin_params['pin_number']
-        GPIO.setup(channel, GPIO.OUT,
-                   pull_up_down=GPIO.PUD_OFF, initial=state)
+        # state = [GPIO.LOW, GPIO.HIGH][self.invert]
+        # GPIO.setup(channel, GPIO.OUT,
+        #            pull_up_down=GPIO.PUD_OFF, initial=state)
+        GPIO.setup(channel, GPIO.OUT, pull_up_down=GPIO.PUD_OFF)
         self.__write(False)
         printer.register_event_handler("klippy:shutdown",
                                        self._handle_shutdown)
