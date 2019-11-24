@@ -16,7 +16,7 @@ class GuiStats:
         # variables
         self.toolhead = None
         self.starttime = time.time()
-        self.curr_state = 'O' # 'PNR'
+        self.curr_state = 'O'
         self.name = config.getsection('printer').get(
             'name', default="Klipper printer")
         self.geometry = config.getsection('printer').get('kinematics')
@@ -158,16 +158,15 @@ class GuiStats:
         #    change_time, layer, height))
         type_3 = self._stats_type_3
         current_time = time.time()
-        print_time = current_time - self.last_print_layer_change
+        print_time = int(current_time - self.last_print_layer_change + .5)
         current_layer = type_3['currentLayer'] + 1
         type_3['currentLayer'] = current_layer
         if current_layer == 1:
             # heating / preparation is done when 1st call happens
-            type_3['warmUpDuration'] = int(self.toolhead.get_print_time())
+            type_3['warmUpDuration'] = int(self.toolhead.get_print_time() + .5)
         elif current_layer == 2:
-            type_3['firstLayerDuration'] = int(print_time + .5)
-        else:
-            type_3['previousLayerTime'] = type_3['currentLayerTime']
+            type_3['firstLayerDuration'] = print_time
+        type_3['previousLayerTime'] = print_time
         self.last_print_layer_change = current_time
 
     # ================================================================================
@@ -177,7 +176,7 @@ class GuiStats:
             "seq": 0,
             "coords": {
                 "axesHomed": [0] * 3,
-                "extr": [0],
+                "extr": [0] * len(self.extruders),
                 "xyz": [0] * 3,
                 "machine": [0] * 3,
             },
@@ -276,7 +275,7 @@ class GuiStats:
             "lastLayerTime": 0,
             "currentLayer": 0,
             "currentLayerTime": 0,
-            "extrRaw": [.0] * 9,
+            "extrRaw": [.0] * len(self.extruders),
             "fractionPrinted": .0,
             "firstLayerDuration": 0,
             "firstLayerHeight": first_layer_height,
@@ -284,8 +283,8 @@ class GuiStats:
             "warmUpDuration": 0.,
             "timesLeft": {
                 "file": .0,
-                # "filament": [.0] * 9,
-                # "layer": .0,
+                #"filament": [.0] * len(self.extruders),
+                #"layer": .0,
             },
         }
 
@@ -496,9 +495,9 @@ class GuiStats:
 
             current_time = time.time()
             printing_time = current_time - self.print_start_time
-            stat["printDuration"] = int(printing_time)
+            stat["printDuration"] = int(printing_time + .5)
             stat['currentLayerTime'] = int(
-                current_time - self.last_print_layer_change)
+                current_time - self.last_print_layer_change + .5)
 
             # SD progress
             progress = 0.

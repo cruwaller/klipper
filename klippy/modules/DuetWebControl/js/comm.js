@@ -400,6 +400,12 @@ function updateStatus() {
 				getConfigResponse();
 			}
 
+			// Fan Names
+			if (status.params.hasOwnProperty("fanNames") && (lastStatusResponse == undefined || !arraysEqual(status.params.fanNames, fanNames))) {
+				fanNames = status.params.fanNames;
+				needGuiUpdate = true;
+			}
+
 			// Machine Mode
 			if (status.hasOwnProperty("mode")) {
 				$("#span_mode").removeClass("hidden");
@@ -547,14 +553,6 @@ function updateStatus() {
 				case 'I':	// Idle
 					setStatusLabel("Idle", "default");
 					break;
-
-				case 'C':	// Disconnected
-					setStatusLabel("Disconnected", "default");
-					break;
-
-				case 'PNR':	// Printer Not Ready
-					setStatusLabel("NotReady", "warning");
-					break;
 			}
 			setJobStatus(processing);
 			setPauseStatus(paused);
@@ -579,59 +577,57 @@ function updateStatus() {
 			}
 
 			// Set homed axes
-			if (status.hasOwnProperty("coords")) {
-				if (lastStatusResponse == undefined || !arraysEqual(status.coords.axesHomed, lastStatusResponse.coords.axesHomed)) {
-					setAxesHomed(status.coords.axesHomed);
-				}
+			if (lastStatusResponse == undefined || !arraysEqual(status.coords.axesHomed, lastStatusResponse.coords.axesHomed)) {
+				setAxesHomed(status.coords.axesHomed);
+			}
 
-				// Update extruder drives
-				if (status.coords.extr.length != numExtruderDrives) {
-					numExtruderDrives = status.coords.extr.length;
-					needGuiUpdate = true;
-				}
+			// Update extruder drives
+			if (status.coords.extr.length != numExtruderDrives) {
+				numExtruderDrives = status.coords.extr.length;
+				needGuiUpdate = true;
+			}
 
-				for(var i = 0; i < numExtruderDrives; i++) {
-					$("td[data-extruder='" + i + "']").html(status.coords.extr[i].toFixed(1));
-				}
-				if (numExtruderDrives > 0) {
-					$("#td_extr_total").html(status.coords.extr.reduce(function(a, b) { return a + b; }));
-				} else {
-					$("#td_extr_total").html(T("n/a"));
-				}
+			for(var i = 0; i < numExtruderDrives; i++) {
+				$("td[data-extruder='" + i + "']").html(status.coords.extr[i].toFixed(1));
+			}
+			if (numExtruderDrives > 0) {
+				$("#td_extr_total").html(status.coords.extr.reduce(function(a, b) { return a + b; }));
+			} else {
+				$("#td_extr_total").html(T("n/a"));
+			}
 
-				// Axis coordinates
-				if (status.hasOwnProperty("axes") && status.axes != numAxes)
-				{
-					numAxes = status.axes;
-					needGuiUpdate = true;
-				}
+			// Axis coordinates
+			if (status.hasOwnProperty("axes") && status.axes != numAxes)
+			{
+				numAxes = status.axes;
+				needGuiUpdate = true;
+			}
 
-				for(var i = 0; i < status.coords.xyz.length; i++) {
-					$("td[data-axis='" + i + "']").html(status.coords.xyz[i].toFixed(2));
-				}
+			for(var i = 0; i < status.coords.xyz.length; i++) {
+				$("td[data-axis='" + i + "']").html(status.coords.xyz[i].toFixed(2));
+			}
 
-				if (geometry == "delta" && axisNames.indexOf("X") != -1 && !status.coords.axesHomed[axisNames.indexOf("X")]) {
-					// Override XYZ coordinates on a Delta with 'n/a' if the axes are not homed
-					$("td[data-axis='" + axisNames.indexOf("X") + "']").html(T("n/a"));
-					$("td[data-axis='" + axisNames.indexOf("Y") + "']").html(T("n/a"));
-					$("td[data-axis='" + axisNames.indexOf("Z") + "']").html(T("n/a"));
+			if (geometry == "delta" && axisNames.indexOf("X") != -1 && !status.coords.axesHomed[axisNames.indexOf("X")]) {
+				// Override XYZ coordinates on a Delta with 'n/a' if the axes are not homed
+				$("td[data-axis='" + axisNames.indexOf("X") + "']").html(T("n/a"));
+				$("td[data-axis='" + axisNames.indexOf("Y") + "']").html(T("n/a"));
+				$("td[data-axis='" + axisNames.indexOf("Z") + "']").html(T("n/a"));
 
-					// Set message box coordinates
-					$(".msgbox-x").text("X=" + T("n/a"));
-					$(".msgbox-y").text("Y=" + T("n/a"));
-					$(".msgbox-z").text("Z=" + T("n/a"));
-					$(".msgbox-a").text("A=" + T("n/a"));
-				} else {
-					var x = (axisNames.indexOf("X") == -1) ? T("n/a") : status.coords.xyz[axisNames.indexOf("X")].toFixed(2);
-					var y = (axisNames.indexOf("Y") == -1) ? T("n/a") : status.coords.xyz[axisNames.indexOf("Y")].toFixed(2);
-					var z = (axisNames.indexOf("Z") == -1) ? T("n/a") : status.coords.xyz[axisNames.indexOf("Z")].toFixed(2);
-					var aIndex = axisNames.indexOf("A");
-					var a = (aIndex == -1 || status.coords.xyz.length <= aIndex) ? T("n/a") : status.coords.xyz[aIndex].toFixed(2);
-					$(".msgbox-x").text("X=" + x);
-					$(".msgbox-y").text("Y=" + y);
-					$(".msgbox-z").text("Z=" + z);
-					$(".msgbox-a").text("A=" + a);
-				}
+				// Set message box coordinates
+				$(".msgbox-x").text("X=" + T("n/a"));
+				$(".msgbox-y").text("Y=" + T("n/a"));
+				$(".msgbox-z").text("Z=" + T("n/a"));
+				$(".msgbox-a").text("A=" + T("n/a"));
+			} else {
+				var x = (axisNames.indexOf("X") == -1) ? T("n/a") : status.coords.xyz[axisNames.indexOf("X")].toFixed(2);
+				var y = (axisNames.indexOf("Y") == -1) ? T("n/a") : status.coords.xyz[axisNames.indexOf("Y")].toFixed(2);
+				var z = (axisNames.indexOf("Z") == -1) ? T("n/a") : status.coords.xyz[axisNames.indexOf("Z")].toFixed(2);
+				var aIndex = axisNames.indexOf("A");
+				var a = (aIndex == -1 || status.coords.xyz.length <= aIndex) ? T("n/a") : status.coords.xyz[aIndex].toFixed(2);
+				$(".msgbox-x").text("X=" + x);
+				$(".msgbox-y").text("Y=" + y);
+				$(".msgbox-z").text("Z=" + z);
+				$(".msgbox-a").text("A=" + a);
 			}
 
 			// Current Tool
@@ -669,39 +665,31 @@ function updateStatus() {
 				closeMessageBox();
 			}
 
-			if (status.hasOwnProperty("params")) {
-				// Fan Names
-				if (status.params.hasOwnProperty("fanNames") && (lastStatusResponse == undefined || !arraysEqual(status.params.fanNames, fanNames))) {
-					fanNames = status.params.fanNames;
-					needGuiUpdate = true;
-				}
-
-				// ATX Power
-				if (status.params.hasOwnProperty("atxPower") && status.params.atxPower != -1) {
-					if (!settings.showATXControl) {
-						// Show ATX buttons
-						settings.showATXControl = true;
-						$(".atx-control").toggleClass("hidden", !settings.showATXControl);
-					}
-					if (lastStatusResponse == undefined || status.params.atxPower != lastStatusResponse.params.atxPower) {
-						setATXPower(status.params.atxPower);
-					}
-				} else if (settings.showATXControl) {
-					// Hide ATX buttons
-					settings.showATXControl = false;
+			// ATX Power
+			if (status.params.hasOwnProperty("atxPower") && status.params.atxPower != -1) {
+				if (!settings.showATXControl) {
+					// Show ATX buttons
+					settings.showATXControl = true;
 					$(".atx-control").toggleClass("hidden", !settings.showATXControl);
 				}
+				if (lastStatusResponse == undefined || status.params.atxPower != lastStatusResponse.params.atxPower) {
+					setATXPower(status.params.atxPower);
+				}
+			} else if (settings.showATXControl) {
+				// Hide ATX buttons
+				settings.showATXControl = false;
+				$(".atx-control").toggleClass("hidden", !settings.showATXControl);
+			}
 
-				// Fan Control
-				var fanValues = (status.params.fanPercent.constructor === Array) ? status.params.fanPercent : [status.params.fanPercent];
+			// Fan Control
+			var fanValues = (status.params.fanPercent.constructor === Array) ? status.params.fanPercent : [status.params.fanPercent];
 
-				if ($("tr[data-fan='tool'] button.fan-visibility").hasClass("active") && fanValues.length > 0) {
-					// Set Tool fan value
-					var toolFan = 0;
-					if (status.hasOwnProperty("currentFan")) {
-						toolFan = status.currentFan;
-					}
-					/*
+			if ($("tr[data-fan='tool'] button.fan-visibility").hasClass("active") && fanValues.length > 0) {
+				// Set Tool fan value
+				var toolFan = 0;
+				if (status.hasOwnProperty("currentFan")) {
+					toolFan = status.currentFan;
+				} else {
 					var tool = getTool(status.currentTool);
 					if (tool != undefined && tool.hasOwnProperty("fans")) {
 						for(var fan = 0; fan < Math.min(maxFans, fanValues.length); fan++) {
@@ -711,56 +699,55 @@ function updateStatus() {
 							}
 						}
 					}
-					*/
+				}
 
-					if (toolFan < fanValues.length && fanSliderActive != "tool" && (lastStatusResponse == undefined || $("tr[data-fan='tool'] .fan-slider > input").slider("getValue") != fanValues[toolFan])) {
-						$("tr[data-fan='tool'] .fan-slider > input").slider("setValue", fanValues[toolFan]);
+				if (fanSliderActive != "tool" && (lastStatusResponse == undefined || $("tr[data-fan='tool'] .fan-slider > input").slider("getValue") != fanValues[toolFan])) {
+					$("tr[data-fan='tool'] .fan-slider > input").slider("setValue", fanValues[toolFan]);
+				}
+			}
+
+			for(var fan = 0; fan < Math.min(maxFans, fanValues.length); fan++) {
+				if (fan != fanSliderActive) {
+					var fanValue = fanValues[fan] / 100.0;
+					if (overriddenFanValues[fan] != undefined && overriddenFanValues[fan] != fanValue) {
+						// Enforce overriden fan value
+						sendGCode("M106 P" + fan + " S" + overriddenFanValues[fan]);
+					} else if (lastStatusResponse == undefined || $("tr[data-fan='" + fan + "'] .fan-slider > input").slider("getValue") != fanValue * 100.0) {
+						// Update slider value
+						$("tr[data-fan='" + fan + "'] .fan-slider > input").slider("setValue", fanValue * 100.0);
 					}
 				}
+			}
 
-				for(var fan = 0; fan < Math.min(maxFans, fanValues.length); fan++) {
-					if (fan != fanSliderActive) {
-						var fanValue = fanValues[fan] / 100.0;
-						if (overriddenFanValues[fan] != undefined && overriddenFanValues[fan] != fanValue) {
-							// Enforce overriden fan value
-							sendGCode("M106 P" + fan + " S" + (overriddenFanValues[fan] * 255));
-						} else if (lastStatusResponse == undefined || $("tr[data-fan='" + fan + "'] .fan-slider > input").slider("getValue") != fanValue * 100.0) {
-							// Update slider value
-							$("tr[data-fan='" + fan + "'] .fan-slider > input").slider("setValue", fanValue * 100.0);
-						}
+			// Speed Factor
+			if (!speedSliderActive && (lastStatusResponse == undefined || $("#slider_speed").slider("getValue") != status.params.speedFactor)) {
+				$("#slider_speed").slider("setValue", status.params.speedFactor);
+			}
+			if (!extrSliderActive) {
+				for(var i = 0; i < status.params.extrFactors.length; i++) {
+					var extrSlider = $("#slider_extr_" + i);
+					if (lastStatusResponse == undefined || extrSlider.slider("getValue") != status.params.extrFactors) {
+						extrSlider.slider("setValue", status.params.extrFactors[i]);
 					}
 				}
+			}
 
-				// Speed Factor
-				if (!speedSliderActive && (lastStatusResponse == undefined || $("#slider_speed").slider("getValue") != status.params.speedFactor)) {
-					$("#slider_speed").slider("setValue", status.params.speedFactor);
-				}
-				if (!extrSliderActive) {
-					for(var i = 0; i < status.params.extrFactors.length; i++) {
-						var extrSlider = $("#slider_extr_" + i);
-						if (lastStatusResponse == undefined || extrSlider.slider("getValue") != status.params.extrFactors) {
-							extrSlider.slider("setValue", status.params.extrFactors[i]);
-						}
-					}
-				}
+			// Babystepping
+			if (status.params.hasOwnProperty("babystep")) {
+				$(".babystepping button").toggleClass("disabled", settings.babysteppingZ <= 0);
+				$("#span_babystepping").text(T("{0} mm", status.params.babystep));
+			} else {
+				// Don't enable babystepping controls if the firmware doesn't support it
+				$(".babystepping button").addClass("disabled");
+			}
 
-				// Babystepping
-				if (status.params.hasOwnProperty("babystep")) {
-					$(".babystepping button").toggleClass("disabled", settings.babysteppingZ <= 0);
-					$("#span_babystepping").text(T("{0} mm", status.params.babystep));
-				} else {
-					// Don't enable babystepping controls if the firmware doesn't support it
-					$(".babystepping button").addClass("disabled");
-				}
-
-				// mesh bed levelling loaded
-				if (status.params.bed_mesh_ok) {
-					$("#a_show_bed_points").removeClass("disabled");
-					$("#a_show_bed_points").parent().removeClass("disabled");
-				} else {
-					$("#a_show_bed_points").addClass("disabled"); // prevent gcode send if disabled
-					$("#a_show_bed_points").parent().addClass("disabled");
-				}
+			// mesh bed levelling loaded
+			if (status.params.bed_mesh_ok) {
+				$("#a_show_bed_points").removeClass("disabled");
+				$("#a_show_bed_points").parent().removeClass("disabled");
+			} else {
+				$("#a_show_bed_points").addClass("disabled"); // prevent gcode send if disabled
+				$("#a_show_bed_points").parent().addClass("disabled");
 			}
 
 			// Fetch the last G-Code response from the server if there is anything new and we're not flashing new firmware
@@ -939,124 +926,122 @@ function updateStatus() {
                 $(".z_probe_control").addClass("hidden");
 			}
 
-			if (status.hasOwnProperty("temps")) {
-				// Heated bed
-				if (status.temps.hasOwnProperty("bed")) {
-					var configuredBedHeater = (status.temps.bed.hasOwnProperty("heater")) ? status.temps.bed.heater : 0;
-					if (bedHeater != configuredBedHeater) {
-						bedHeater = configuredBedHeater;
-						needGuiUpdate = true;
-						setHeatersInUse();
-					}
-
-					setTemperatureInput("bed", status.temps.bed.active, true, true);
-				} else if (bedHeater != -1) {
-					bedHeater = -1;
+			// Heated bed
+			if (status.temps.hasOwnProperty("bed")) {
+				var configuredBedHeater = (status.temps.bed.hasOwnProperty("heater")) ? status.temps.bed.heater : 0;
+				if (bedHeater != configuredBedHeater) {
+					bedHeater = configuredBedHeater;
 					needGuiUpdate = true;
+					setHeatersInUse();
 				}
 
-				// Chamber
-				if (status.temps.hasOwnProperty("chamber")) {
-					var configuredChamberHeater = (status.temps.chamber.hasOwnProperty("heater")) ? status.temps.chamber.heater : maxHeaters;
-					if (chamberHeater != configuredChamberHeater)
+				setTemperatureInput("bed", status.temps.bed.active, true, true);
+			} else if (bedHeater != -1) {
+				bedHeater = -1;
+				needGuiUpdate = true;
+			}
+
+			// Chamber
+			if (status.temps.hasOwnProperty("chamber")) {
+				var configuredChamberHeater = (status.temps.chamber.hasOwnProperty("heater")) ? status.temps.chamber.heater : maxHeaters;
+				if (chamberHeater != configuredChamberHeater)
+				{
+					chamberHeater = configuredChamberHeater;
+					needGuiUpdate = true;
+					setHeatersInUse();
+				}
+
+				setTemperatureInput("chamber", status.temps.chamber.active, true, true);
+			} else if (chamberHeater != -1) {
+				chamberHeater = -1;
+				needGuiUpdate = true;
+			}
+
+			// Dry Cabinet
+			if (status.temps.hasOwnProperty("cabinet")) {
+				if (cabinetHeater != status.temps.cabinet.heater)
+				{
+					cabinetHeater = status.temps.cabinet.heater;
+					needGuiUpdate = true;
+					setHeatersInUse();
+				}
+
+				setTemperatureInput("cabinet", status.temps.cabinet.active, true, true);
+			} else if (cabinetHeater != -1) {
+				cabinetHeater = -1;
+				needGuiUpdate = true;
+			}
+
+			// Heater temperatures and states
+			if (status.temps.hasOwnProperty("current") && status.temps.hasOwnProperty("state")) {
+				// Set current temperatures and states
+				for(var heater = 0; heater < status.temps.current.length; heater++) {
+					if (heater == bedHeater) {
+						setCurrentTemperature("bed", status.temps.current[heater]);
+						setHeaterState("bed", status.temps.state[heater], status.currentTool);
+					}
+					if (heater == chamberHeater) {
+						setCurrentTemperature("chamber", status.temps.current[heater]);
+						setHeaterState("chamber", status.temps.state[heater], status.currentTool);
+					}
+					if (heater == cabinetHeater)
 					{
-						chamberHeater = configuredChamberHeater;
-						needGuiUpdate = true;
-						setHeatersInUse();
+						setCurrentTemperature("cabinet", status.temps.current[heater]);
+						setHeaterState("cabinet", status.temps.state[heater], status.currentTool);
 					}
+					setCurrentTemperature(heater, status.temps.current[heater]);
+					setHeaterState(heater, status.temps.state[heater], status.currentTool);
+				}
 
-					setTemperatureInput("chamber", status.temps.chamber.active, true, true);
-				} else if (chamberHeater != -1) {
-					chamberHeater = -1;
+				// Keep the temperature chart up-to-date
+				recordCurrentTemperatures(status.temps.current);
+			}
+
+			// Active+Standby tool temperatures
+			var currentToolTemps = undefined;
+			if (status.temps.hasOwnProperty("tools") && toolMapping.length == status.temps.tools.active.length) {
+				for(var toolIndex = 0; toolIndex < status.temps.tools.active.length; toolIndex++) {
+					var toolNumber = toolMapping[toolIndex].number;
+					for(var heaterIndex = 0; heaterIndex < status.temps.tools.active[toolIndex].length; heaterIndex++) {
+						var heater = toolMapping[toolIndex].heaters[heaterIndex];
+						setToolTemperatureInput(toolNumber, heater, status.temps.tools.active[toolIndex][heaterIndex], true);
+						setToolTemperatureInput(toolNumber, heater, status.temps.tools.standby[toolIndex][heaterIndex], false);
+					}
+				}
+			}
+
+			// Extra temperatures
+			if (status.temps.hasOwnProperty("extra")) {
+				if (status.temps.extra.length != numTempSensors) {
+					numTempSensors = status.temps.extra.length;
 					needGuiUpdate = true;
 				}
 
-				// Dry Cabinet
-				if (status.temps.hasOwnProperty("cabinet")) {
-					if (cabinetHeater != status.temps.cabinet.heater)
-					{
-						cabinetHeater = status.temps.cabinet.heater;
-						needGuiUpdate = true;
-						setHeatersInUse();
+				for(var i = 0; i < status.temps.extra.length; i++) {
+					var name = status.temps.extra[i].hasOwnProperty("name") ? status.temps.extra[i].name : "";
+					if (lastStatusResponse == undefined || status.temps.extra.length != lastStatusResponse.temps.extra.length || status.temps.extra[i].name != lastStatusResponse.temps.extra[i].name) {
+						if (name == "") {
+							name = T("Sensor " + (i + 1));
+						} else if (name.indexOf("[") != -1) {
+							name = name.substr(0, name.indexOf("[")).trim();
+						}
+						$("#table_extra tr").eq(i + 1).children("th").text(name);
 					}
 
-					setTemperatureInput("cabinet", status.temps.cabinet.active, true, true);
-				} else if (cabinetHeater != -1) {
-					cabinetHeater = -1;
-					needGuiUpdate = true;
-				}
-
-				// Heater temperatures and states
-				if (status.temps.hasOwnProperty("current") && status.temps.hasOwnProperty("state")) {
-					// Set current temperatures and states
-					for(var heater = 0; heater < status.temps.current.length; heater++) {
-						if (heater == bedHeater) {
-							setCurrentTemperature("bed", status.temps.current[heater]);
-							setHeaterState("bed", status.temps.state[heater], status.currentTool);
-						}
-						if (heater == chamberHeater) {
-							setCurrentTemperature("chamber", status.temps.current[heater]);
-							setHeaterState("chamber", status.temps.state[heater], status.currentTool);
-						}
-						if (heater == cabinetHeater)
-						{
-							setCurrentTemperature("cabinet", status.temps.current[heater]);
-							setHeaterState("cabinet", status.temps.state[heater], status.currentTool);
-						}
-						setCurrentTemperature(heater, status.temps.current[heater]);
-						setHeaterState(heater, status.temps.state[heater], status.currentTool);
+					var unit = name.match(/\[(.*?)\]/);
+					var value = status.temps.extra[i].temp.toFixed(1);
+					if (unit == null) {
+						value = T("{0} °C", value);
+					} else {
+						value = value + " " + unit[1];
 					}
 
-					// Keep the temperature chart up-to-date
-					recordCurrentTemperatures(status.temps.current);
-				}
-
-				// Active+Standby tool temperatures
-				var currentToolTemps = undefined;
-				if (status.temps.hasOwnProperty("tools") && toolMapping.length == status.temps.tools.active.length) {
-					for(var toolIndex = 0; toolIndex < status.temps.tools.active.length; toolIndex++) {
-						var toolNumber = toolMapping[toolIndex].number;
-						for(var heaterIndex = 0; heaterIndex < status.temps.tools.active[toolIndex].length; heaterIndex++) {
-							var heater = toolMapping[toolIndex].heaters[heaterIndex];
-							setToolTemperatureInput(toolNumber, heater, status.temps.tools.active[toolIndex][heaterIndex], true);
-							setToolTemperatureInput(toolNumber, heater, status.temps.tools.standby[toolIndex][heaterIndex], false);
-						}
+					$("#table_extra tr").eq(i + 1).children("td:last-child").text(value);
+					if (name == "MCU") {
+						$("td.mcutemp").text(value);
 					}
 				}
-
-				// Extra temperatures
-				if (status.temps.hasOwnProperty("extra")) {
-					if (status.temps.extra.length != numTempSensors) {
-						numTempSensors = status.temps.extra.length;
-						needGuiUpdate = true;
-					}
-
-					for(var i = 0; i < status.temps.extra.length; i++) {
-						var name = status.temps.extra[i].hasOwnProperty("name") ? status.temps.extra[i].name : "";
-						if (lastStatusResponse == undefined || status.temps.extra.length != lastStatusResponse.temps.extra.length || status.temps.extra[i].name != lastStatusResponse.temps.extra[i].name) {
-							if (name == "") {
-								name = T("Sensor " + (i + 1));
-							} else if (name.indexOf("[") != -1) {
-								name = name.substr(0, name.indexOf("[")).trim();
-							}
-							$("#table_extra tr").eq(i + 1).children("th").text(name);
-						}
-
-						var unit = name.match(/\[(.*?)\]/);
-						var value = status.temps.extra[i].temp.toFixed(1);
-						if (unit == null) {
-							value = T("{0} °C", value);
-						} else {
-							value = value + " " + unit[1];
-						}
-
-						$("#table_extra tr").eq(i + 1).children("td:last-child").text(value);
-						if (name == "MCU") {
-							$("td.mcutemp").text(value);
-						}
-					}
-					recordExtraTemperatures(status.temps.extra);
-				}
+				recordExtraTemperatures(status.temps.extra);
 			}
 
 			// Scanner extension
@@ -1131,6 +1116,7 @@ function updateStatus() {
 			/*** Print status response ***/
 
 			if (status.hasOwnProperty("fractionPrinted") && fileInfo != undefined) {
+				var printJustFinished = printHasFinished = false;
 				var jobJustFinished = false;
 				if (!jobHasFinished) {
 					var progress = 100, progressText = [];
