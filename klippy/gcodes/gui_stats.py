@@ -598,14 +598,15 @@ class GuiStats:
         version = self.printer.get_start_arg('software_version', 'Unknown')
 
         fans_all = self.printer.lookup_objects("fan")
-        fans = [{}] * len(fans_all)
+        self.logger.info("fans_all: %s" % fans_all)
+        fans = [0] * len(fans_all)
         for name, fan in fans_all:
-            fans[fan.get_index()].update({
+            fans[fan.get_index()] = {
                 "name": name,
-                "value": fan.last_fan_value * 100.0,
+                "value": fan.last_fan_value,
                 "min": 0,
                 "max": fan.max_power,
-            })
+            }
         for name, fan in self.printer.lookup_objects("heater_fan"):
             heater_idx = []
             heater = self.printer.lookup_object(fan.heater_name, None)
@@ -613,7 +614,7 @@ class GuiStats:
                 heater_idx.append(heater.get_index())
             fans.append({
                 "name": name,
-                "value": fan.fan.last_fan_value * 100.0,
+                "value": fan.fan.last_fan_value,
                 "min": 0,
                 "max": fan.fan.max_power,
                 "thermostatic": {
@@ -622,6 +623,7 @@ class GuiStats:
                     "temperature": 0,
                 },
             })
+        self.logger.info("fans: %s" % fans)
 
         axes = [
             {"letter": "X", "drives": [], "homed": 0, "machinePosition": 0},
@@ -884,7 +886,7 @@ class GuiStats:
 
         fans_all = self.printer.lookup_objects("fan")
         for name, fan in fans_all:
-            stats["fans"][fan.get_index()]["value"] = fan.last_fan_value * 100.0
+            stats["fans"][fan.get_index()]["value"] = fan.last_fan_value
 
         atx_pwr = self.printer.lookup_object('atx_power', None)
         if atx_pwr is not None:
