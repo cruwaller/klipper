@@ -606,6 +606,11 @@ class GuiStats:
                 "value": fan.last_fan_value,
                 "min": 0,
                 "max": fan.max_power,
+                "thermostatic": {
+                    "control":     0,
+                    "heaters":     [],
+                    "temperature": 0,
+                },
             }
         for name, fan in self.printer.lookup_objects("heater_fan"):
             heater_idx = []
@@ -617,11 +622,11 @@ class GuiStats:
                 "value": fan.fan.last_fan_value,
                 "min": 0,
                 "max": fan.fan.max_power,
-                "thermostatic": {
-                    "control": 1,
-                    "heaters": heater_idx,
-                    "temperature": 0,
-                },
+                #"thermostatic": {
+                #    "control": 1,
+                #    "heaters": [heater_idx],
+                #    "temperature": 0,
+                #},
             })
         self.logger.info("fans: %s" % fans)
 
