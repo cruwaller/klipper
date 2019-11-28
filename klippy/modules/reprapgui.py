@@ -909,6 +909,9 @@ class RepRapGuiModule(object):
                 "message": "\n".join(resps),
                 "timeout": 2000,
             }
+        # update atx status
+        if self.atx_on is not None:
+            status["state"]["atxPower"] = int(self.atx_state)
         status = json.dumps(status)
         for client in connections:
             self.ioloop.add_callback(
