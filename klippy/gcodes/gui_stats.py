@@ -701,13 +701,17 @@ class GuiStats:
                 "drives": [len(drives)],
                 "factor": extr.get_extrude_factor(),
             })
+            _fans = []
+            tool_fan = extr.get_tool_fan()
+            if tool_fan:
+                fans.append(tool_fan.get_index())
             tools.append({
                 "number": index,
                 "active": [0], "standby": [0], "heaters": [index + heatbed_add],
                 "extruders": [index],
                 "name": extr.name,
                 "filamentExtruder": None,
-                "fans": [extr.get_tool_fan().get_index()],
+                "fans": _fans,
             })
 
             limits = extr.get_max_e_limits()
