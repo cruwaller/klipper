@@ -30,6 +30,7 @@ http: 80
 
 import time, sys, os, errno, threading, json, logging
 import base64, uuid
+import functools
 
 try:
     sys.path.append(os.path.normpath(
@@ -38,6 +39,7 @@ except KeyError:
     pass
 import tornado.ioloop
 import tornado.web
+import tornado.websocket
 
 _PARENT = None
 KLIPPER_CFG_NAME = 'klipper_config.cfg'
@@ -189,6 +191,7 @@ class JpegStreamHandler(tornado.web.RequestHandler):
                 yield tornado.gen.Task(ioloop.add_timeout,
                                        ioloop.time() + self.interval)
 
+
 @tornado.web.stream_request_body
 class rrHandler(BaseHandler):
     parent = printer = sd_path = logger = None
@@ -238,39 +241,36 @@ class rrHandler(BaseHandler):
             if self.parent.atx_state is not None:
                 # update ATX power state
                 respdata['params']['atxPower'] = int(self.parent.atx_state)
-            respdata['seq'] = len(self.parent.gcode_resps)
+            respdata['seq'] = (len(self.parent.gcode_resps) +
+                               len(self.parent.gcode_resps_async))
+            #if self.parent.popup or self.parent.message or self.parent.beep:
+            respdata["output"] = {}
+            if self.parent.popup:
+                respdata["output"]["msgBox"] = {
+                        "mode": 1, # 1 = close, 2 = ok, 3 = cancel
+                        "title": "Oops. " + str(time.time()),
+                        "msg": self.parent.popup,
+                        "timeout": 10000,
+                        "controls": 1,
+                    }
+                self.parent.popup = ''
+            if self.parent.message:
+                respdata["output"]["message"] = self.parent.message
+                self.parent.message = ''
+            if self.parent.beep:
+                respdata["output"].update({
+                    "beepFrequency": self.parent.beep,
+                    "beepDuration": 5,
+                })
+                self.parent.beep = 0
 
         # rr_gcode?gcode=XXX
         elif "rr_gcode" in path:
             respdata["err"] = 0
             respdata["buff"] = 99999
-
             gcode = self.get_argument('gcode')
             #self.logger.debug("rr_gcode={}".format(gcode))
-            # Clean up gcode command
-            gcode = gcode.replace("0:/", "")
-
-            if "M80" in gcode and self.parent.atx_on is not None:
-                # ATX ON
-                resp = os.popen(self.parent.atx_on).read()
-                self.parent.append_gcode_resp(resp)
-                self.logger.info("ATX ON: %s" % resp)
-                self.parent.atx_state = True
-            elif "M81" in gcode and self.parent.atx_off is not None:
-                # ATX OFF
-                resp = os.popen(self.parent.atx_off).read()
-                self.parent.append_gcode_resp(resp)
-                self.logger.info("ATX OFF: %s" % resp)
-                self.parent.atx_state = False
-            elif "T-1" in gcode:
-                # ignore
-                pass
-            else:
-                try:
-                    # self.logger.debug(" ==> GCODE: %s", gcode)
-                    self.parent.printer_write(gcode)
-                except self.parent.gcode.error:
-                    respdata["err"] = 1
+            self.parent.send_gcode_from_handler_async(gcode)
 
         # rr_download?name=XXX
         elif "rr_download" in path:
@@ -363,68 +363,13 @@ class rrHandler(BaseHandler):
 
         # rr_filelist?dir=XXX
         elif path in ["rr_filelist", 'rr_files']:
-            '''
-            resp: `{"type":[type],"name":"[name]","size":[size],"lastModified":"[datetime]"}`
-            resp error: `{"err":[code]}`
-                where code is
-                    1 = the directory doesn't exist
-                    2 = the requested volume is not mounted
-            '''
             lst_dirs = bool(self.get_argument('flagDirs', True))
-            path = self.get_argument('dir').replace("0:", sd_path)
-            #respdata["dir"]   = _dir
-            respdata["files"] = []
-            respdata['next']  = 0
-            respdata["err"] = error = int(not os.path.exists(path))
-            if not error:
-                for _local in os.listdir(path):
-                    if _local.startswith("."):
-                        continue
-                    filepath = os.path.join(path, _local)
-                    if os.path.isfile(filepath):
-                        data = {
-                            "type" : "f",
-                            "name" : os.path.relpath(filepath, path),
-                            "size" : os.path.getsize(filepath),
-                            "date" : time.strftime("%Y-%m-%dT%H:%M:%S",
-                                                   time.localtime(os.path.getmtime(filepath))),
-                        }
-                        respdata["files"].append(data)
-                    elif os.path.isdir(filepath) and lst_dirs:
-                        data = {
-                            "type" : "d",
-                            "name" : os.path.relpath(filepath, path),
-                            "size" : os.path.getsize(filepath),
-                            "date" : time.strftime("%Y-%m-%dT%H:%M:%S",
-                                                   time.localtime(os.path.getmtime(filepath))),
-                        }
-                        respdata["files"].append(data)
-
-                # Add printer.cfg into sys list
-                if "/sys" in path:
-                    cfg_file = os.path.abspath(
-                        self.printer.get_start_arg('config_file'))
-                    respdata["files"].append({
-                        "type": "f",
-                        "name": KLIPPER_CFG_NAME,
-                        "size": os.path.getsize(cfg_file),
-                        "date": time.strftime("%Y-%m-%dT%H:%M:%S",
-                                              time.localtime(os.path.getmtime(cfg_file))),
-                    })
-                    logfile = self.printer.get_start_arg('logfile', None)
-                    if logfile is not None:
-                        respdata["files"].append({
-                            "type": "f",
-                            "name": KLIPPER_LOG_NAME,
-                            "size": os.path.getsize(logfile),
-                            "date": time.strftime("%Y-%m-%dT%H:%M:%S",
-                                                  time.localtime(os.path.getmtime(logfile))),
-                        })
+            self.parent.get_filelist(self.get_argument('dir'),
+                                     respdata, lst_dirs)
 
         # rr_fileinfo?name=XXX
         elif "rr_fileinfo" in path:
             name = self.get_argument('name', default=None)
-            #self.logger.debug("rr_fileinfo: {} , name: {}".format(self.request.uri, name))
             if name is None:
                 sd = self.printer.lookup_object('virtual_sdcard')
                 try:
@@ -435,26 +380,8 @@ class rrHandler(BaseHandler):
                         raise AttributeError
                 except AttributeError:
                     path = None
-            else:
-                path = name.replace("0:", sd_path)
             # info about the requested file
-            if path is None or not os.path.exists(path):
-                respdata["err"] = 1
-            else:
-                handler = self.printer.lookup_object("analyse_gcode")
-                info = handler.get_file_info(path)
-                respdata["err"] = 0
-                respdata["size"] = os.path.getsize(path)
-                respdata["lastModified"] = \
-                    time.strftime("%Y-%m-%dT%H:%M:%S",
-                                  time.localtime(os.path.getmtime(path)))
-                respdata["generatedBy"]      = info["slicer"]
-                respdata["height"]           = info["height"]
-                respdata["firstLayerHeight"] = info["firstLayerHeight"]
-                respdata["layerHeight"]      = info["layerHeight"]
-                respdata["filament"]         = info["filament"]
-                respdata["printDuration"]    = info['buildTime']
-                respdata["fileName"] = os.path.relpath(path, sd_path) # os.path.basename ?
+            self.parent.get_file_info(path, respdata)
 
         # rr_move?old=XXX&new=YYY
         elif "rr_move" in path:
@@ -497,11 +424,9 @@ class rrHandler(BaseHandler):
             respdata = self.parent.gui_stats.get_config_stats()
 
         elif "rr_reply" in path:
-            try:
-                while self.parent.gcode_resps:
-                    self.write(self.parent.gcode_resps.pop(0))
-            except IndexError:
-                self.write("")
+            out = self.parent.get_gcode_resps()
+            out.extend(self.parent.get_gcode_async_resps())
+            self.write("\n".join(out))
             return
 
         else:
@@ -578,12 +503,199 @@ class rrHandler(BaseHandler):
             self.upload_bytes_written += len(chunk)
 
 
-def create_dir(_dir):
-    try:
-        os.makedirs(_dir)
-    except OSError as e:
-        if e.errno != errno.EEXIST:
-            raise Exception("cannot create directory {}".format(_dir))
+connections = set()
+
+class WebSocketHandler(tornado.websocket.WebSocketHandler):
+    logger = logging.getLogger("WebSocket")
+    def __init__(self, *args, **kwargs):
+        super(WebSocketHandler, self).__init__(*args, **kwargs)
+        self._wait_ack = False
+        self._lock = threading.Lock()
+    def send_message(self, msg):
+        with self._lock:
+            self.write_message(msg) # yield ?
+    def open(self):
+        logging.debug("Client connected")
+        connections.add(self)
+        self.send_status_update()
+    def on_message(self, commands):
+        if "PING" in commands:
+            self.send_message("PONG\n")
+        elif "OK" in commands:
+            self._wait_ack = False
+        else:
+            self.logger.error("[RX] unknown command '%s'" % commands)
+    def on_close(self):
+        logging.debug("Client left")
+        connections.remove(self)
+    def send_status_update(self, status=None):
+        if self._wait_ack:
+            return
+        if status is None:
+            status = json.dumps(_PARENT.gui_stats.get_status_new())
+        self._wait_ack = True
+        self.send_message(status)
+
+
+class GetDirectoryHandler(BaseHandler):
+    @tornado.web.authenticated
+    def get(self, value):
+        respdata = {}
+        _PARENT.get_filelist(value, respdata)
+        self.write(json.dumps(respdata["files"]))
+
+
+class FileInfoHandler(BaseHandler):
+    @tornado.web.authenticated
+    def get(self, value):
+        respdata = {"err" : 1}
+        _PARENT.get_file_info(value, respdata)
+        self.write(json.dumps(respdata))
+
+
+class GcodeCommandHandler(BaseHandler):
+    @tornado.web.authenticated
+    def post(self):
+        gcodes = self.request.body
+        resp = _PARENT.send_gcode_from_handler_sync(gcodes)
+        #if not resp:
+        #    raise tornado.web.HTTPError(500)
+        self.write(resp)
+
+
+class ConfigFileHandler(tornado.web.StaticFileHandler):
+    def get(self, path, include_body=True):
+        self.absolute_path = self.get_absolute_path(
+            self.root, self.default_filename)
+        super(ConfigFileHandler, self).get(self.default_filename, include_body)
+    def put(self, path):
+        parent = _PARENT
+        cfgname = self.get_absolute_path(self.root, self.default_filename)
+        datestr = time.strftime("-%Y%m%d_%H%M%S")
+        backup_name = cfgname + datestr
+        if cfgname.endswith(".cfg"):
+            backup_name = cfgname[:-4] + datestr + ".cfg"
+        try:
+            os.rename(cfgname, backup_name)
+            with open(cfgname, "wb+") as _file:
+                _file.write(self.request.body)
+        except IOError as e:
+            parent.logger.error("put: %s" % (e.strerror,))
+            raise tornado.web.HTTPError(400)
+    def delete(self, *args, **kwargs):
+        raise tornado.web.HTTPError(405)
+    def post(self, *args, **kwargs):
+        raise tornado.web.HTTPError(405)
+
+
+class LogFileHandler(tornado.web.StaticFileHandler):
+    def get(self, path, include_body=True):
+        self.absolute_path = self.get_absolute_path(
+            self.root, self.default_filename)
+        super(LogFileHandler, self).get(self.default_filename, include_body)
+    def put(self, *args, **kwargs):
+        raise tornado.web.HTTPError(405)
+    def delete(self, *args, **kwargs):
+        raise tornado.web.HTTPError(405)
+    def post(self, *args, **kwargs):
+        raise tornado.web.HTTPError(405)
+
+
+class HeightmapFileHandler(tornado.web.StaticFileHandler):
+    def get(self, path, include_body=True):
+        bed_mesh = _PARENT.printer.lookup_object('bed_mesh', None)
+        calibrate = getattr(bed_mesh, "calibrate", None)
+        if bed_mesh is not None and bed_mesh.z_mesh and calibrate:
+            params = calibrate.get_probe_params()
+            spacing_x = (params['max_x'] - params['min_x']) / (params['x_count'] - 1)
+            spacing_y = (params['max_y'] - params['min_y']) / (params['y_count'] - 1)
+            csv = [
+                "Klipper height map",
+                "xmin,xmax,ymin,ymax,radius,xspacing,yspacing,xnum,ynum",
+                "%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d,%d" % (
+                    params['min_x'], params['max_x'],
+                    params['min_y'], params['max_y'],
+                    params.get('radius', -1),
+                    params.get('xspacing', spacing_x),
+                    params.get('yspacing', spacing_y),
+                    params['x_count'], params['y_count']),
+            ]
+            points_csv = calibrate.print_probed_positions_to_csv()
+            data = "\n".join(csv) + "\n" + points_csv
+            self.set_header('Content-Type',
+                            'application/force-download')
+            self.set_header('Content-Disposition',
+                            'attachment; filename=heightmap.csv')
+            self.write(data)
+            self.finish()
+        else:
+            raise tornado.web.HTTPError(404)
+
+
+class FileCommandHandler(tornado.web.StaticFileHandler):
+    def parse_url_path(self, url_path):
+        return super(FileCommandHandler, self).parse_url_path(
+            url_path.replace("0:/", ""))
+    def parse_abs_file_path(self, path):
+        return os.path.join(self.root, self.parse_url_path(path))
+    def prepare(self):
+        self.request.connection.set_max_body_size(MAX_STREAMED_SIZE)
+    def data_received(self, chunk):
+        logging.info("data_received()")
+        pass
+    def put(self, path):
+        parent = _PARENT
+        # file upload
+        path = self.parse_abs_file_path(path)
+        try:
+            with open(path, "wb+") as _file:
+                _file.write(self.request.body)
+        except IOError as e:
+            parent.logger.error("put: %s" % (e.strerror,))
+            raise tornado.web.HTTPError(400)
+    def delete(self, path):
+        parent = _PARENT
+        path = self.parse_abs_file_path(path)
+        if KLIPPER_CFG_NAME not in path and KLIPPER_LOG_NAME not in path:
+            fremoved = []
+            try:
+                for root, dirs, files in os.walk(path, topdown=False):
+                    for name in files:
+                        fpath = os.path.join(root, name)
+                        os.remove(fpath)
+                        fremoved.append(fpath)
+                    for name in dirs:
+                        os.rmdir(os.path.join(root, name))
+                if os.path.isdir(path):
+                    os.rmdir(path)
+                else:
+                    os.remove(path)
+                    fremoved.append(path)
+                if fremoved:
+                    handler = parent.printer.lookup_object("analyse_gcode")
+                    handler.remove_file(fremoved)
+            except OSError as e:
+                parent.logger.error("delete: %s" % (e.strerror,))
+                raise tornado.web.HTTPError(400)
+    def post(self, path):
+        parent = _PARENT
+        if path == "move":
+            _from = self.parse_abs_file_path(self.get_argument("from"))
+            if KLIPPER_CFG_NAME not in _from and KLIPPER_LOG_NAME not in _from:
+                _to = self.parse_abs_file_path(self.get_argument("to"))
+                # force = bool(self.get_argument("force"))
+                try:
+                    os.rename(_from, _to)
+                    handler = parent.printer.lookup_object("analyse_gcode")
+                    handler.move_file(_from, _to)
+                except OSError as e:
+                    parent.logger.error("move: %s" % (e.strerror,))
+                    raise tornado.web.HTTPError(400)
+        else:
+            logging.info("post(%s), uri: %s, path: %s" % (
+                path, self.request.uri, self.request.path))
+            logging.debug("  Arguments: %s" % { k: self.get_argument(k) for k in self.request.arguments })
+            # logging.debug("  Body: %s" % self.request.body)
 
 
 _TORNADO_THREAD = None
@@ -598,27 +710,40 @@ class RepRapGuiModule(object):
         global _TORNADO_THREAD
         global _PARENT
         _PARENT = self
+        self.ioloop = self.http_server = None
         self.printer = printer = config.get_printer()
         self.logger = printer.get_logger("DWC")
         self.logger_tornado = self.logger.getChild("tornado")
-        self.logger_tornado.setLevel(logging.INFO)
+        self.logger_tornado.setLevel(logging.DEBUG)
         self.gcode = printer.lookup_object('gcode')
+        self.resp = ""
+        self.resp_rcvd = False
+        self.resp_cnt = 0
+        self.store_resp = False
         self.gcode_resps = []
+        self.gcode_resps_async = []
         self.lock = threading.Lock()
+        self.lock_resps = threading.Lock()
+        self.reactor = self.printer.get_reactor()
+        self.mutex = self.reactor.mutex()
+        printer.register_event_handler('klippy:config_ready', self._config_ready)
+        printer.register_event_handler("klippy:disconnect", self._shutdown)
         # Read config
-        htmlroot = config.get('htmlroot', '')
+        dwc2 = config.getboolean('dwc2', True)
+        htmlroot = config.get('htmlroot',
+                              ["DuetWebControl", "DuetWebControl2"][dwc2])
         dwc_htm = 'reprap.htm'
-        dwc2 = config.getboolean('dwc2', False)
-        if not htmlroot:
-            htmlroot = os.path.normpath(os.path.join(os.path.dirname(__file__)))
-            folder = ["DuetWebControl", "DuetWebControl2"][dwc2]
-            htmlroot = os.path.join(htmlroot, folder)
-        if dwc2 or not os.path.exists(os.path.join(htmlroot, 'reprap.htm')):
-            if os.path.exists(os.path.join(htmlroot, 'index.html')):
+        if not os.path.isabs(htmlroot):
+            current_folder = os.path.normpath(os.path.join(
+                os.path.dirname(__file__)))
+            htmlroot = os.path.join(current_folder, htmlroot)
+        if not os.path.exists(os.path.join(htmlroot, 'reprap.htm')): # DWC1
+            if os.path.exists(os.path.join(htmlroot, 'index.html')): # DWC2
                 dwc_htm = 'index.html'
             else:
                 raise printer.config_error(
                     "DuetWebControl files not found '%s'" % htmlroot)
+        self.dwc2 = dwc_htm == 'index.html'
         self.logger.debug("html root: %s" % (htmlroot,))
         self.user = config.get('user', '')
         self.passwd = config.get('password', '')
@@ -632,10 +757,19 @@ class RepRapGuiModule(object):
         if self.atx_on:
             self.atx_off = config.get('atx_cmd_off')
             self.atx_state = False
+        self.popup = ''
+        self.message = ''
+        self.beep = 0
         # ------------------------------
+        def create_dir(_dir):
+            try:
+                os.makedirs(_dir)
+            except OSError as e:
+                if e.errno != errno.EEXIST:
+                    raise Exception("Cannot create directory: '%s'" % (_dir,))
         # Create paths to virtual SD
         sd = printer.try_load_module(config, "virtual_sdcard")
-        sdcard_dirname = sd.sdcard_dirname
+        self.sd_path = sdcard_dirname = sd.sdcard_dirname
         create_dir(os.path.join(sdcard_dirname, "gcodes"))
         create_dir(os.path.join(sdcard_dirname, "macros"))
         create_dir(os.path.join(sdcard_dirname, "filaments"))
@@ -649,9 +783,37 @@ class RepRapGuiModule(object):
         # ------------------------------
         # Start tornado webserver
         if _TORNADO_THREAD is None or not _TORNADO_THREAD.isAlive():
-            cookie_secret = base64.b64encode(
-                uuid.uuid4().bytes + uuid.uuid4().bytes)
-            app_urls = [
+            try:
+                with open(os.path.join(sdcard_dirname, ".cookie"), "rb") as _f:
+                    cookie_secret = _f.readline().strip()
+            except IOError:
+                cookie_secret = base64.b64encode(
+                    uuid.uuid4().bytes + uuid.uuid4().bytes)
+                with open(os.path.join(sdcard_dirname, ".cookie"), "w+") as _f:
+                    _f.write(cookie_secret)
+            log_file = printer.get_start_arg('logfile', "/tmp/klippy.log")
+            cfg_file = printer.get_start_arg('config_file')
+            app_urls = []
+            if self.dwc2:
+                # DWC REST API support
+                app_urls.extend([
+                    (r"/machine/file/(.*"+KLIPPER_CFG_NAME+")", ConfigFileHandler,
+                        {"path": os.path.dirname(cfg_file),
+                            "default_filename": os.path.basename(cfg_file)}),
+                    (r"/machine/file/(.*"+KLIPPER_LOG_NAME+")", LogFileHandler,
+                        {"path": os.path.dirname(log_file),
+                            "default_filename": os.path.basename(log_file)}),
+                    (r"/machine/file/.*(heightmap.csv)", HeightmapFileHandler,
+                        {"path": sdcard_dirname}),
+                    (r"/machine/file/(.*)", FileCommandHandler,
+                        {"path": sdcard_dirname}),
+                    (r"/machine/code", GcodeCommandHandler),
+                    (r"/machine/fileinfo/(.*)", FileInfoHandler),
+                    (r"/machine/directory/(.*)", GetDirectoryHandler),
+                    (r"/machine", WebSocketHandler),
+                ])
+            # DWC polling API support and static file serving
+            app_urls.extend([
                 tornado.web.url(r'/login', LoginHandler, name="login"),
                 tornado.web.url(r'/logout', LogoutHandler, name="logout"),
                 tornado.web.url(r"/(.*\.ico)", tornado.web.StaticFileHandler,
@@ -672,34 +834,33 @@ class RepRapGuiModule(object):
                 tornado.web.url(r"/(.*)", MainHandler,
                                 {"file": os.path.join(htmlroot, dwc_htm)},
                                 name="main"),
-            ]
+            ])
             application = tornado.web.Application(
                 app_urls,
                 cookie_secret=cookie_secret,
-                log_function=self.Tornado_LoggerCb,
+                log_function=self.__Tornado_LoggerCb,
                 login_url = "/login",
                 xsrf_cookies = False)
 
             # Put tornado to background thread
-            _TORNADO_THREAD = threading.Thread(
-                target=self.Tornado_execute, args=(config, application))
-            _TORNADO_THREAD.daemon = True
-            _TORNADO_THREAD.start()
-
+            thread = threading.Thread(target=self.__Tornado_execute,
+                                      args=(config, application))
+            thread.daemon = True
+            thread.start()
+            _TORNADO_THREAD = thread
         # ------------------------------
         fd_r, self.pipe_write = os.pipe() # Change to PTY ?
         self.gcode.register_fd(fd_r)
         self.gcode.write_resp = self.gcode_resp_handler
         # Disable auto temperature reporting
-        self.printer_write_no_update("AUTO_TEMP_REPORT AUTO=0")
+        self.printer_write("AUTO_TEMP_REPORT AUTO=0", resp=False)
         # ------------------------------
-        self.logger.info("RepRep Web GUI loaded")
-
-    def Tornado_LoggerCb(self, req):
+    def __del__(self):
+        self._shutdown()
+    def __Tornado_LoggerCb(self, req):
         values  = [req.request.remote_ip, req.request.method, req.request.uri]
         self.logger_tornado.debug(" ".join(values))
-
-    def Tornado_execute(self, config, application):
+    def __Tornado_execute(self, config, application):
         port = config.getint('http', default=80)
         ssl_options = None
         cert = config.get('cert', None)
@@ -713,55 +874,210 @@ class RepRapGuiModule(object):
                 https_port = config.getint('https', None)
                 if https_port is not None:
                     port = https_port
-                ssl_options = {
-                    "certfile": cert,
-                    "keyfile": key,
-                }
+                ssl_options = {"certfile": cert, "keyfile": key}
             else:
                 self.logger.warning("cert or key file is missing!")
         self.logger.info("Server port %s (SSL %s)" % (
             port, ssl_options is not None))
 
-        http_server = tornado.httpserver.HTTPServer(
-            application, ssl_options=ssl_options)
-        http_server.listen(port)
-        tornado.ioloop.IOLoop.current().start()
-        self.logger.warning("Something went wrong, server exited!")
+        self.http_server = tornado.httpserver.HTTPServer(
+            application, ssl_options=ssl_options,
+            max_buffer_size=MAX_STREAMED_SIZE)
+        self.http_server.listen(port)
+        self.ioloop = tornado.ioloop.IOLoop.current()
+        self.ioloop.start()
+        self.logger.warning("server stopped!")
 
-    resp = ""
-    resp_rcvd = False
-    store_resp = False
-    def _write(self, cmd):
-        # self.logger.debug("GCode send: %s" % (cmd,))
-        with self.lock:
-            self.resp_rcvd = False
-            self.resp = ""
-            os.write(self.pipe_write, "%s\n" % cmd)
-    def printer_write_no_update(self, cmd):
-        self.store_resp = False
-        self._write(cmd)
-    def printer_write(self, cmd):
-        self.store_resp = True
-        self._write(cmd)
-    def gcode_resp_handler(self, msg):
-        self.resp += msg
-        if "ok" not in self.resp:
-            # wait until whole resp is received
-            return
-        resp = self.resp
-        self.resp = ""
-        # self.logger.debug("GCode resps: %s" % (repr(resp),))
-        if "Klipper state" in resp:
-            self.append_gcode_resp(resp)
-        elif not self.resp_rcvd or "Error:" in resp or "Warning:" in resp:
-            # self.resp_rcvd = True
-            resp = resp.strip()
-            #if len(resp) > 2:
-            resp = resp.replace("ok", "")
-            if self.store_resp or "Error:" in resp or "Warning:" in resp:
+    def _config_ready(self):
+        if self.dwc2:
+            self.reactor.register_timer(self._status_update, self.reactor.NOW)
+    def _shutdown(self):
+        if self.ioloop:
+            self.ioloop.stop()
+            self.ioloop = None
+        if self.http_server:
+            self.http_server.stop()
+            self.http_server = None
+    def _status_update(self, eventtime): # DWC2 only
+        status = dict(_PARENT.gui_stats.get_status_new())
+        resps = self.get_gcode_async_resps()
+        if resps:
+            status['state']['gcoresp'] = "\n".join(resps)
+            status['state']['displayNotification'] = {
+                "type": "info",
+                "title": "GCode",
+                "message": "\n".join(resps),
+                "timeout": 2000,
+            }
+        status = json.dumps(status)
+        for client in connections:
+            self.ioloop.add_callback(
+                functools.partial(client.send_status_update, status))
+        return eventtime + .25
+
+    def __gcode_parse(self, gcodes):
+        gcodes = gcodes.strip().replace("0:/", "") # clean gcode request
+        gcodes = [gcode for gcode in gcodes.split("\n")]
+        out = []
+        for gcode in gcodes:
+            if gcode.startswith(";"):
+                continue
+            if "M80" in gcode and self.atx_on is not None:
+                # ATX ON
+                resp = os.popen(self.atx_on).read()
                 self.append_gcode_resp(resp)
+                self.logger.info("ATX ON: %s" % resp)
+                self.atx_state = True
+            elif "M81" in gcode and self.atx_off is not None:
+                # ATX OFF
+                resp = os.popen(self.atx_off).read()
+                self.append_gcode_resp(resp)
+                self.logger.info("ATX OFF: %s" % resp)
+                self.atx_state = False
+            elif "T-1" in gcode or "M292" in gcode or \
+                    "M120" in gcode or "M121" in gcode:
+                # ignore
+                # T-1 : Active -> Standby
+                pass
+            else:
+                out.append(gcode)
+        return "\n".join(out)
+    def printer_write(self, cmd, resp=True):
+        cmd = self.__gcode_parse(cmd)
+        if not cmd:
+            self.gcode_resp_handler("ok")
+        self.logger.debug("gcode send: '%s'" % (repr(cmd),))
+        with self.lock:
+            self.store_resp = resp
+            self.resp_rcvd = False
+            self.resp_cnt = cmd.count("\n") + 1
+            os.write(self.pipe_write, "%s\n" % cmd)
+    def send_gcode_from_handler_async(self, gcode):
+        self.printer_write(gcode)
+    def send_gcode_from_handler_sync(self, gcode):
+        gcode = self.__gcode_parse(gcode)
+        if not gcode:
+            return "ok"
+        self.printer_write(gcode)
+        while not self.resp_rcvd:
+            time.sleep(0.1)
+        return "\n".join(self.get_gcode_resps())
+    def gcode_resp_handler(self, msg):
+        resp = self.resp + msg
+        if "ok" not in resp:
+            # wait until whole resp is received
+            self.resp = resp
+            return
+        self.resp = ""
+        always_store = ("Error:" in resp or "Warning:" in resp)
+        if "Klipper state" in resp:
+            self.append_gcode_async_resp(resp)
+        elif always_store or self.store_resp:
+            if self.resp_cnt:
+                self.resp_cnt -= 1
+                self.resp_rcvd = self.resp_cnt <= 0
+                if len(resp) > 3:
+                    resp = resp.replace("ok", "")
+                resp = resp.strip()
+                self.append_gcode_resp(resp)
+            else:
+                resp = resp.replace("ok", "")
+                self.append_gcode_async_resp(resp)
     def append_gcode_resp(self, msg):
-        self.gcode_resps.append(msg)
+        if not msg:
+            return
+        with self.lock_resps:
+            if msg not in self.gcode_resps:
+                self.logger.debug("gcode resps: '%s'" % (repr(msg),))
+                self.gcode_resps.append(msg)
+    def get_gcode_resps(self):
+        with self.lock_resps:
+            out = self.gcode_resps
+            self.gcode_resps = []
+        return out
+    def append_gcode_async_resp(self, msg):
+        if not msg:
+            return
+        with self.lock_resps:
+            if msg not in self.gcode_resps_async:
+                self.logger.debug("gcode resp (async): '%s'" % repr(msg))
+                self.gcode_resps_async.append(msg)
+    def get_gcode_async_resps(self):
+        with self.lock_resps:
+            out = self.gcode_resps_async
+            self.gcode_resps_async = []
+        return out
+
+    # ============================
+    def get_filelist(self, path, respdata, lst_dirs=True):
+        path = path.replace("0:", self.sd_path)
+        respdata["files"] = []
+        respdata['next'] = 0
+        respdata["err"] = error = int(not os.path.exists(path))
+        if not error:
+            for _local in os.listdir(path):
+                if _local.startswith("."):
+                    continue
+                filepath = os.path.join(path, _local)
+                if os.path.isfile(filepath):
+                    data = {
+                        "type": "f",
+                        "name": os.path.relpath(filepath, path),
+                        "size": os.path.getsize(filepath),
+                        "date": time.strftime("%Y-%m-%dT%H:%M:%S",
+                                              time.localtime(os.path.getmtime(filepath))),
+                    }
+                    respdata["files"].append(data)
+                elif os.path.isdir(filepath) and lst_dirs:
+                    data = {
+                        "type": "d",
+                        "name": os.path.relpath(filepath, path),
+                        "size": os.path.getsize(filepath),
+                        "date": time.strftime("%Y-%m-%dT%H:%M:%S",
+                                              time.localtime(os.path.getmtime(filepath))),
+                    }
+                    respdata["files"].append(data)
+
+            # Add printer.cfg into sys list
+            if "/sys" in path:
+                cfg_file = os.path.abspath(
+                    self.printer.get_start_arg('config_file'))
+                respdata["files"].append({
+                    "type": "f",
+                    "name": KLIPPER_CFG_NAME,
+                    "size": os.path.getsize(cfg_file),
+                    "date": time.strftime("%Y-%m-%dT%H:%M:%S",
+                                          time.localtime(os.path.getmtime(cfg_file))),
+                })
+                logfile = self.printer.get_start_arg('logfile', None)
+                if logfile is not None:
+                    respdata["files"].append({
+                        "type": "f",
+                        "name": KLIPPER_LOG_NAME,
+                        "size": os.path.getsize(logfile),
+                        "date": time.strftime("%Y-%m-%dT%H:%M:%S",
+                                              time.localtime(os.path.getmtime(logfile))),
+                    })
+
+    def get_file_info(self, path, respdata):
+        path = path.replace("0:", self.sd_path)
+        if path is None or not os.path.exists(path):
+            respdata["err"] = 1
+        else:
+            handler = self.printer.lookup_object("analyse_gcode")
+            info = handler.get_file_info(path)
+            respdata["err"] = 0
+            respdata["size"] = info.get("size", os.path.getsize(path))
+            respdata["lastModified"] = \
+                time.strftime("%Y-%m-%dT%H:%M:%S",
+                              time.localtime(os.path.getmtime(path)))
+            respdata["generatedBy"] = info["slicer"]
+            respdata["height"] = info["height"]
+            respdata["firstLayerHeight"] = info["firstLayerHeight"]
+            respdata["layerHeight"] = info["layerHeight"]
+            respdata["filament"] = info["filament"]
+            respdata["printDuration"] = info['buildTime']
+            respdata["fileName"] = os.path.relpath(path, self.sd_path)
 
 
 def load_config(config):

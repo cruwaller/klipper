@@ -1,6 +1,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import time, util, json, math
+import os
 
 
 class GuiStats:
@@ -109,8 +110,10 @@ class GuiStats:
         self._stats_type_1_reset()
         self._stats_type_2_reset()
         self._stats_type_3_reset()
+        self.status_new_reset()
     def _handle_shutdown(self):
-        self.curr_state = "H"
+        self.curr_state = "O"
+        pass
     def _handle_disconnect(self):
         self.curr_state = "B"
     def handle_ready(self):
@@ -126,8 +129,9 @@ class GuiStats:
 
     def _homing_ready(self, homing_state, rails):
         for axis in homing_state.get_axes():
-            self.logger.info("Homed axis '%s'", axis)
+            self.logger.debug("Homed axis '%s'", axis)
             self._stats_type_1["coords"]["axesHomed"][axis] = 1
+            self.status_new['move']['axes'][axis]['homed'] = 1
 
     def _sd_status(self, status):
         if status == 'pause':
@@ -138,11 +142,14 @@ class GuiStats:
             self.print_start_time = self.last_print_layer_change = time.time()
         elif status == 'error' or status == "stop":
             self.curr_state = "I"
+            self.status_new['job']['lastFileCancelled'] = True
         elif status == 'done':
             toolhead = self.toolhead
             toolhead.wait_moves()
             self._stats_type_3['lastLayerTime'] = \
                 time.time() - self.last_print_layer_change
+            self.status_new["job"]["lastFileName"] =  \
+                self.status_new["job"]["currentFileName"]
             self.curr_state = "I"
         elif status == 'loaded':
             pass
@@ -152,6 +159,30 @@ class GuiStats:
         firstLayerHeight = file_info.get('firstLayerHeight', 0.)
         # clear stats when new file is loaded
         self._stats_type_3_reset(firstLayerHeight)
+        if "size" not in file_info:
+            file_info["size"] = os.path.getsize(fname)
+        # fill new status
+        self.status_new["job"] = {
+            "file": file_info,
+            "filePosition": 0,
+            "currentFileName": os.path.relpath(fname, self.sd.sdcard_dirname),
+            "lastFileName": None,
+            "lastFileAborted":   False,
+            "lastFileCancelled": False,
+            "lastFileSimulated": False,
+            "extrudedRaw":       [], # "[0] * len(self.extruders),
+            "duration":          None,
+            "layer":             None,
+            "layerTime":         None,
+            "layers":            [],
+            "warmUpDuration":    None,
+            "timesLeft":         {
+                "file":     None,
+                "filament": None,
+                "layer":    None,
+            },
+            "fractionPrinted": 0.,
+        }
 
     def _layer_changed(self, change_time, layer, height, *args):
         #self.logger.debug("Layer changed cb: time %s, layer %s, h=%s" % (
@@ -161,9 +192,12 @@ class GuiStats:
         print_time = int(current_time - self.last_print_layer_change + .5)
         current_layer = type_3['currentLayer'] + 1
         type_3['currentLayer'] = current_layer
+        self.status_new['job']['layer'] = current_layer
         if current_layer == 1:
             # heating / preparation is done when 1st call happens
-            type_3['warmUpDuration'] = int(self.toolhead.get_print_time() + .5)
+            warmup = int(self.toolhead.get_print_time() + .5)
+            type_3['warmUpDuration'] = warmup
+            self.status_new['job']['warmUpDuration'] = warmup
         elif current_layer == 2:
             type_3['firstLayerDuration'] = print_time
         type_3['previousLayerTime'] = print_time
@@ -275,16 +309,17 @@ class GuiStats:
             "lastLayerTime": 0,
             "currentLayer": 0,
             "currentLayerTime": 0,
-            "extrRaw": [.0] * len(self.extruders),
+            "extrRaw": [], # [.0] * len(self.extruders),
             "fractionPrinted": .0,
             "firstLayerDuration": 0,
             "firstLayerHeight": first_layer_height,
+            "filePosition": 0,
             "printDuration": 0.,
             "warmUpDuration": 0.,
             "timesLeft": {
                 "file": .0,
-                #"filament": [.0] * len(self.extruders),
-                #"layer": .0,
+                "filament": [], # [.0] * len(self.extruders),
+                "layer": .0,
             },
         }
 
@@ -503,6 +538,7 @@ class GuiStats:
             progress = 0.
             if self.sd is not None:
                 progress = self.sd.get_progress()
+                stat['filePosition'] = self.sd.file_position
 
             # How much filament would have been printed without extrusion factors applied
             stat["extrRaw"] = [float("%0.1f" % e.raw_filament) for e in _extrs]
@@ -546,6 +582,342 @@ class GuiStats:
 
         # self.logger.debug("%s", json.dumps(status_resp, indent=4))
         return status_resp
+
+    def _map_state(self):
+        maper = {
+            'F': 'updating', 'O': 'off', 'H': 'halted', 'D': 'pausing', 'S': 'paused',
+            'R': 'resuming', 'P': 'processing', 'M': 'simulating',
+            'B': 'busy', 'T': 'changingTool', 'I': 'idle'}
+        return maper.get(self.curr_state)
+
+    status_new = {}
+    status_new_heaters = []
+    def status_new_reset(self):
+        self.status_new_heaters = []
+        states = {False: 0, True: 2}
+        version = self.printer.get_start_arg('software_version', 'Unknown')
+
+        fans_all = self.printer.lookup_objects("fan")
+        fans = [{}] * len(fans_all)
+        for name, fan in fans_all:
+            fans[fan.get_index()].update({
+                "name": name,
+                "value": fan.last_fan_value * 100.0,
+                "min": 0,
+                "max": fan.max_power,
+            })
+        for name, fan in self.printer.lookup_objects("heater_fan"):
+            heater_idx = []
+            heater = self.printer.lookup_object(fan.heater_name, None)
+            if heater:
+                heater_idx.append(heater.get_index())
+            fans.append({
+                "name": name,
+                "value": fan.fan.last_fan_value * 100.0,
+                "min": 0,
+                "max": fan.fan.max_power,
+                "thermostatic": {
+                    "control": 1,
+                    "heaters": heater_idx,
+                    "temperature": 0,
+                },
+            })
+
+        axes = [
+            {"letter": "X", "drives": [], "homed": 0, "machinePosition": 0},
+            {"letter": "Y", "drives": [], "homed": 0, "machinePosition": 0},
+            {"letter": "Z", "drives": [], "homed": 0, "machinePosition": 0},
+        ]
+        drives = [{}]
+        geometry = {"type": self.geometry}
+        kinematic = self.toolhead.get_kinematics()
+        if self.geometry == 'delta':
+            params = kinematic.get_calibrate_params()
+            geometry.update({
+                # "anchors": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                "printRadius": params['radius'],
+                "diagonals": [params['arm_'+axis] for axis in 'abc'],
+                "radius": params['radius'],
+                "homedHeight": math.sqrt(kinematic.max_xy2),
+                # "angleCorrections": [0.0, 0.0, 0.0],
+                # "endstopAdjustments": [0.0, 0.0, 0.0],
+                # "tilt": [0.0, 0.0],
+            })
+        for index, limit in enumerate(kinematic.get_max_limits()):
+            accel = int(limit.get('acc', 0))
+            velocity = int(limit.get('velocity', 0))
+            rail = limit.get('rail', None)
+            if rail is not None:
+                _min, _max = rail.get_range()
+                steppers = rail.get_steppers()
+            else:
+                _min = _max = 0
+                steppers = limit.get('steppers', [])
+            for stp in steppers:
+                axes[index]["drives"].append(len(drives))
+                current = None
+                get_current = self.printer.lookup_object(
+                    'driver_current ' + stp.get_name(), None)
+                if get_current is not None:
+                    current = int(get_current() * 1000.)
+                drives.append({
+                    "position": None,
+                    #"microstepping": {
+                    #    "value":        16,
+                    #    "interpolated": True,
+                    #},
+                    "current": current,
+                    "acceleration": accel,
+                    "minSpeed": 0,
+                    "maxSpeed": velocity,
+                })
+
+        heatbed = self.printer.lookup_object('heater_bed', None)
+        heatbed_add = heatbed is not None
+        heaters = []
+        beds = []
+        tools = []
+        extruders = []
+        if heatbed is not None:
+            self.status_new_heaters.append(heatbed)
+            temp, target = heatbed.get_temp(0)
+            beds.append({"active": [10], "standby": [0], "heaters": [0]})
+            heaters.append({
+                "current": float("%.2f" % temp),
+                "name":    "BED",
+                "state":   states[(target > 0.0)],
+                "max":     heatbed.max_temp})
+
+        for index, extr in enumerate(self.extruders):
+            heater = extr.get_heater()
+            self.status_new_heaters.append(heater)
+            temp, target = heater.get_temp(0)
+            heaters.append({
+                "current": float("%.2f" % temp),
+                "name":    extr.name, #heater.get_name(),
+                "state":   states[(target > 0.0)],
+                "max":     heater.max_temp})
+            extruders.append({
+                "drives": [len(drives)],
+                "factor": extr.get_extrude_factor(),
+            })
+            tools.append({
+                "number": index,
+                "active": [0], "standby": [0], "heaters": [index + heatbed_add],
+                "extruders": [index],
+                "name": extr.name,
+                "filamentExtruder": None,
+                "fans": [extr.get_tool_fan().get_index()],
+            })
+
+            limits = extr.get_max_e_limits()
+            current = None
+            get_current = self.printer.lookup_object(
+                'driver_current ' + limits['stepper'].get_name(), None)
+            if get_current is not None:
+                current = int(get_current() * 1000.)
+            drives.append({
+                "position":     extr.extrude_pos,
+                # "microstepping": {
+                #    "value":        16,
+                #    "interpolated": True,
+                # },
+                "current":      current,
+                "acceleration": int(limits['acc']),
+                "minSpeed":     0,
+                "maxSpeed":     int(limits['velocity']),
+            })
+
+        chambers = []
+        chamber = self.printer.lookup_object('chamber', default=None)
+        if chamber is not None:
+            self.status_new_heaters.append(chamber.heater)
+            temp, target = chamber.get_temp(0)
+            heaters.append({
+                "current": float("%.2f" % temp),
+                "name":    "CHAMBER",
+                "state":   states[(target > 0.0)],
+                "max":     chamber.heater.max_temp})
+
+        cabinet = self.printer.lookup_object('cabinet', default=None)
+        if cabinet is not None:
+            self.status_new_heaters.append(cabinet.heater)
+            temp, target = cabinet.get_temp(0)
+            heaters.append({
+                "current": float("%.2f" % temp),
+                "name":    "CABINET",
+                "state":   states[(target > 0.0)],
+                "max":     cabinet.heater.max_temp})
+
+        probes = []
+        probe = self.printer.lookup_object('probe', None)
+        if probe:
+            probes.append({
+                "type": None,
+                "value": None,
+                "secondaryValues": [],
+                "threshold": 500,
+                "speed": 2,
+                "diveHeight": 5,
+                "offsets": [],
+                "triggerHeight": 0.7,
+                "filtered": True,
+                "inverted": False,
+                "recoveryTime": 0,
+                "travelSpeed": 100,
+                "maxProbeCount": 1,
+                "tolerance": 0.03,
+                "disablesBed": False,
+                "persistent": False,
+            })
+        babysteps = self.babysteps.babysteps if self.babysteps else 0.
+        motor_off_time = self.printer.lookup_object('idle_timeout').idle_timeout
+
+        gcode_stats = self.gcode.get_status(0)
+
+        self.status_new = {
+            "electronics": {
+                "type": "klipper",
+                "name": self.name,
+                "firmware": {
+                    "name": "klipper",
+                    "version": version,
+                    "date": "2019",
+                },
+                "processorID": util.get_cpu_info(),
+            },
+            "fans": fans,
+            "heat": {
+                "beds": beds,
+                "chambers": chambers,
+                "coldExtrudeTemperature": 170.,
+                "coldRetractTemperature": 170.,
+                "extra": [],
+                "heaters": heaters,
+            },
+            "move": {
+                "axes": axes,
+                "babystepZ": float("%.3f" % babysteps),
+                "currentMove": {
+                    "requestedSpeed": float("%.2f" % gcode_stats['speed']),
+                    "topSpeed": .0},
+                "compensation": "None",
+                "drives": drives,
+                "extruders": extruders,
+                "geometry": geometry,
+                "idle": {"timeout": motor_off_time, "factor": .3},
+                "speedFactor": float("%.2f" % gcode_stats['speed_factor']),
+            },
+            "sensors": {
+                "endstops": [],
+                "probes": probes,
+            },
+            "state": {
+                "atxPower": None,
+                "beep": {
+                    "frequency": 0,
+                    "duration":  0
+                },
+                "currentTool": -1,
+                "displayMessage": None,
+                "logFile": None,
+                "mode": 'FFF', # ['FFF', 'CNC', 'Laser', None(exclusive in DWC)]
+                "status": None,
+            },
+            "storages": [{"mounted": 1, "path": "0:/"}],
+            "tools": tools
+        }
+
+    def get_status_new_full(self):
+        stats = {
+            "move": {
+                "currentMove": {},
+                "speedFactor": 0.,
+                "babystepZ": 0.,
+            },
+        }
+        return stats
+
+    def get_status_new(self):
+        states = {False: 0, True: 2}
+        stats = self.status_new
+
+        gcode_stats = self.gcode.get_status(0)
+        for name, axis in zip("xyz", stats["move"]["axes"]):
+            pos = gcode_stats['move_%spos' % name]
+            axis["machinePosition"] = pos
+            for index in axis['drives']:
+                stats["move"]["drives"][index]["position"] = pos
+        stats["move"]["currentMove"]["requestedSpeed"] = float("%.2f" % gcode_stats['speed'])
+        stats["move"]["speedFactor"] = float("%.2f" % gcode_stats['speed_factor'])
+        if self.babysteps:
+            stats["move"]["babystepZ"] = float("%.3f" % self.babysteps.babysteps)
+
+        heatbed = self.printer.lookup_object('heater_bed', None)
+        if heatbed:
+            temp, target = heatbed.get_temp(0)
+            stats["heat"]["beds"][0]["active"] = [target]
+
+        curr_extruder = self.toolhead.get_extruder()
+        if hasattr(curr_extruder, "get_heater"):
+            heater = curr_extruder.get_heater()
+            if heater.min_extrude_temp_disabled:
+                cold_temp = .0
+            else:
+                cold_temp = heater.min_extrude_temp
+            stats["heat"]["coldExtrudeTemperature"] = \
+                stats["heat"]["coldRetractTemperature"] = cold_temp
+        for index, heater in enumerate(self.status_new_heaters):
+            temp, target = heater.get_temp(0)
+            hstat = stats["heat"]["heaters"][index]
+            hstat["current"] = float("%.2f" % temp)
+            hstat["state"] = states[(target > 0.0)]
+        for index, extr in enumerate(self.extruders):
+            temp, target = extr.get_heater().get_temp(0)
+            stats["tools"][index]["active"] = [target]
+            for drv_idx in stats["move"]["extruders"][index]["drives"]:
+                stats["move"]["drives"][drv_idx]["position"] = extr.extrude_pos
+
+        fans_all = self.printer.lookup_objects("fan")
+        for name, fan in fans_all:
+            stats["fans"][fan.get_index()]["value"] = fan.last_fan_value * 100.0
+
+        atx_pwr = self.printer.lookup_object('atx_power', None)
+        if atx_pwr is not None:
+            stats["state"]["atxPower"] = int(atx_pwr.get_state())
+        stats["state"]["status"] = self._map_state()
+        stats["state"]["currentTool"] = curr_extruder.get_index()
+
+        # SD progress
+        if self.sd is not None and self.curr_state in ['P', 'S']:
+            progress = self.sd.get_progress()
+            current_time = time.time()
+            printing_time = current_time - self.print_start_time
+
+            remaining_time_file = 0
+            # 1) based on file progress
+            if 0 < progress < 1.0:
+                remaining_time_file = (printing_time / progress) - printing_time
+            elif progress == 1.:
+                # keep progress ongoing until print is end
+                remaining_time_file = 1
+
+            stats["job"].update({
+                "filePosition": self.sd.file_position,
+                #"extrudedRaw": [float("%0.1f" % e.raw_filament)
+                #    for e in self.extruders],
+                "duration": int(printing_time + .5),
+                "layerTime": int(current_time - self.last_print_layer_change + .5),
+                # "layers": [],
+                "timesLeft": {
+                    "file": int(remaining_time_file),
+                    "filament": None,
+                    "layer": None,
+                },
+                "fractionPrinted": float("%.1f" % progress),
+            })
+        return stats
+
 
 def load_config(config):
     return GuiStats(config)

@@ -160,7 +160,7 @@ class PrinterExtruder:
             return (self.instant_corner_v / abs(diff_r))**2
         return move.max_cruise_v2
     def move(self, print_time, move):
-        self.raw_filament += move.axes_d[3]
+        self.raw_filament += move.axes_d[3] / self.extrude_factor
         axis_r = move.axes_r[3]
         accel = move.accel * axis_r
         start_v = move.start_v * axis_r
@@ -231,7 +231,7 @@ class DummyExtruder:
             return 100.
         return 1.
     def get_index(self):
-        return -99
+        return -1
     def get_max_e_limits(self):
         return {'stepper': None, 'max_e_dist': 0, 'acc': 0, 'velocity': 0}
 

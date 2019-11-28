@@ -18,12 +18,14 @@ def analyse_gcode_file(filepath):
         "firstLayerHeight": 0,
         "filament" : [],
         "buildTime" : 0,
+        "size": 0.,
     }
     if filepath is None:
         return info
     absolute_coord = True
     last_position = .0
     try:
+        info["size"] = os.path.getsize(filepath)
         with open(filepath, 'rb') as f:
             f.seek(0, os.SEEK_END)
             fsize = f.tell()
