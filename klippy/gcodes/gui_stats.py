@@ -711,7 +711,7 @@ class GuiStats:
             _fans = []
             tool_fan = extr.get_tool_fan()
             if tool_fan:
-                fans.append(tool_fan.get_index())
+                _fans.append(tool_fan.get_index())
             tools.append({
                 "number": index,
                 "active": [0], "standby": [0], "heaters": [index + heatbed_add],
