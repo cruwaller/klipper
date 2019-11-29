@@ -535,7 +535,7 @@ class LogFileHandler(tornado.web.StaticFileHandler):
         raise tornado.web.HTTPError(405)
 
 
-class HeightmapFileHandler(tornado.web.StaticFileHandler):
+class HeightmapFileHandler(tornado.web.RequestHandler):
     def get(self, path, include_body=True):
         bed_mesh = _PARENT.printer.lookup_object('bed_mesh', None)
         calibrate = getattr(bed_mesh, "calibrate", None)
@@ -659,7 +659,8 @@ class RepRapGuiModule(object):
         self.lock = threading.Lock()
         self.lock_resps = threading.Lock()
         self.reactor = self.printer.get_reactor()
-        self.mutex = self.reactor.mutex()
+        # self.mutex = self.reactor.mutex()
+        # Register events
         printer.register_event_handler('klippy:config_ready', self._config_ready)
         printer.register_event_handler("klippy:disconnect", self._shutdown)
         # Read config
@@ -681,23 +682,21 @@ class RepRapGuiModule(object):
         self.logger.debug("html root: %s" % (htmlroot,))
         self.user = config.get('user', '')
         self.passwd = config.get('password', '')
+        # ------------------------------
         # - M80 / M81 ATX commands
         self.atx_state = self.atx_off = None
         self.atx_on = config.get('atx_cmd_on', default=None)
         if self.atx_on:
             self.atx_off = config.get('atx_cmd_off')
             self.atx_state = False
-        self.popup = ''
-        self.message = ''
-        self.beep = 0
         # ------------------------------
+        # Create paths to virtual SD
         def create_dir(_dir):
             try:
                 os.makedirs(_dir)
             except OSError as e:
                 if e.errno != errno.EEXIST:
                     raise Exception("Cannot create directory: '%s'" % (_dir,))
-        # Create paths to virtual SD
         sd = printer.try_load_module(config, "virtual_sdcard")
         self.sd_path = sdcard_dirname = sd.sdcard_dirname
         create_dir(os.path.join(sdcard_dirname, "gcodes"))
@@ -710,6 +709,12 @@ class RepRapGuiModule(object):
         printer.try_load_module(config, "analyse_gcode", folder="modules")
         self.gui_stats = printer.try_load_module(config, 'gui_stats',
                                                  folder='gcodes')
+        # ------------------------------
+        fd_r, self.pipe_write = os.pipe() # Change to PTY ?
+        self.gcode.register_fd(fd_r)
+        self.gcode.write_resp = self.gcode_resp_handler
+        # Disable auto temperature reporting
+        self.printer_write("AUTO_TEMP_REPORT AUTO=0", resp=False)
         # ------------------------------
         # Start tornado webserver
         if _TORNADO_THREAD is None or not _TORNADO_THREAD.isAlive():
@@ -733,8 +738,7 @@ class RepRapGuiModule(object):
                     (r"/machine/file/(.*"+KLIPPER_LOG_NAME+")", LogFileHandler,
                         {"path": os.path.dirname(log_file),
                             "default_filename": os.path.basename(log_file)}),
-                    (r"/machine/file/.*(heightmap.csv)", HeightmapFileHandler,
-                        {"path": sdcard_dirname}),
+                    (r"/machine/file/.*(heightmap.csv)", HeightmapFileHandler),
                     (r"/machine/file/(.*)", FileCommandHandler,
                         {"path": sdcard_dirname}),
                     (r"/machine/code", GcodeCommandHandler),
@@ -742,10 +746,12 @@ class RepRapGuiModule(object):
                     (r"/machine/directory/(.*)", GetDirectoryHandler),
                     (r"/machine", WebSocketHandler),
                 ])
-            # DWC polling API support and static file serving
+            else:
+                # DWC polling API support and static file serving
+                app_urls.append(
+                    (r"/(rr_.*)", rrHandler, {"sd_path": sdcard_dirname}),)
+            # Generic file serving
             app_urls.extend([
-                tornado.web.url(r'/login', LoginHandler, name="login"),
-                tornado.web.url(r'/logout', LogoutHandler, name="logout"),
                 tornado.web.url(r"/(.*\.ico)", tornado.web.StaticFileHandler,
                                 {"path": htmlroot}),
                 tornado.web.url(r"/(.*\.xml)", tornado.web.StaticFileHandler,
@@ -756,31 +762,23 @@ class RepRapGuiModule(object):
                                 {"path": os.path.join(htmlroot, "js")}),
                 tornado.web.url(r"/css/(.*)", tornado.web.StaticFileHandler,
                                 {"path": os.path.join(htmlroot, "css")}),
-                tornado.web.url(r"/(rr_.*)", rrHandler, {"sd_path": sdcard_dirname}),
+                tornado.web.url(r'/login', LoginHandler, name="login"),
+                tornado.web.url(r'/logout', LogoutHandler, name="logout"),
                 tornado.web.url(r"/(.*)", MainHandler,
                                 {"file": os.path.join(htmlroot, dwc_htm)},
                                 name="main"),
             ])
-            application = tornado.web.Application(
-                app_urls,
+            application = tornado.web.Application(app_urls,
                 cookie_secret=cookie_secret,
                 log_function=self.__Tornado_LoggerCb,
                 login_url = "/login",
                 xsrf_cookies = False)
-
             # Put tornado to background thread
             thread = threading.Thread(target=self.__Tornado_execute,
                                       args=(config, application))
             thread.daemon = True
             thread.start()
             _TORNADO_THREAD = thread
-        # ------------------------------
-        fd_r, self.pipe_write = os.pipe() # Change to PTY ?
-        self.gcode.register_fd(fd_r)
-        self.gcode.write_resp = self.gcode_resp_handler
-        # Disable auto temperature reporting
-        self.printer_write("AUTO_TEMP_REPORT AUTO=0", resp=False)
-        # ------------------------------
     def __del__(self):
         self._shutdown()
     def __Tornado_LoggerCb(self, req):
@@ -813,7 +811,6 @@ class RepRapGuiModule(object):
         self.ioloop = tornado.ioloop.IOLoop.current()
         self.ioloop.start()
         self.logger.warning("server stopped!")
-
     def _config_ready(self):
         if self.dwc2:
             self.reactor.register_timer(self._status_update, self.reactor.NOW)
@@ -846,10 +843,11 @@ class RepRapGuiModule(object):
 
     def __gcode_parse(self, gcodes):
         gcodes = gcodes.strip().replace("0:/", "") # clean gcode request
-        gcodes = [gcode for gcode in gcodes.split("\n")]
+        gcodes = [gcode.strip() for gcode in gcodes.split("\n")]
         out = []
         for gcode in gcodes:
             if gcode.startswith(";"):
+                # ignore comments
                 continue
             if "M80" in gcode and self.atx_on is not None:
                 # ATX ON
@@ -874,6 +872,10 @@ class RepRapGuiModule(object):
     def printer_write(self, cmd, resp=True):
         cmd = self.__gcode_parse(cmd)
         if not cmd:
+            with self.lock:
+                self.store_resp = resp
+                self.resp_rcvd = False
+                self.resp_cnt = 1
             self.gcode_resp_handler("ok")
         self.logger.debug("gcode send: '%s'" % (repr(cmd),))
         with self.lock:
@@ -884,9 +886,6 @@ class RepRapGuiModule(object):
     def send_gcode_from_handler_async(self, gcode):
         self.printer_write(gcode)
     def send_gcode_from_handler_sync(self, gcode):
-        gcode = self.__gcode_parse(gcode)
-        if not gcode:
-            return "ok"
         self.printer_write(gcode)
         while not self.resp_rcvd:
             time.sleep(0.1)

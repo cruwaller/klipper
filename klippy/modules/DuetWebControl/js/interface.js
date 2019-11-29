@@ -674,7 +674,7 @@ $("#div_tools_heaters div.panel-heading div.dropdown").on("click", ".heater-temp
 $("#page_settings").on("click", ".btn-select-tool", function(e) {
 	var tool = $(this).closest("div.panel-body").data("tool");
 	if (lastStatusResponse != undefined && lastStatusResponse.currentTool == tool) {
-		changeTool(-1);
+		//changeTool(-1);
 	} else {
 		changeTool(tool);
 	}
@@ -885,7 +885,7 @@ $("#table_tools").on("click", "tr > th:first-child > a", function(e) {
 	} else {
 		// Either activate or deactivate tool
 		if (tool == currentTool) {
-			changeTool(-1);
+			//changeTool(-1);
 		} else {
 			changeTool(tool);
 		}
@@ -1749,7 +1749,7 @@ function cbHeaterClick(e) {
 					sendGCode("M104 P" + tool + "S" + sParam + " R" + rParam);			// Turn off clicked heater
 					break;
 				case 2:	// Active
-					changeTool(-1);														// Deselect current tool
+					//changeTool(-1);														// Deselect current tool
 					break;
 				case 3:	// Fault
 					showMessage("danger", T("Heater Fault"), T("<strong>Error:</strong> A heater fault has occured on this particular heater.<br/><br/>Please turn off your machine and check your wiring for loose connections."));
@@ -1803,7 +1803,7 @@ function cbHeaterClick(e) {
 				});
 
 				if (hasToolSelected) {
-					changeTool(-1);
+					//changeTool(-1);
 					$(this).blur();
 				} else if (tools.length == 1) {
 					if (lastStatusResponse.temps.state[heater] == 1) {

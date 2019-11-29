@@ -15,6 +15,7 @@ class GuiStats:
         self.sd = printer.try_load_module(config, "virtual_sdcard")
         printer.try_load_module(config, "analyse_gcode", folder="modules")
         # variables
+        self.bed_mesh = None
         self.toolhead = None
         self.starttime = time.time()
         self.curr_state = 'O'
@@ -98,6 +99,7 @@ class GuiStats:
 
     def _config_ready(self):
         self.toolhead = self.printer.lookup_object('toolhead')
+        self.bed_mesh = self.printer.lookup_object('bed_mesh', None)
         self.extruders = []
         for i in range(99):
             section = 'extruder'
@@ -591,6 +593,7 @@ class GuiStats:
         return maper.get(self.curr_state)
 
     status_new = {}
+    status_new_update = {}
     status_new_heaters = []
     def status_new_reset(self):
         self.status_new_heaters = []
@@ -598,7 +601,6 @@ class GuiStats:
         version = self.printer.get_start_arg('software_version', 'Unknown')
 
         fans_all = self.printer.lookup_objects("fan")
-        self.logger.info("fans_all: %s" % fans_all)
         fans = [0] * len(fans_all)
         for name, fan in fans_all:
             fans[fan.get_index()] = {
@@ -606,11 +608,6 @@ class GuiStats:
                 "value": fan.last_fan_value,
                 "min": 0,
                 "max": fan.max_power,
-                "thermostatic": {
-                    "control":     0,
-                    "heaters":     [],
-                    "temperature": 0,
-                },
             }
         for name, fan in self.printer.lookup_objects("heater_fan"):
             heater_idx = []
@@ -622,32 +619,36 @@ class GuiStats:
                 "value": fan.fan.last_fan_value,
                 "min": 0,
                 "max": fan.fan.max_power,
-                #"thermostatic": {
-                #    "control": 1,
-                #    "heaters": [heater_idx],
-                #    "temperature": 0,
-                #},
+                "thermostatic": {
+                    "control": 1,
+                    "heaters": [heater_idx],
+                    "temperature": 0,
+                },
             })
-        self.logger.info("fans: %s" % fans)
 
         axes = [
             {"letter": "X", "drives": [], "homed": 0, "machinePosition": 0},
             {"letter": "Y", "drives": [], "homed": 0, "machinePosition": 0},
             {"letter": "Z", "drives": [], "homed": 0, "machinePosition": 0},
         ]
-        drives = [{}]
+        drives = []
         geometry = {"type": self.geometry}
         kinematic = self.toolhead.get_kinematics()
         if self.geometry == 'delta':
             params = kinematic.get_calibrate_params()
+            angleCorrections = [a - d for a, d in zip(
+                [params['angle_'+axis] for axis in 'abc'], [210., 330., 90.])]
+            endstops = [params['endstop_'+axis] for axis in 'abc']
+            min_endstop = min(endstops)
+            endstopAdjustments = [min_endstop - e_pos for e_pos in endstops]
             geometry.update({
                 # "anchors": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 "printRadius": params['radius'],
                 "diagonals": [params['arm_'+axis] for axis in 'abc'],
                 "radius": params['radius'],
                 "homedHeight": math.sqrt(kinematic.max_xy2),
-                # "angleCorrections": [0.0, 0.0, 0.0],
-                # "endstopAdjustments": [0.0, 0.0, 0.0],
+                "angleCorrections": angleCorrections,
+                "endstopAdjustments": endstopAdjustments,
                 # "tilt": [0.0, 0.0],
             })
         for index, limit in enumerate(kinematic.get_max_limits()):
@@ -701,24 +702,24 @@ class GuiStats:
             temp, target = heater.get_temp(0)
             heaters.append({
                 "current": float("%.2f" % temp),
-                "name":    extr.name, #heater.get_name(),
+                "name":    extr.name, # heater.get_name(),
                 "state":   states[(target > 0.0)],
                 "max":     heater.max_temp})
             extruders.append({
                 "drives": [len(drives)],
                 "factor": extr.get_extrude_factor(),
             })
-            _fans = []
+            _tool_fans = []
             tool_fan = extr.get_tool_fan()
             if tool_fan:
-                _fans.append(tool_fan.get_index())
+                _tool_fans.append(tool_fan.get_index())
             tools.append({
                 "number": index,
                 "active": [0], "standby": [0], "heaters": [index + heatbed_add],
                 "extruders": [index],
                 "name": extr.name,
                 "filamentExtruder": None,
-                "fans": _fans,
+                "fans": _tool_fans,
             })
 
             limits = extr.get_max_e_limits()
@@ -838,8 +839,13 @@ class GuiStats:
             "storages": [{"mounted": 1, "path": "0:/"}],
             "tools": tools
         }
+        self.status_new_update = {
 
-    def get_status_new_full(self):
+        }
+
+    def get_status_new_update(self):
+        if not self.status_new_update:
+            return None
         stats = {
             "move": {
                 "currentMove": {},
@@ -863,6 +869,10 @@ class GuiStats:
         stats["move"]["speedFactor"] = float("%.2f" % gcode_stats['speed_factor'])
         if self.babysteps:
             stats["move"]["babystepZ"] = float("%.3f" % self.babysteps.babysteps)
+        if self.bed_mesh is not None and self.bed_mesh.z_mesh:
+            stats["move"]["compensation"] = "Mesh"
+        else:
+            stats["move"]["compensation"] = "None"
 
         heatbed = self.printer.lookup_object('heater_bed', None)
         if heatbed:

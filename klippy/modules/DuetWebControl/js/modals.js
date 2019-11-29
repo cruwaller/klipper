@@ -463,12 +463,12 @@ function showMessageBox(message, title, mode, timeout, controls) {
 
 $("#btn_ack_messagebox").click(function() {
 	$("#modal_messagebox").modal("hide");
-	sendGCode("M292");
+	//sendGCode("M292");
 });
 
 $("#btn_cancel_messagebox").click(function() {
 	$("#modal_messagebox").modal("hide");
-	sendGCode("M292 P1");
+	//sendGCode("M292 P1");
 });
 
 $('#modal_messagebox').on("hide.bs.modal", function() {
