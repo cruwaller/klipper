@@ -116,7 +116,8 @@ class VirtualSD:
             self.gcode.run_script_from_command("TURN_OFF_HEATERS\nM84")
         elif self.toolhead is not None:
             self.gcode.run_script_from_command("M84")
-        self.printer.send_event('vsd:status', 'stop')
+        if self.current_file is not None:
+            self.printer.send_event('vsd:status', 'stop')
     cmd_M20_when_not_ready = True
     def cmd_M20(self, params):
         # List SD card
