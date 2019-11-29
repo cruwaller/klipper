@@ -177,26 +177,6 @@ class rrHandler(BaseHandler):
                 respdata['params']['atxPower'] = int(self.parent.atx_state)
             respdata['seq'] = (len(self.parent.gcode_resps) +
                                len(self.parent.gcode_resps_async))
-            #if self.parent.popup or self.parent.message or self.parent.beep:
-            respdata["output"] = {}
-            if self.parent.popup:
-                respdata["output"]["msgBox"] = {
-                        "mode": 1, # 1 = close, 2 = ok, 3 = cancel
-                        "title": "Oops. " + str(time.time()),
-                        "msg": self.parent.popup,
-                        "timeout": 10000,
-                        "controls": 1,
-                    }
-                self.parent.popup = ''
-            if self.parent.message:
-                respdata["output"]["message"] = self.parent.message
-                self.parent.message = ''
-            if self.parent.beep:
-                respdata["output"].update({
-                    "beepFrequency": self.parent.beep,
-                    "beepDuration": 5,
-                })
-                self.parent.beep = 0
 
         # rr_gcode?gcode=XXX
         elif "rr_gcode" in path:
@@ -648,7 +628,7 @@ class RepRapGuiModule(object):
         self.printer = printer = config.get_printer()
         self.logger = printer.get_logger("DWC")
         self.logger_tornado = self.logger.getChild("tornado")
-        self.logger_tornado.setLevel(logging.DEBUG)
+        self.logger_tornado.setLevel(logging.INFO)
         self.gcode = printer.lookup_object('gcode')
         self.resp = ""
         self.resp_rcvd = False
