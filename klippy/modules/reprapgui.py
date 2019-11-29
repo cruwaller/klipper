@@ -125,72 +125,6 @@ class LogoutHandler(BaseHandler):
         self.clear_cookie("user")
         self.redirect(self.get_argument("next", self.reverse_url("main")))
 
-class JpegHandler(tornado.web.RequestHandler):
-    camera = logger = None
-    def initialize(self, camera):
-        self.camera = camera
-    @tornado.web.asynchronous
-    @tornado.gen.coroutine
-    def get(self):
-        if self.camera is None:
-            self.write("No camera available")
-            return
-        self.set_header(
-            'Cache-Control',
-            'no-store, no-cache, must-revalidate, '
-            'pre-check=0, post-check=0, max-age=0')
-        self.set_header('Connection', 'close')
-        self.set_header('Content-Type',
-                        'multipart/x-mixed-replace;boundary=--boundarydonotcross')
-        self.set_header('Expires', 'Mon, 3 Jan 2000 12:34:56 GMT')
-        self.set_header('Pragma', 'no-cache')
-
-        img = self.camera.get_frame()
-        self.write("--boundarydonotcross\n")
-        self.write("Content-type: image/jpeg\r\n")
-        self.write("Content-length: %s\r\n\r\n" % len(img))
-        self.write(str(img))
-
-
-class JpegStreamHandler(tornado.web.RequestHandler):
-    camera = interval = logger = None
-    def initialize(self, camera, interval):
-        self.camera = camera
-        self.interval = interval
-    @tornado.web.asynchronous
-    @tornado.gen.coroutine
-    def get(self):
-        if self.camera is None:
-            self.write("No camera available")
-            return
-        self.set_header(
-            'Cache-Control',
-            'no-store, no-cache, must-revalidate, '
-            'pre-check=0, post-check=0, max-age=0')
-        self.set_header('Connection', 'close')
-        self.set_header('Content-Type',
-                        'multipart/x-mixed-replace;boundary=--boundarydonotcross')
-        self.set_header('Expires', 'Mon, 3 Jan 2000 12:34:56 GMT')
-        self.set_header('Pragma', 'no-cache')
-
-        ioloop = tornado.ioloop.IOLoop.current()
-        served_image_timestamp = time.time()
-        my_boundary = "--boundarydonotcross\n"
-        while True:
-            img = self.camera.get_frame()
-            if served_image_timestamp + self.interval < time.time():
-                self.write(my_boundary)
-                self.write("Content-type: image/jpeg\r\n")
-                self.write("Content-length: %s\r\n\r\n" % len(img))
-                self.write(str(img))
-                served_image_timestamp = time.time()
-                yield tornado.gen.Task(self.flush)
-                if not self.interval:
-                    break
-            else:
-                yield tornado.gen.Task(ioloop.add_timeout,
-                                       ioloop.time() + self.interval)
-
 
 @tornado.web.stream_request_body
 class rrHandler(BaseHandler):
@@ -747,10 +681,6 @@ class RepRapGuiModule(object):
         self.logger.debug("html root: %s" % (htmlroot,))
         self.user = config.get('user', '')
         self.passwd = config.get('password', '')
-        # Camera information
-        self.feed_interval = config.getfloat('feedrate', minval=.0, default=.1)
-        self.camera = printer.try_load_module(
-            config, "videocam", folder="modules")
         # - M80 / M81 ATX commands
         self.atx_state = self.atx_off = None
         self.atx_on = config.get('atx_cmd_on', default=None)
@@ -827,10 +757,6 @@ class RepRapGuiModule(object):
                 tornado.web.url(r"/css/(.*)", tornado.web.StaticFileHandler,
                                 {"path": os.path.join(htmlroot, "css")}),
                 tornado.web.url(r"/(rr_.*)", rrHandler, {"sd_path": sdcard_dirname}),
-                tornado.web.url(r"/jpeg", JpegHandler, {"camera": self.camera}),
-                tornado.web.url(r"/video", JpegStreamHandler,
-                                {"camera": self.camera,
-                                    "interval": self.feed_interval}),
                 tornado.web.url(r"/(.*)", MainHandler,
                                 {"file": os.path.join(htmlroot, dwc_htm)},
                                 name="main"),
