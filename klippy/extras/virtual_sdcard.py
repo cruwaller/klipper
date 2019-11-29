@@ -21,7 +21,7 @@ class VirtualSD:
         self.file_position = self.file_size = 0
         # Work timer
         self.reactor = printer.get_reactor()
-        self.must_pause_work = False
+        self.must_pause_work = self.cmd_from_sd = False
         self.work_timer = None
         # Register commands
         self.gcode = printer.lookup_object('gcode')
@@ -103,7 +103,7 @@ class VirtualSD:
     def do_pause(self):
         if self.work_timer is not None:
             self.must_pause_work = True
-            while self.work_timer is not None:
+            while self.work_timer is not None and not self.cmd_from_sd:
                 self.reactor.pause(self.reactor.monotonic() + .001)
             self.printer.send_event('vsd:status', 'pause')
     # G-Code commands
@@ -263,6 +263,7 @@ class VirtualSD:
                 self.reactor.pause(self.reactor.monotonic() + 0.100)
                 continue
             # Dispatch command
+            self.cmd_from_sd = True
             try:
                 self.gcode.run_script(lines[-1])
             except self.gcode.error as e:
@@ -273,9 +274,11 @@ class VirtualSD:
             except:
                 self.logger.exception("virtual_sdcard dispatch")
                 break
+            self.cmd_from_sd = False
             self.file_position += len(lines.pop()) + 1
         self.logger.info("Exiting SD card print (position %d)", self.file_position)
         self.work_timer = None
+        self.cmd_from_sd = False
         return self.reactor.NEVER
 
 def load_config(config):
