@@ -2,6 +2,7 @@
 
 import time, util, json, math
 import os
+import random
 
 
 class GuiStats:
@@ -687,6 +688,7 @@ class GuiStats:
         tools = []
         extruders = []
         if heatbed is not None:
+            heatbed.dwc_index = len(self.status_new_heaters)
             self.status_new_heaters.append(heatbed)
             temp, target = heatbed.get_temp(0)
             beds.append({"active": [10], "standby": [0], "heaters": [0]})
@@ -698,13 +700,18 @@ class GuiStats:
 
         for index, extr in enumerate(self.extruders):
             heater = extr.get_heater()
-            self.status_new_heaters.append(heater)
-            temp, target = heater.get_temp(0)
-            heaters.append({
-                "current": float("%.2f" % temp),
-                "name":    extr.name, # heater.get_name(),
-                "state":   states[(target > 0.0)],
-                "max":     heater.max_temp})
+            # heater_index = heater.get_index() + heatbed_add
+            if heater not in self.status_new_heaters:
+                heater.dwc_index = heater_index = len(self.status_new_heaters)
+                self.status_new_heaters.append(heater)
+                temp, target = heater.get_temp(0)
+                heaters.append({
+                    "current": float("%.2f" % temp),
+                    "name":    "HEATER %s" % heater.get_name(),
+                    "state":   states[(target > 0.0)],
+                    "max":     heater.max_temp})
+            else:
+                heater_index = heater.dwc_index
             extruders.append({
                 "drives": [len(drives)],
                 "factor": extr.get_extrude_factor(),
@@ -715,7 +722,7 @@ class GuiStats:
                 _tool_fans.append(tool_fan.get_index())
             tools.append({
                 "number": index,
-                "active": [0], "standby": [0], "heaters": [index + heatbed_add],
+                "active": [0], "standby": [0], "heaters": [heater_index],
                 "extruders": [index],
                 "name": extr.name,
                 "filamentExtruder": None,
@@ -743,6 +750,7 @@ class GuiStats:
         chambers = []
         chamber = self.printer.lookup_object('chamber', default=None)
         if chamber is not None:
+            chamber.heater.dwc_index = len(self.status_new_heaters)
             self.status_new_heaters.append(chamber.heater)
             temp, target = chamber.get_temp(0)
             heaters.append({
@@ -753,6 +761,7 @@ class GuiStats:
 
         cabinet = self.printer.lookup_object('cabinet', default=None)
         if cabinet is not None:
+            cabinet.heater.dwc_index = len(self.status_new_heaters)
             self.status_new_heaters.append(cabinet.heater)
             temp, target = cabinet.get_temp(0)
             heaters.append({
@@ -889,10 +898,14 @@ class GuiStats:
             stats["heat"]["coldExtrudeTemperature"] = \
                 stats["heat"]["coldRetractTemperature"] = cold_temp
         for index, heater in enumerate(self.status_new_heaters):
+            index = heater.dwc_index
             temp, target = heater.get_temp(0)
+            # temp *= random.randrange(1, 4, 1)
             hstat = stats["heat"]["heaters"][index]
             hstat["current"] = float("%.2f" % temp)
             hstat["state"] = states[(target > 0.0)]
+            self.logger.info("Heater: %s, index %s: stats: %s" % (
+                heater.get_name(), index, hstat))
         for index, extr in enumerate(self.extruders):
             temp, target = extr.get_heater().get_temp(0)
             stats["tools"][index]["active"] = [target]
