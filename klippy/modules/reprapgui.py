@@ -443,11 +443,11 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
         logging.debug("Client left")
         connections.remove(self)
     def send_status_update(self, status=None):
-        if self._wait_ack:
-            return
+        #if self._wait_ack:
+        #    return
         if status is None:
             status = json.dumps(_PARENT.gui_stats.get_status_new())
-        self._wait_ack = True
+        #self._wait_ack = True
         self.send_message(status)
 
 
@@ -624,7 +624,6 @@ class RepRapGuiModule(object):
         global _TORNADO_THREAD
         global _PARENT
         _PARENT = self
-        self.ioloop = self.http_server = None
         self.printer = printer = config.get_printer()
         self.logger = printer.get_logger("DWC")
         self.logger_tornado = self.logger.getChild("tornado")
@@ -697,7 +696,8 @@ class RepRapGuiModule(object):
         self.printer_write("AUTO_TEMP_REPORT AUTO=0", resp=False)
         # ------------------------------
         # Start tornado webserver
-        if _TORNADO_THREAD is None or not _TORNADO_THREAD.isAlive():
+        #if not tornado.ioloop.IOLoop.initialized():
+        if True:
             try:
                 with open(os.path.join(sdcard_dirname, ".cookie"), "rb") as _f:
                     cookie_secret = _f.readline().strip()
@@ -758,7 +758,6 @@ class RepRapGuiModule(object):
                                       args=(config, application))
             thread.daemon = True
             thread.start()
-            _TORNADO_THREAD = thread
     def __del__(self):
         self._shutdown()
     def __Tornado_LoggerCb(self, req):
@@ -784,23 +783,28 @@ class RepRapGuiModule(object):
         self.logger.info("Server port %s (SSL %s)" % (
             port, ssl_options is not None))
 
-        self.http_server = tornado.httpserver.HTTPServer(
+        http_server = tornado.httpserver.HTTPServer(
             application, ssl_options=ssl_options,
             max_buffer_size=MAX_STREAMED_SIZE)
-        self.http_server.listen(port)
-        self.ioloop = tornado.ioloop.IOLoop.current()
-        self.ioloop.start()
-        self.logger.warning("server stopped!")
+        http_server.listen(port)
+        ioloop = tornado.ioloop.IOLoop.current()
+        ioloop.klipper_http_server = http_server
+        try:
+            ioloop.start()
+            self.logger.warning("server stopped!")
+        except RuntimeError:
+            pass
     def _config_ready(self):
         if self.dwc2:
             self.reactor.register_timer(self._status_update, self.reactor.NOW)
     def _shutdown(self):
-        if self.ioloop:
-            self.ioloop.stop()
-            self.ioloop = None
-        if self.http_server:
-            self.http_server.stop()
-            self.http_server = None
+        with self.lock:
+            self.pipe_write = None
+        ioloop = tornado.ioloop.IOLoop.current()
+        http_server = getattr(ioloop, "klipper_http_server", None)
+        if http_server is not None:
+            http_server.stop()
+            ioloop.klipper_http_server = None
     def _status_update(self, eventtime): # DWC2 only
         status = dict(_PARENT.gui_stats.get_status_new())
         resps = self.get_gcode_async_resps()
@@ -816,8 +820,9 @@ class RepRapGuiModule(object):
         if self.atx_on is not None:
             status["state"]["atxPower"] = int(self.atx_state)
         status = json.dumps(status)
+        ioloop = tornado.ioloop.IOLoop.current()
         for client in connections:
-            self.ioloop.add_callback(
+            ioloop.add_callback(
                 functools.partial(client.send_status_update, status))
         return eventtime + .25
 
@@ -862,7 +867,8 @@ class RepRapGuiModule(object):
             self.store_resp = resp
             self.resp_rcvd = False
             self.resp_cnt = cmd.count("\n") + 1
-            os.write(self.pipe_write, "%s\n" % cmd)
+            if self.pipe_write is not None:
+                os.write(self.pipe_write, "%s\n" % cmd)
     def send_gcode_from_handler_async(self, gcode):
         self.printer_write(gcode)
     def send_gcode_from_handler_sync(self, gcode):
