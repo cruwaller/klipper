@@ -174,7 +174,8 @@ class rrHandler(BaseHandler):
             respdata.update(self.parent.gui_stats.get_status_stats(_type))
             if self.parent.atx_state is not None:
                 # update ATX power state
-                respdata['params']['atxPower'] = int(self.parent.atx_state)
+                if "params" in respdata:
+                    respdata['params']['atxPower'] = int(self.parent.atx_state)
             respdata['seq'] = (len(self.parent.gcode_resps) +
                                len(self.parent.gcode_resps_async))
 
