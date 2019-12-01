@@ -644,6 +644,7 @@ class RepRapGuiModule(object):
         printer.register_event_handler('klippy:config_ready', self._config_ready)
         printer.register_event_handler("klippy:disconnect", self._shutdown)
         # Read config
+        dwc_rest_api = config.getboolean('dwc_rest_api', False)
         dwc2 = config.getboolean('dwc2', True)
         htmlroot = config.get('htmlroot',
                               ["DuetWebControl", "DuetWebControl2"][dwc2])
@@ -710,7 +711,7 @@ class RepRapGuiModule(object):
             log_file = printer.get_start_arg('logfile', "/tmp/klippy.log")
             cfg_file = printer.get_start_arg('config_file')
             app_urls = []
-            if self.dwc2:
+            if self.dwc2 and dwc_rest_api:
                 # DWC REST API support
                 app_urls.extend([
                     (r"/machine/file/(.*"+KLIPPER_CFG_NAME+")", ConfigFileHandler,
