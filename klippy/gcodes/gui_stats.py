@@ -904,8 +904,8 @@ class GuiStats:
             hstat = stats["heat"]["heaters"][index]
             hstat["current"] = float("%.2f" % temp)
             hstat["state"] = states[(target > 0.0)]
-            self.logger.info("Heater: %s, index %s: stats: %s" % (
-                heater.get_name(), index, hstat))
+            #self.logger.info("Heater: %s, index %s: stats: %s" % (
+            #    heater.get_name(), index, hstat))
         for index, extr in enumerate(self.extruders):
             temp, target = extr.get_heater().get_temp(0)
             stats["tools"][index]["active"] = [target]
