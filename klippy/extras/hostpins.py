@@ -123,7 +123,6 @@ class HostGpioOut:
         # GPIO.setup(channel, GPIO.OUT,
         #            pull_up_down=GPIO.PUD_OFF, initial=state)
         GPIO.setup(channel, GPIO.OUT, pull_up_down=GPIO.PUD_OFF)
-        self.__write(False)
         printer.register_event_handler("klippy:shutdown",
                                        self._handle_shutdown)
     def __write(self, state, force=False):
@@ -132,6 +131,8 @@ class HostGpioOut:
         GPIO.output(self.channel, bool(state) ^ self.invert)
     def _handle_shutdown(self):
         self.__write(self.shutdown_value, force=True)
+    def get_digital(self, *args):
+        return GPIO.input(self.channel) ^ self.invert
     def set_digital(self, print_time, value):
         self.__write(value)
     def set_pwm(self, print_time, value):

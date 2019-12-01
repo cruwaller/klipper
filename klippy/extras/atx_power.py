@@ -10,6 +10,8 @@ class AtxPower(object):
         pin_params = printer.lookup_object('pins').lookup_pin(
             config.get('pin'), can_invert=True)
         self.pin = pin_params['chip'].setup_pin('digital_out', pin_params)
+        if hasattr(self.pin, "get_digital"):
+            self.state = self.pin.get_digital()
         # Register gcode commands
         self.gcode = gcode = printer.lookup_object('gcode')
         for cmd in ['ATX_ON', 'ATX_OFF']:

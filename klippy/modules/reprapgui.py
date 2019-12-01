@@ -88,12 +88,12 @@ class LoginHandler(BaseHandler):
         <html>
         <head>
         <title>Please Log In</title>
-        </head>        
+        </head>
         <body>
         <form action="/login" method="POST">
             <p>Username: <input type="text" name="username" /><p>
             <p>Password: <input type="password" name="password" /><p>
-            <p><input type="submit" value="Log In" /></p>        
+            <p><input type="submit" value="Log In" /></p>
         </form>
         </body>
         </html>
@@ -644,7 +644,7 @@ class RepRapGuiModule(object):
         printer.register_event_handler('klippy:config_ready', self._config_ready)
         printer.register_event_handler("klippy:disconnect", self._shutdown)
         # Read config
-        dwc_rest_api = config.getboolean('dwc_rest_api', False)
+        dwc_rest_api = config.getboolean('dwc_rest_api', True)
         dwc2 = config.getboolean('dwc2', True)
         htmlroot = config.get('htmlroot',
                               ["DuetWebControl", "DuetWebControl2"][dwc2])
@@ -808,6 +808,10 @@ class RepRapGuiModule(object):
             http_server.stop()
             ioloop.klipper_http_server = None
     def _status_update(self, eventtime): # DWC2 only
+        global connections
+        _clients = connections
+        if not len(_clients):
+            return eventtime + .5
         status = dict(_PARENT.gui_stats.get_status_new())
         resps = self.get_gcode_async_resps()
         if resps:
@@ -822,11 +826,12 @@ class RepRapGuiModule(object):
         if self.atx_on is not None:
             status["state"]["atxPower"] = int(self.atx_state)
         status = json.dumps(status)
-        ioloop = tornado.ioloop.IOLoop.current()
-        for client in connections:
-            ioloop.add_callback(
-                functools.partial(client.send_status_update, status))
-        return eventtime + .25
+        #ioloop = tornado.ioloop.IOLoop.instance() # current()
+        for client in _clients:
+            client.send_status_update(status)
+            #ioloop.add_callback(
+            #    functools.partial(client.send_status_update, status))
+        return eventtime + .5
 
     def __gcode_parse(self, gcodes):
         gcodes = gcodes.strip().replace("0:/", "") # clean gcode request
