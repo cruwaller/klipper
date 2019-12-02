@@ -834,6 +834,12 @@ class GuiStats:
                 "idle": {"timeout": motor_off_time, "factor": .3},
                 "speedFactor": round(gcode_stats['speed_factor'], 2),
             },
+            "network": {
+                "hostname": "Klipper DWC",
+                "name": self.name,
+                "password": "reprap",
+                "interfaces": [], # class NetworkInterface
+            },
             "sensors": {
                 "endstops": [],
                 "probes": probes,
