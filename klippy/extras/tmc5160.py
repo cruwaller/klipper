@@ -244,6 +244,7 @@ class TMC5160CurrentHelper:
         gcode.register_mux_command(
             "SET_TMC_CURRENT", "STEPPER", self.name,
             self.cmd_SET_TMC_CURRENT, desc=self.cmd_SET_TMC_CURRENT_help)
+        self.printer.add_object('driver_current ' + self.name, self.get_current)
     def _calc_current_bits(self, current):
         cs = int(32. * current * self.sense_resistor * math.sqrt(2.) / VREF
                  - 1. + .5)
@@ -280,6 +281,8 @@ class TMC5160CurrentHelper:
         self.fields.set_field("IHOLD", ihold)
         val = self.fields.set_field("IRUN", irun)
         self.mcu_tmc.set_register("IHOLD_IRUN", val, print_time)
+    def get_current(self):
+        return self._calc_current_from_field("IRUN")
 
 
 ######################################################################

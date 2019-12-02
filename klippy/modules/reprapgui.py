@@ -844,15 +844,13 @@ class RepRapGuiModule(object):
                 continue
             if "M80" in gcode and self.atx_on is not None:
                 # ATX ON
-                resp = os.popen(self.atx_on).read()
+                resp = "ATX ON: %s" % os.popen(self.atx_on).read()
                 self.append_gcode_resp(resp)
-                self.logger.info("ATX ON: %s" % resp)
                 self.atx_state = True
             elif "M81" in gcode and self.atx_off is not None:
                 # ATX OFF
-                resp = os.popen(self.atx_off).read()
+                resp = "ATX OFF: %s" % os.popen(self.atx_off).read()
                 self.append_gcode_resp(resp)
-                self.logger.info("ATX OFF: %s" % resp)
                 self.atx_state = False
             elif "T-1" in gcode or "M292" in gcode or \
                     "M120" in gcode or "M121" in gcode:
@@ -870,7 +868,8 @@ class RepRapGuiModule(object):
                 self.resp_rcvd = False
                 self.resp_cnt = 1
             self.gcode_resp_handler("ok")
-        self.logger.debug("gcode send: '%s'" % (repr(cmd),))
+            return
+        self.logger.debug("gcode send: %s" % (repr(cmd),))
         with self.lock:
             self.store_resp = resp
             self.resp_rcvd = False
@@ -910,7 +909,7 @@ class RepRapGuiModule(object):
             return
         with self.lock_resps:
             if msg not in self.gcode_resps:
-                self.logger.debug("gcode resps: '%s'" % (repr(msg),))
+                self.logger.debug("gcode resps: %s" % (repr(msg),))
                 self.gcode_resps.append(msg)
     def get_gcode_resps(self):
         with self.lock_resps:
@@ -922,7 +921,7 @@ class RepRapGuiModule(object):
             return
         with self.lock_resps:
             if msg not in self.gcode_resps_async:
-                self.logger.debug("gcode resp (async): '%s'" % repr(msg))
+                self.logger.debug("gcode resp (async): %s" % repr(msg))
                 self.gcode_resps_async.append(msg)
     def get_gcode_async_resps(self):
         with self.lock_resps:

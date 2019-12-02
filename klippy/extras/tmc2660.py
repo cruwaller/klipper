@@ -153,6 +153,7 @@ class TMC2660CurrentHelper:
         gcode.register_mux_command(
             "SET_TMC_CURRENT", "STEPPER", self.name,
             self.cmd_SET_TMC_CURRENT, desc=self.cmd_SET_TMC_CURRENT_help)
+        self.printer.add_object('driver_current ' + self.name, self.get_current)
 
     def _calc_current_bits(self, current, vsense):
         vref = 0.165 if vsense else 0.310
@@ -196,6 +197,9 @@ class TMC2660CurrentHelper:
             self.set_current(
                 self.printer.lookup_object('toolhead').get_last_move_time(),
                 self.current)
+
+    def get_current(self):
+        return self.current
 
 
 ######################################################################

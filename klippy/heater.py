@@ -185,7 +185,10 @@ class HeaterProtect:
 
 class Heater:
     error = error
-    def get_name(self):
+    def get_name(self, short=True):
+        if not short and "bed" not in self.name:
+            if 'extruder' not in self.name:
+                return "heater %s" % self.name
         return self.name
     def get_index(self):
         return self.index

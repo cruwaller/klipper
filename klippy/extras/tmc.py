@@ -266,6 +266,10 @@ class TMCMicrostepHelper:
         mres = config.getchoice('microsteps', steps)
         self.fields.set_field("MRES", mres)
         self.fields.set_field("intpol", config.getboolean("interpolate", True))
+        config.get_printer().add_object('driver_microsteps ' +
+                                        config.get_name().split()[-1], self)
+    def get_interpolate(self):
+        return self.fields.get_field("intpol")
     def get_microsteps(self):
         return 256 >> self.fields.get_field("MRES")
     def get_phase(self):

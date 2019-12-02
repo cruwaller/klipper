@@ -663,17 +663,21 @@ class GuiStats:
                 steppers = limit.get('steppers', [])
             for stp in steppers:
                 axes[index]["drives"].append(len(drives))
-                current = None
+                current = microstepping = None
                 get_current = self.printer.lookup_object(
                     'driver_current ' + stp.get_name(), None)
                 if get_current is not None:
                     current = int(get_current() * 1000.)
+                microstep = self.printer.lookup_object(
+                    'driver_microsteps ' + stp.get_name(), None)
+                if microstep is not None:
+                    microstepping = {
+                        "value":        microstep.get_microsteps(),
+                        "interpolated": microstep.get_interpolate()
+                    }
                 drives.append({
                     "position": None,
-                    #"microstepping": {
-                    #    "value":        16,
-                    #    "interpolated": True,
-                    #},
+                    "microstepping": microstepping,
                     "current": current,
                     "acceleration": accel,
                     "minSpeed": 0,
@@ -692,7 +696,7 @@ class GuiStats:
             beds.append({"active": [10], "standby": [0], "heaters": [0]})
             heaters.append({
                 "current": round(temp, 1),
-                "name":    "BED",
+                "name":    heatbed.get_name(short=False),
                 "state":   HEATER_STATES[(target > 0.0)],
                 "max":     heatbed.max_temp})
 
@@ -704,7 +708,7 @@ class GuiStats:
                 temp, target = heater.get_temp(0)
                 heaters.append({
                     "current": round(temp, 1),
-                    "name":    "HEATER %s" % heater.get_name(),
+                    "name":    heater.get_name(short=False),
                     "state":   HEATER_STATES[(target > 0.0)],
                     "max":     heater.max_temp})
             else:
@@ -727,17 +731,21 @@ class GuiStats:
             })
 
             limits = extr.get_max_e_limits()
-            current = None
+            current = microstepping = None
             get_current = self.printer.lookup_object(
                 'driver_current ' + limits['stepper'].get_name(), None)
             if get_current is not None:
                 current = int(get_current() * 1000.)
+            microstep = self.printer.lookup_object(
+                'driver_microsteps ' + limits['stepper'].get_name(), None)
+            if microstep is not None:
+                microstepping = {
+                    "value": microstep.get_microsteps(),
+                    "interpolated": microstep.get_interpolate()
+                }
             drives.append({
                 "position":     extr.extrude_pos,
-                # "microstepping": {
-                #    "value":        16,
-                #    "interpolated": True,
-                # },
+                "microstepping": microstepping,
                 "current":      current,
                 "acceleration": int(limits['acc']),
                 "minSpeed":     0,
