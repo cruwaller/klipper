@@ -290,13 +290,13 @@ class rrHandler(BaseHandler):
                 try:
                     # current file printed
                     if sd.current_file is not None:
-                        path = sd.current_file.name
+                        name = sd.current_file.name
                     else:
                         raise AttributeError
                 except AttributeError:
-                    path = None
+                    name = None
             # info about the requested file
-            self.parent.get_file_info(path, respdata)
+            self.parent.get_file_info(name, respdata)
 
         # rr_move?old=XXX&new=YYY
         elif "rr_move" in path:
@@ -391,6 +391,7 @@ class rrHandler(BaseHandler):
                     # if file was klipper.cfg then rename temp file
                     os.rename(self.klipper_cfg[1], self.klipper_cfg[0])
 
+            file_crc32 = self.get_argument('crc32', None)
             size = int(self.request.headers['Content-Length'])
             if self.upload_bytes_written != size:
                 self.logger.error("upload size error: %s != %s" % (
@@ -431,8 +432,10 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
             self.write_message(msg) # yield ?
     def open(self):
         logging.debug("Client connected")
+        status = json.dumps(_PARENT.gui_stats.get_status_new(True),
+                            separators=(',', ':'))
+        self.send_status_update(status)
         connections.add(self)
-        self.send_status_update()
     def on_message(self, commands):
         if "PING" in commands:
             self.send_message("PONG\n")
@@ -443,12 +446,10 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
     def on_close(self):
         logging.debug("Client left")
         connections.remove(self)
-    def send_status_update(self, status=None):
-        #if self._wait_ack:
-        #    return
-        if status is None:
-            status = json.dumps(_PARENT.gui_stats.get_status_new())
-        #self._wait_ack = True
+    def send_status_update(self, status):
+        if self._wait_ack:
+            return
+        self._wait_ack = True
         self.send_message(status)
 
 
@@ -825,7 +826,7 @@ class RepRapGuiModule(object):
         # update atx status
         if self.atx_on is not None:
             status["state"]["atxPower"] = int(self.atx_state)
-        status = json.dumps(status)
+        status = json.dumps(status, separators=(',', ':'))
         #ioloop = tornado.ioloop.IOLoop.instance() # current()
         for client in _clients:
             client.send_status_update(status)

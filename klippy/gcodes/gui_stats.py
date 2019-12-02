@@ -2,8 +2,9 @@
 
 import time, util, json, math
 import os
-import random
 
+# STATES = 0: off, 1: standby, 2: active, 3: fault (same for bed)
+HEATER_STATES = {False: 0, 'standby': 1, True: 2, 'fault': 3}
 
 class GuiStats:
     def __init__(self, config):
@@ -186,6 +187,7 @@ class GuiStats:
             },
             "fractionPrinted": 0.,
         }
+        self.status_new_update["job"] = self.status_new["job"]
 
     def _layer_changed(self, change_time, layer, height, *args):
         #self.logger.debug("Layer changed cb: time %s, layer %s, h=%s" % (
@@ -399,8 +401,6 @@ class GuiStats:
         if self.toolhead is None or not status_block:
             return {"err": 1, "seq": 0}
         pheater = self.printer.lookup_object('heater')
-        # STATES = 0: off, 1: standby, 2: active, 3: fault (same for bed)
-        states = {False : 0, True  : 2}
         curr_extruder = self.toolhead.get_extruder()
         curr_pos = self.toolhead.get_position()
         fans = self.printer.lookup_objects("fan")
@@ -429,7 +429,7 @@ class GuiStats:
             "fanNames": [name for name, fan in fans],
             "speedFactor": self.gcode.speed_factor * 60. * 100.0,
             "extrFactors": [e.get_extrude_factor(procent=True) for e in _extrs],
-            "babystep":    float("%.3f" % babysteps),
+            "babystep":    round(babysteps, 3),
         })
 
         probe = self.printer.lookup_object('probe', None)
@@ -464,20 +464,20 @@ class GuiStats:
             htr = extr.get_heater()
             temp, target = htr.get_temp(0)
             index = index + heatbed_add
-            htr_current[index] = float("%.2f" % temp)
-            htr_state[index] = states[(target > 0.0)]
-            extr_states['active'].append([float("%.2f" % target)])
+            htr_current[index] = round(temp, 1)
+            htr_state[index] = HEATER_STATES[(target > 0.0)]
+            extr_states['active'].append([round(target, 1)])
         # Tools target temps
         status_block["temps"].update({'tools': extr_states})
 
         if heatbed is not None:
             temp, target = heatbed.get_temp(0)
-            htr_current[0] = float("%.2f" % temp)
-            htr_state[0] = states[(target > 0.0)]
+            htr_current[0] = round(temp, 2)
+            htr_state[0] = HEATER_STATES[(target > 0.0)]
             # Heatbed target temp
             status_block["temps"].update( {
                 "bed": {
-                    "active"  : float("%.2f" % target),
+                    "active"  : round(target, 2),
                     "heater"  : 0,
                 },
             } )
@@ -487,24 +487,24 @@ class GuiStats:
             current, target = chamber.get_temp(0)
             status_block["temps"].update( {
                 "chamber": {
-                    "active"  : float("%.2f" % target),
+                    "active"  : round(target, 2),
                     "heater"  : len(htr_current),
                 },
             } )
-            htr_current.append(float("%.2f" % current))
-            htr_state.append(states[chamber.is_fan_active()])
+            htr_current.append(round(current, 2))
+            htr_state.append(HEATER_STATES[chamber.is_fan_active()])
 
         cabinet = self.printer.lookup_object('cabinet', default=None)
         if cabinet is not None:
             current, target = cabinet.get_temp(0)
             status_block["temps"].update( {
                 "cabinet": {
-                    "active"  : float("%.2f" % target),
+                    "active"  : round(target, 2),
                     "heater"  : len(htr_current),
                 },
             } )
             htr_current.append(current)
-            htr_state.append(states[target > 0.0])
+            htr_state.append(HEATER_STATES[target > 0.0])
 
         status_block["temps"].update({
             "current" : htr_current,
@@ -544,7 +544,7 @@ class GuiStats:
                 stat['filePosition'] = self.sd.file_position
 
             # How much filament would have been printed without extrusion factors applied
-            stat["extrRaw"] = [float("%0.1f" % e.raw_filament) for e in _extrs]
+            stat["extrRaw"] = [round(e.raw_filament, 1) for e in _extrs]
 
             # ===== Print time estimation =====
             timesLeft = stat["timesLeft"]
@@ -556,7 +556,7 @@ class GuiStats:
                 # keep progress ongoing until print is end
                 progress = .999
                 timesLeft['file'] = 1
-            # stat["fractionPrinted"] = float("%.1f" % (progress * 100.))
+            # stat["fractionPrinted"] = round((progress * 100.), 1)
             stat["fractionPrinted"] = int(progress * 100.)
             '''
             # 2) Used filament amount
@@ -565,7 +565,7 @@ class GuiStats:
                 fila_used = sum(e.raw_filament for i, e in _extrs.items())
                 fila_perc = (fila_used / fila_total)
                 remaining_time_fila = (printing_time / fila_perc) - printing_time
-                timesLeft['filament'] = [float("%.1f" % remaining_time_fila)]
+                timesLeft['filament'] = [round(remaining_time_fila, 1)]
             #'''
             '''
             # 3) Layer statistics
@@ -579,7 +579,7 @@ class GuiStats:
                 proc = curr_layer / num_layers
                 if proc > 0:
                     remaining_time_layer = (printing_time / proc) - printing_time
-                    timesLeft['layer'] = float("%.1f" % remaining_time_layer)
+                    timesLeft['layer'] = round(remaining_time_layer, 1)
             #'''
             status_resp.update(stat)
 
@@ -598,7 +598,6 @@ class GuiStats:
     status_new_heaters = []
     def status_new_reset(self):
         self.status_new_heaters = []
-        states = {False: 0, True: 2}
         version = self.printer.get_start_arg('software_version', 'Unknown')
 
         fans_all = self.printer.lookup_objects("fan")
@@ -682,7 +681,6 @@ class GuiStats:
                 })
 
         heatbed = self.printer.lookup_object('heater_bed', None)
-        heatbed_add = heatbed is not None
         heaters = []
         beds = []
         tools = []
@@ -693,22 +691,21 @@ class GuiStats:
             temp, target = heatbed.get_temp(0)
             beds.append({"active": [10], "standby": [0], "heaters": [0]})
             heaters.append({
-                "current": float("%.2f" % temp),
+                "current": round(temp, 1),
                 "name":    "BED",
-                "state":   states[(target > 0.0)],
+                "state":   HEATER_STATES[(target > 0.0)],
                 "max":     heatbed.max_temp})
 
         for index, extr in enumerate(self.extruders):
             heater = extr.get_heater()
-            # heater_index = heater.get_index() + heatbed_add
             if heater not in self.status_new_heaters:
                 heater.dwc_index = heater_index = len(self.status_new_heaters)
                 self.status_new_heaters.append(heater)
                 temp, target = heater.get_temp(0)
                 heaters.append({
-                    "current": float("%.2f" % temp),
+                    "current": round(temp, 1),
                     "name":    "HEATER %s" % heater.get_name(),
-                    "state":   states[(target > 0.0)],
+                    "state":   HEATER_STATES[(target > 0.0)],
                     "max":     heater.max_temp})
             else:
                 heater_index = heater.dwc_index
@@ -754,9 +751,9 @@ class GuiStats:
             self.status_new_heaters.append(chamber.heater)
             temp, target = chamber.get_temp(0)
             heaters.append({
-                "current": float("%.2f" % temp),
+                "current": round(temp, 1),
                 "name":    "CHAMBER",
-                "state":   states[(target > 0.0)],
+                "state":   HEATER_STATES[(target > 0.0)],
                 "max":     chamber.heater.max_temp})
 
         cabinet = self.printer.lookup_object('cabinet', default=None)
@@ -765,9 +762,9 @@ class GuiStats:
             self.status_new_heaters.append(cabinet.heater)
             temp, target = cabinet.get_temp(0)
             heaters.append({
-                "current": float("%.2f" % temp),
+                "current": round(temp, 1),
                 "name":    "CABINET",
-                "state":   states[(target > 0.0)],
+                "state":   HEATER_STATES[(target > 0.0)],
                 "max":     cabinet.heater.max_temp})
 
         probes = []
@@ -818,66 +815,72 @@ class GuiStats:
             },
             "move": {
                 "axes": axes,
-                "babystepZ": float("%.3f" % babysteps),
+                "babystepZ": round(babysteps, 3),
                 "currentMove": {
-                    "requestedSpeed": float("%.2f" % gcode_stats['speed']),
+                    "requestedSpeed": round(gcode_stats['speed'], 2),
                     "topSpeed": .0},
                 "compensation": "None",
                 "drives": drives,
                 "extruders": extruders,
                 "geometry": geometry,
                 "idle": {"timeout": motor_off_time, "factor": .3},
-                "speedFactor": float("%.2f" % gcode_stats['speed_factor']),
+                "speedFactor": round(gcode_stats['speed_factor'], 2),
             },
             "sensors": {
                 "endstops": [],
                 "probes": probes,
             },
             "state": {
-                "atxPower": None,
-                "beep": {
-                    "frequency": 0,
-                    "duration":  0
-                },
+                # "atxPower": None,
+                # "beep": {
+                #     "frequency": 0,
+                #     "duration":  0
+                # },
                 "currentTool": -1,
-                "displayMessage": None,
-                "logFile": None,
+                # "displayMessage": None,
+                # "logFile": None,
                 "mode": 'FFF', # ['FFF', 'CNC', 'Laser', None(exclusive in DWC)]
                 "status": None,
+                # "gcoresp": "",
+                # "displayNotification": None,
             },
             "storages": [{"mounted": 1, "path": "0:/"}],
             "tools": tools
         }
+
         self.status_new_update = {
-
-        }
-
-    def get_status_new_update(self):
-        if not self.status_new_update:
-            return None
-        stats = {
             "move": {
+                "axes": self.status_new["move"]["axes"],
+                "drives": [{"position": None} for _ in drives],
                 "currentMove": {},
-                "speedFactor": 0.,
-                "babystepZ": 0.,
             },
+            "heat": {
+                "beds": [{"active": None} for _ in beds],
+                "heaters": [{"current": None, "state": None} for _ in heaters],
+            },
+            "tools": [{"active": None} for _ in self.extruders],
+            "fans": [{"value": 0} for _ in fans],
+            "state": self.status_new["state"],
         }
-        return stats
 
-    def get_status_new(self):
-        states = {False: 0, True: 2}
-        stats = self.status_new
-
+    def get_status_new(self, full=False):
+        if full:
+            stats = self.status_new
+        else:
+            stats = self.status_new_update
+        stats["state"].pop("beep", None)
+        stats["state"].pop("gcoresp", None)
+        stats["state"].pop("displayNotification", None)
         gcode_stats = self.gcode.get_status(0)
         for name, axis in zip("xyz", stats["move"]["axes"]):
             pos = gcode_stats['move_%spos' % name]
             axis["machinePosition"] = pos
             for index in axis['drives']:
                 stats["move"]["drives"][index]["position"] = pos
-        stats["move"]["currentMove"]["requestedSpeed"] = float("%.2f" % gcode_stats['speed'])
-        stats["move"]["speedFactor"] = float("%.2f" % gcode_stats['speed_factor'])
+        stats["move"]["currentMove"]["requestedSpeed"] = round(gcode_stats['speed'], 2)
+        stats["move"]["speedFactor"] = round(gcode_stats['speed_factor'], 2)
         if self.babysteps:
-            stats["move"]["babystepZ"] = float("%.3f" % self.babysteps.babysteps)
+            stats["move"]["babystepZ"] = round(self.babysteps.babysteps, 3)
         if self.bed_mesh is not None and self.bed_mesh.z_mesh:
             stats["move"]["compensation"] = "Mesh"
         else:
@@ -900,16 +903,14 @@ class GuiStats:
         for index, heater in enumerate(self.status_new_heaters):
             index = heater.dwc_index
             temp, target = heater.get_temp(0)
-            # temp *= random.randrange(1, 4, 1)
             hstat = stats["heat"]["heaters"][index]
-            hstat["current"] = float("%.2f" % temp)
-            hstat["state"] = states[(target > 0.0)]
-            #self.logger.info("Heater: %s, index %s: stats: %s" % (
-            #    heater.get_name(), index, hstat))
+            hstat["current"] = round(temp, 1)
+            hstat["state"] = HEATER_STATES[(target > 0.0)]
+            # update extrude factor
         for index, extr in enumerate(self.extruders):
             temp, target = extr.get_heater().get_temp(0)
             stats["tools"][index]["active"] = [target]
-            for drv_idx in stats["move"]["extruders"][index]["drives"]:
+            for drv_idx in self.status_new["move"]["extruders"][index]["drives"]:
                 stats["move"]["drives"][drv_idx]["position"] = extr.extrude_pos
 
         fans_all = self.printer.lookup_objects("fan")
@@ -938,7 +939,7 @@ class GuiStats:
 
             stats["job"].update({
                 "filePosition": self.sd.file_position,
-                #"extrudedRaw": [float("%0.1f" % e.raw_filament)
+                #"extrudedRaw": [round(e.raw_filament, 1)
                 #    for e in self.extruders],
                 "duration": int(printing_time + .5),
                 "layerTime": int(current_time - self.last_print_layer_change + .5),
@@ -948,7 +949,7 @@ class GuiStats:
                     "filament": None,
                     "layer": None,
                 },
-                "fractionPrinted": float("%.1f" % progress),
+                "fractionPrinted": round(progress, 1),
             })
         return stats
 
