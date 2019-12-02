@@ -835,10 +835,10 @@ class GuiStats:
                 "speedFactor": round(gcode_stats['speed_factor'], 2),
             },
             "network": {
-                "hostname": "Klipper DWC",
+                # "hostname": "KlipperDWC",
                 "name": self.name,
-                "password": "reprap",
-                "interfaces": [], # class NetworkInterface
+                # "password": "reprap",
+                # "interfaces": [], # class NetworkInterface
             },
             "sensors": {
                 "endstops": [],

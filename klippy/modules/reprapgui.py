@@ -432,8 +432,10 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
             self.write_message(msg) # yield ?
     def open(self):
         logging.debug("Client connected")
-        status = json.dumps(_PARENT.gui_stats.get_status_new(True),
-                            separators=(',', ':'))
+        status = _PARENT.gui_stats.get_status_new(True)
+        if _PARENT.passwd:
+            status["network"]["password"] = _PARENT.passwd
+        status = json.dumps(status, separators=(',', ':'))
         self.send_status_update(status)
         connections.add(self)
     def on_message(self, commands):
