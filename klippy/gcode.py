@@ -578,10 +578,7 @@ class GCodeParser:
     cmd_G4_aliases = ['G04']
     def cmd_G4(self, params):
         # Dwell
-        if 'S' in params:
-            delay = self.get_float('S', params, minval=0.)
-        else:
-            delay = self.get_float('P', params, 0., minval=0.) / 1000.
+        delay = self.get_float('P', params, 0., minval=0.) / 1000.
         self.toolhead.dwell(delay)
     def cmd_G28(self, params):
         # Move to origin
