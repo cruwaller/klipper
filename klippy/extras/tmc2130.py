@@ -177,6 +177,8 @@ class TMCCurrentHelper:
 # Helper code for working with TMC devices via SPI
 class MCU_TMC_SPI:
     def __init__(self, config, name_to_reg, fields):
+        name = config.get_name().split()[-1]
+        self.logger = logging.getLogger("TMC.%s" % name)
         self.printer = config.get_printer()
         self.mutex = self.printer.get_reactor().mutex()
         self.spi = bus.MCU_SPI_from_config(config, 3, default_speed=4000000)
@@ -192,14 +194,17 @@ class MCU_TMC_SPI:
                 return 0
             params = self.spi.spi_transfer([reg, 0x00, 0x00, 0x00, 0x00])
         pr = bytearray(params['response'])
-        return (pr[1] << 24) | (pr[2] << 16) | (pr[3] << 8) | pr[4]
+        val = (pr[1] << 24) | (pr[2] << 16) | (pr[3] << 8) | pr[4]
+        self.logger.debug("Read %s: 0x%08X" % (reg_name, val))
+        return val
     def set_register(self, reg_name, val, print_time=None):
         minclock = 0
         if print_time is not None:
             minclock = self.spi.get_mcu().print_time_to_clock(print_time)
-        reg = Registers[reg_name]
+        reg = self.name_to_reg[reg_name]
         data = [(reg | 0x80) & 0xff, (val >> 24) & 0xff, (val >> 16) & 0xff,
                 (val >> 8) & 0xff, val & 0xff]
+        self.logger.debug("Write %s: 0x%08X" % (reg_name, val))
         with self.mutex:
             self.spi.spi_send(data, minclock)
 
@@ -238,6 +243,9 @@ class TMC2130:
         set_config_field(config, "pwm_freq", 1)
         set_config_field(config, "pwm_autoscale", True)
         set_config_field(config, "sgt", 0)
+        # GCONF
+        set_config_field(config, "diag0_int_pushpull", False)
+        set_config_field(config, "diag1_pushpull", False)
 
 def load_config_prefix(config):
     return TMC2130(config)

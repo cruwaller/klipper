@@ -341,6 +341,9 @@ class TMC5160:
         set_config_field(config, "PWM_LIM", 12)
         #   TPOWERDOWN
         set_config_field(config, "TPOWERDOWN", 10)
+        #   GCONF
+        set_config_field(config, "diag0_int_pushpull", False)
+        set_config_field(config, "diag1_poscomp_pushpull", False)
 
 def load_config_prefix(config):
     return TMC5160(config)
