@@ -9,9 +9,10 @@ class PrinterStaticDigitalOut:
         printer = config.get_printer()
         ppins = printer.lookup_object('pins')
         pin_list = [pin.strip() for pin in config.get('pins').split(',')]
+        state = config.getboolean('state', True)
         for pin_desc in pin_list:
             mcu_pin = ppins.setup_pin('digital_out', pin_desc)
-            mcu_pin.setup_start_value(1, 1, True)
+            mcu_pin.setup_start_value(state, state, True)
 
 def load_config_prefix(config):
     return PrinterStaticDigitalOut(config)
