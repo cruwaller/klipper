@@ -96,6 +96,7 @@ class GCodeMacro:
         gcode_macro = printer.try_load_module(config, 'gcode_macro')
         self.template = gcode_macro.load_template(config, 'gcode')
         self.gcode = printer.lookup_object('gcode')
+        self.gcode.register_command(self.alias, None)
         self.gcode.register_command(self.alias, self.cmd, desc=self.cmd_desc)
         self.gcode.register_mux_command("SET_GCODE_VARIABLE", "MACRO",
                                         name, self.cmd_SET_GCODE_VARIABLE,
