@@ -237,6 +237,7 @@ class TMC5160CurrentHelper:
         hold_current = config.getfloat('hold_current', run_current,
                                        above=0., maxval=MAX_CURRENT)
         self.sense_resistor = config.getfloat('sense_resistor', 0.075, above=0.)
+        self.scaler = 256
         irun, ihold = self._calc_current(run_current, hold_current)
         self.fields.set_field("IHOLD", ihold)
         self.fields.set_field("IRUN", irun)
@@ -245,18 +246,31 @@ class TMC5160CurrentHelper:
             "SET_TMC_CURRENT", "STEPPER", self.name,
             self.cmd_SET_TMC_CURRENT, desc=self.cmd_SET_TMC_CURRENT_help)
         self.printer.add_object('driver_current ' + self.name, self.get_current)
+    def _adjust_scaler(self, run_current):
+        # calculate "GLOBAL_SCALER" based on run_current
+        self.scaler = 256
+        cs = self._calc_current_bits(run_current)
+        while cs < 16:
+            self.scaler -= 1
+            cs = self._calc_current_bits(run_current)
+        scaler = self.scaler & 0xff # 0 is treated as full scale (256)
+        self.fields.set_reg_value("GLOBAL_SCALER", scaler)
+        return cs
     def _calc_current_bits(self, current):
-        cs = int(32. * current * self.sense_resistor * math.sqrt(2.) / VREF
-                 - 1. + .5)
+        cs = 32. * current * self.sense_resistor * math.sqrt(2.) / VREF
+        cs *= 256. / self.scaler
+        cs = int(cs - 1. + .5)
         return max(0, min(31, cs))
     def _calc_current(self, run_current, hold_current):
-        irun = self._calc_current_bits(run_current)
+        # irun = self._calc_current_bits(run_current)
+        irun = self._adjust_scaler(run_current)
         ihold = self._calc_current_bits(min(hold_current, run_current))
         return irun, ihold
     def _calc_current_from_field(self, field_name):
         bits = self.fields.get_field(field_name)
         current = ((bits + 1) * VREF
                    / (32. * math.sqrt(2.) * self.sense_resistor))
+        current *= self.scaler / 256.
         return round(current, 2)
     cmd_SET_TMC_CURRENT_help = "Set the current of a TMC driver"
     def cmd_SET_TMC_CURRENT(self, params):
