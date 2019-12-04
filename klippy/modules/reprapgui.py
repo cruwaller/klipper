@@ -461,6 +461,14 @@ class GetDirectoryHandler(BaseHandler):
         respdata = {}
         _PARENT.get_filelist(value, respdata)
         self.write(json.dumps(respdata["files"]))
+    def put(self, path):
+        directory = path.replace("0:", _PARENT.sd_path)
+        try:
+            os.makedirs(directory)
+        except OSError as e:
+            if e.errno != errno.EEXIST:
+                logging.error("mkdir: %s" % (e.strerror,))
+                raise tornado.web.HTTPError(403)
 
 
 class FileInfoHandler(BaseHandler):
