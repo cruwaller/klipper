@@ -108,8 +108,8 @@ class TMCCommandHelper:
         # Send registers
         for reg_name, val in self.fields.registers.items():
             self.mcu_tmc.set_register(reg_name, val, print_time)
-        if self.fields.has_register("GSTAT"):
-            self.mcu_tmc.set_register("GSTAT", 7) # reset status
+        # if self.fields.has_register("GSTAT"):
+        #     self.mcu_tmc.set_register("GSTAT", 7) # reset status
     def _handle_connect(self):
         # Check for soft stepper enable/disable
         stepper_enable = self.printer.lookup_object('stepper_enable')
