@@ -154,6 +154,9 @@ Fields["IHOLD_IRUN"] = {
     "IRUN":                     0x1F << 8,
     "IHOLDDELAY":               0x0F << 16
 }
+Fields["GLOBAL_SCALER"] = {
+    "GLOBAL_SCALER":            0xff << 0
+}
 Fields["IOIN"] = {
     "REFL_STEP":                0x01 << 0,
     "REFR_DIR":                 0x01 << 1,
@@ -208,6 +211,12 @@ Fields["TPWMTHRS"] = {
 Fields["TSTEP"] = {
     "TSTEP":                    0xfffff << 0
 }
+Fields["SHORT_CONF"] = {
+    "S2VS_LEVEL":               0x0F << 0,
+    "S2G_LEVEL":                0x0F << 8,
+    "SHORT_FILTER":             0x03 << 16,
+    "shortdelay":               0x01 << 18,
+}
 
 SignedFields = ["CUR_A", "CUR_B", "sgt", "XACTUAL", "VACTUAL", "PWM_SCALE_AUTO"]
 
@@ -234,43 +243,50 @@ class TMC5160CurrentHelper:
         self.fields = mcu_tmc.get_fields()
         run_current = config.getfloat('run_current',
                                       above=0., maxval=MAX_CURRENT)
-        hold_current = config.getfloat('hold_current', run_current,
+        hold_current = config.getfloat('hold_current', .7*run_current,
                                        above=0., maxval=MAX_CURRENT)
         self.sense_resistor = config.getfloat('sense_resistor', 0.075, above=0.)
-        self.scaler = 256
-        irun, ihold = self._calc_current(run_current, hold_current)
+        irun, ihold, scaler = self._calc_current(run_current, hold_current)
         self.fields.set_field("IHOLD", ihold)
         self.fields.set_field("IRUN", irun)
+        self.fields.set_field("GLOBAL_SCALER", scaler)
         gcode = self.printer.lookup_object("gcode")
         gcode.register_mux_command(
             "SET_TMC_CURRENT", "STEPPER", self.name,
             self.cmd_SET_TMC_CURRENT, desc=self.cmd_SET_TMC_CURRENT_help)
         self.printer.add_object('driver_current ' + self.name, self.get_current)
-    def _adjust_scaler(self, run_current):
-        # calculate "GLOBAL_SCALER" based on run_current
-        self.scaler = 256
-        cs = self._calc_current_bits(run_current)
-        while cs < 16:
-            self.scaler -= 1
-            cs = self._calc_current_bits(run_current)
-        scaler = self.scaler & 0xff # 0 is treated as full scale (256)
-        self.fields.set_reg_value("GLOBAL_SCALER", scaler)
-        return cs
+    def _calc_current_and_scaler(self, current):
+        # Values > 128 recommended for best results
+        min_scaler = [128, 31][current < 0.6]
+        cs = scaler = 32
+        while cs > 0:
+            scaler = int((current*32*256 * self.sense_resistor * math.sqrt(2.) /
+                         (cs * VREF)) + .5)
+            if scaler > min_scaler:
+                break
+            cs -= 1
+        if cs <= 1:
+            raise self.printer.config_error("Unable to calculate current!")
+        return cs - 1, min(scaler, 256)
     def _calc_current_bits(self, current):
+        scaler = self.fields.get_field("GLOBAL_SCALER")
         cs = 32. * current * self.sense_resistor * math.sqrt(2.) / VREF
-        cs *= 256. / self.scaler
+        if scaler:
+            cs *= 256. / scaler
         cs = int(cs - 1. + .5)
         return max(0, min(31, cs))
     def _calc_current(self, run_current, hold_current):
+        irun, scaler = self._calc_current_and_scaler(run_current)
         # irun = self._calc_current_bits(run_current)
-        irun = self._adjust_scaler(run_current)
         ihold = self._calc_current_bits(min(hold_current, run_current))
-        return irun, ihold
+        return irun, ihold, scaler
     def _calc_current_from_field(self, field_name):
+        scaler = self.fields.get_field("GLOBAL_SCALER")
         bits = self.fields.get_field(field_name)
         current = ((bits + 1) * VREF
                    / (32. * math.sqrt(2.) * self.sense_resistor))
-        current *= self.scaler / 256.
+        if scaler:
+            current *= scaler / 256.
         return round(current, 2)
     cmd_SET_TMC_CURRENT_help = "Set the current of a TMC driver"
     def cmd_SET_TMC_CURRENT(self, params):
@@ -291,10 +307,12 @@ class TMC5160CurrentHelper:
                                % (run_current, hold_current))
             return
         print_time = self.printer.lookup_object('toolhead').get_last_move_time()
-        irun, ihold = self._calc_current(run_current, hold_current)
+        irun, ihold, scaler = self._calc_current(run_current, hold_current)
+        scaler = self.fields.set_field("GLOBAL_SCALER", scaler)
         self.fields.set_field("IHOLD", ihold)
         val = self.fields.set_field("IRUN", irun)
         self.mcu_tmc.set_register("IHOLD_IRUN", val, print_time)
+        self.mcu_tmc.set_register("GLOBAL_SCALER", scaler, print_time)
     def get_current(self):
         return self._calc_current_from_field("IRUN")
 
@@ -358,6 +376,12 @@ class TMC5160:
         #   GCONF
         set_config_field(config, "diag0_int_pushpull", False)
         set_config_field(config, "diag1_poscomp_pushpull", False)
+        #   SHORT_CONF
+        set_config_field(config, "S2VS_LEVEL", 12) # 6
+        set_config_field(config, "S2G_LEVEL", 12) # 6
+        set_config_field(config, "SHORT_FILTER", 3) # 1
+        set_config_field(config, "shortdelay", 1) # 0
+
 
 def load_config_prefix(config):
     return TMC5160(config)
