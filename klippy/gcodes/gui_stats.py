@@ -825,7 +825,7 @@ class GuiStats:
                 "axes": axes,
                 "babystepZ": round(babysteps, 3),
                 "currentMove": {
-                    "requestedSpeed": round(gcode_stats['speed'], 2),
+                    "requestedSpeed": round(gcode_stats['speed'] / 60., 2),
                     "topSpeed": .0},
                 "compensation": "None",
                 "drives": drives,
@@ -891,7 +891,8 @@ class GuiStats:
             axis["machinePosition"] = pos
             for index in axis['drives']:
                 stats["move"]["drives"][index]["position"] = pos
-        stats["move"]["currentMove"]["requestedSpeed"] = round(gcode_stats['speed'], 2)
+        stats["move"]["currentMove"]["requestedSpeed"] = \
+            round(gcode_stats['speed'] / 60., 2)
         stats["move"]["speedFactor"] = round(gcode_stats['speed_factor'], 2)
         if self.babysteps:
             stats["move"]["babystepZ"] = round(self.babysteps.babysteps, 3)
