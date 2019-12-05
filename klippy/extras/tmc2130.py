@@ -246,6 +246,8 @@ class TMC2130:
         # GCONF
         set_config_field(config, "diag0_int_pushpull", False)
         set_config_field(config, "diag1_pushpull", False)
+        # CHOPCONF
+        set_config_field(config, "diss2g", 0)
 
 def load_config_prefix(config):
     return TMC2130(config)
