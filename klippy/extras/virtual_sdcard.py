@@ -10,7 +10,7 @@ class VirtualSD:
     def __init__(self, config):
         self.printer = printer = config.get_printer()
         self.logger = printer.get_logger('VirtualSD')
-        self.simulate_print = False
+        self.simulate_print = self.macro_print = False
         self.toolhead = None
         printer.register_event_handler("klippy:shutdown", self.handle_shutdown)
         printer.register_event_handler("klippy:ready", self.handle_ready)
@@ -60,7 +60,7 @@ class VirtualSD:
                 readcount = self.file_position - readpos
                 self.current_file.seek(readpos)
                 data = self.current_file.read(readcount + 128)
-            except:
+            except AttributeError:
                 self.logger.exception("virtual_sdcard shutdown read")
                 return
             self.logger.info("Virtual sdcard (%d): %s\nUpcoming (%d): %s",
@@ -130,7 +130,7 @@ class VirtualSD:
     def cmd_M21(self, params):
         # Initialize SD card
         self.gcode.respond("SD card ok")
-    def cmd_M23(self, params):
+    def cmd_M23(self, params, macro=False):
         # Select SD file
         if self.work_timer is not None:
             raise self.gcode.error("SD busy")
@@ -162,16 +162,19 @@ class VirtualSD:
         self.current_file = f
         self.file_position = 0
         self.file_size = fsize
-        self.printer.send_event('vsd:status', 'loaded')
-        self.printer.send_event('vsd:file_loaded', fname)
         self.simulate_print = False
+        self.macro_print = macro
+        if not macro:
+            self.printer.send_event('vsd:status', 'loaded')
+            self.printer.send_event('vsd:file_loaded', fname)
     def cmd_M24(self, params):
         # Start/resume SD print
         if self.current_file is None:
             raise self.gcode.error("SD file is not loaded")
         if self.work_timer is not None:
             raise self.gcode.error("SD busy")
-        self.printer.send_event('vsd:status', 'start')
+        if not self.macro_print:
+            self.printer.send_event('vsd:status', 'start')
         self.must_pause_work = False
         self.work_timer = self.reactor.register_timer(
             self.work_handler, self.reactor.NOW)
@@ -197,7 +200,6 @@ class VirtualSD:
         gco_f = shlex.split(orig[orig.find("M32") + 3:])[0].strip()
         params['#original'] = 'M23 "%s"' % gco_f
         self.cmd_M23(params)
-        self.simulate_print = False
         self.cmd_M24(params)
     def cmd_M37(self, params):
         orig = params['#original']
@@ -214,8 +216,7 @@ class VirtualSD:
         orig = params['#original']
         macro_f = shlex.split(orig[orig.find("P") + 1:])[0].strip()
         params['#original'] = 'M23 "%s"' % macro_f
-        self.cmd_M23(params)
-        self.simulate_print = False
+        self.cmd_M23(params, macro=True)
         self.logger.info("Executing macro")
         self.cmd_M24(params)
     # Background work timer

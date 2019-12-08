@@ -152,8 +152,9 @@ class GuiStats:
             toolhead.wait_moves()
             self._stats_type_3['lastLayerTime'] = \
                 time.time() - self.last_print_layer_change
-            self.status_new["job"]["lastFileName"] =  \
-                self.status_new["job"]["currentFileName"]
+            if "job" in self.status_new:
+                self.status_new["job"]["lastFileName"] =  \
+                    self.status_new["job"]["currentFileName"]
             self.curr_state = "I"
         elif status == 'loaded':
             pass
