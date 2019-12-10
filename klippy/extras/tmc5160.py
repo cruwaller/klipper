@@ -217,6 +217,13 @@ Fields["SHORT_CONF"] = {
     "SHORT_FILTER":             0x03 << 16,
     "shortdelay":               0x01 << 18,
 }
+Fields["DRV_CONF"] = {
+    "BBMTIME":                  0x1F << 0,
+    "BBMCLKS":                  0x0F << 8,
+    "OTSELECT":                 0x03 << 16,
+    "DRVSTRENGTH":              0x03 << 18,
+    "FILT_ISENSE:":             0x03 << 20,
+}
 
 SignedFields = ["CUR_A", "CUR_B", "sgt", "XACTUAL", "VACTUAL", "PWM_SCALE_AUTO"]
 
@@ -337,8 +344,8 @@ class TMC5160:
         self.get_microsteps = mh.get_microsteps
         self.get_phase = mh.get_phase
         tmc.TMCStealthchopHelper(config, self.mcu_tmc, TMC_FREQUENCY)
-        #   CHOPCONF
         set_config_field = self.fields.set_config_field
+        #   CHOPCONF
         set_config_field(config, "toff", 3)
         set_config_field(config, "hstrt", 5)
         set_config_field(config, "hend", 2)
@@ -374,6 +381,8 @@ class TMC5160:
         #   TPOWERDOWN
         set_config_field(config, "TPOWERDOWN", 10)
         #   GCONF
+        set_config_field(config, "recalibrate", True)
+        set_config_field(config, "multistep_filt", True)
         set_config_field(config, "diag0_int_pushpull", False)
         set_config_field(config, "diag1_poscomp_pushpull", False)
         #   SHORT_CONF
@@ -381,6 +390,9 @@ class TMC5160:
         set_config_field(config, "S2G_LEVEL", 12) # 6
         set_config_field(config, "SHORT_FILTER", 3) # 1
         set_config_field(config, "shortdelay", 1) # 0
+        #   DRV_CONF
+        set_config_field(config, "BBMCLKS", 2)
+        set_config_field(config, "OTSELECT", 2)
 
 
 def load_config_prefix(config):
