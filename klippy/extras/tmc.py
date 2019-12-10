@@ -104,12 +104,31 @@ class TMCCommandHelper:
         self.gcode.register_mux_command(
             "INIT_TMC", "STEPPER", self.name,
             self.cmd_INIT_TMC, desc=self.cmd_INIT_TMC_help)
+        self.gcode.register_mux_command(
+            "STATUS_TMC", "STEPPER", self.name,
+            self.cmd_STATUS_TMC, desc=self.cmd_STATUS_TMC_help)
     def _init_registers(self, print_time=None):
         # Send registers
         for reg_name, val in self.fields.registers.items():
             self.mcu_tmc.set_register(reg_name, val, print_time)
-        # if self.fields.has_register("GSTAT"):
-        #     self.mcu_tmc.set_register("GSTAT", 7) # reset status
+        self._get_gstat()
+    def _get_gstat(self):
+        msg = "GSTAT Not Available"
+        if self.fields.has_register("GSTAT"):
+            gstat = self.mcu_tmc.get_register("GSTAT")
+            msg = self.fields.pretty_format("GSTAT", gstat)
+            logging.info(msg)
+            print_time = self.printer.lookup_object(
+                'toolhead').get_last_move_time()
+            self.mcu_tmc.set_register("GSTAT", gstat, print_time)
+        return msg
+    def _get_driver_status(self):
+        msg = "DRV_STATUS Not Available"
+        if self.fields.has_register("DRV_STATUS"):
+            status = self.mcu_tmc.get_register("DRV_STATUS")
+            msg = self.fields.pretty_format("DRV_STATUS", status)
+            logging.info(msg)
+        return msg
     def _handle_connect(self):
         # Check for soft stepper enable/disable
         stepper_enable = self.printer.lookup_object('stepper_enable')
@@ -150,6 +169,11 @@ class TMCCommandHelper:
         reg_val = self.fields.set_field(field_name, value)
         print_time = self.printer.lookup_object('toolhead').get_last_move_time()
         self.mcu_tmc.set_register(reg_name, reg_val, print_time)
+    cmd_STATUS_TMC_help = "Read and reset gstat register"
+    def cmd_STATUS_TMC(self, params):
+        logging.info("STATUS_TMC %s", self.name)
+        out = [self._get_gstat(), self._get_driver_status()]
+        self.gcode.respond_info("\n".join(out))
     # Stepper enable/disable via comms
     def _do_enable(self, print_time, is_enable):
         toff_val = 0
@@ -184,8 +208,6 @@ class TMCCommandHelper:
             if self.read_translate is not None:
                 reg_name, val = self.read_translate(reg_name, val)
             self.gcode.respond_info(self.fields.pretty_format(reg_name, val))
-        if self.fields.has_register("GSTAT"):
-            self.mcu_tmc.set_register("GSTAT", 7) # reset status
 
 
 ######################################################################
