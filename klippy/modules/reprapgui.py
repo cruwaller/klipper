@@ -42,6 +42,7 @@ import tornado.web
 import tornado.websocket
 
 _PARENT = None
+_STATUS = {}
 KLIPPER_CFG_NAME = 'klipper_config.cfg'
 KLIPPER_LOG_NAME = "klippy.log"
 MAX_STREAMED_SIZE = 1024**3
@@ -419,7 +420,7 @@ class rrHandler(BaseHandler):
             self.upload_bytes_written += len(chunk)
 
 
-connections = set()
+_CONNECTIONS = set()
 
 class WebSocketHandler(tornado.websocket.WebSocketHandler):
     logger = logging.getLogger("WebSocket")
@@ -431,28 +432,29 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
         with self._lock:
             self.write_message(msg) # yield ?
     def open(self):
-        logging.debug("Client connected")
+        self.logger.debug("Client connected")
         status = _PARENT.gui_stats.get_status_new(True)
-        if _PARENT.passwd:
-            status["network"]["password"] = _PARENT.passwd
-        status = json.dumps(status, separators=(',', ':'))
         self.send_status_update(status)
-        connections.add(self)
+        _CONNECTIONS.add(self)
     def on_message(self, commands):
         if "PING" in commands:
-            self.send_message("PONG\n")
+            status = dict(_STATUS)
+            if not status:
+                self.send_message("PONG\n")
+            else:
+                self.send_status_update(status)
         elif "OK" in commands:
             self._wait_ack = False
         else:
             self.logger.error("[RX] unknown command '%s'" % commands)
     def on_close(self):
-        logging.debug("Client left")
-        connections.remove(self)
+        self.logger.debug("Client left")
+        _CONNECTIONS.remove(self)
     def send_status_update(self, status):
         if self._wait_ack:
             return
         self._wait_ack = True
-        self.send_message(status)
+        self.send_message(json.dumps(status, separators=(',', ':')))
 
 
 class GetDirectoryHandler(BaseHandler):
@@ -699,6 +701,7 @@ class RepRapGuiModule(object):
         # try to load required modules
         printer.try_load_module(config, "babysteps")
         printer.try_load_module(config, "analyse_gcode", folder="modules")
+        printer.try_load_module(config, "dwc_macro", folder="modules")
         self.gui_stats = printer.try_load_module(config, 'gui_stats',
                                                  folder='gcodes')
         # ------------------------------
@@ -819,11 +822,13 @@ class RepRapGuiModule(object):
             http_server.stop()
             ioloop.klipper_http_server = None
     def _status_update(self, eventtime): # DWC2 only
-        global connections
-        _clients = connections
-        if not len(_clients):
+        global _STATUS
+        if not len(_CONNECTIONS):
+            _STATUS = {}
             return eventtime + .5
-        status = dict(_PARENT.gui_stats.get_status_new())
+        status = dict(self.gui_stats.get_status_new())
+        if self.passwd:
+            status["network"]["password"] = self.passwd
         resps = self.get_gcode_async_resps()
         if resps:
             status['state']['gcoresp'] = "\n".join(resps)
@@ -836,12 +841,7 @@ class RepRapGuiModule(object):
         # update atx status
         if self.atx_on is not None:
             status["state"]["atxPower"] = int(self.atx_state)
-        status = json.dumps(status, separators=(',', ':'))
-        #ioloop = tornado.ioloop.IOLoop.instance() # current()
-        for client in _clients:
-            client.send_status_update(status)
-            #ioloop.add_callback(
-            #    functools.partial(client.send_status_update, status))
+        _STATUS = status
         return eventtime + .5
 
     def __gcode_parse(self, gcodes):
