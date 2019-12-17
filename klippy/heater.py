@@ -445,6 +445,7 @@ class ControlPID:
         self.prev_temp_time = 0.
         self.prev_temp_deriv = 0.
         self.prev_temp_integ = 0.
+        self.skip_settle = config.getboolean("skip_settle", False)
     def temperature_update(self, read_time, temp, target_temp):
         time_diff = read_time - self.prev_temp_time
         # Calculate change of temperature
@@ -472,6 +473,8 @@ class ControlPID:
             self.prev_temp_integ = temp_integ
     def check_busy(self, eventtime, smoothed_temp, target_temp):
         temp_diff = target_temp - smoothed_temp
+        if self.skip_settle:
+            return temp_diff > PID_SETTLE_DELTA
         return (abs(temp_diff) > PID_SETTLE_DELTA
                 or abs(self.prev_temp_deriv) > PID_SETTLE_SLOPE)
 
