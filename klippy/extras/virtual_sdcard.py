@@ -10,7 +10,7 @@ class VirtualSD:
     def __init__(self, config):
         self.printer = printer = config.get_printer()
         self.logger = printer.get_logger('VirtualSD')
-        self.simulate_print = self.macro_print = False
+        self.simulate_print = False
         self.toolhead = None
         printer.register_event_handler("klippy:shutdown", self.handle_shutdown)
         printer.register_event_handler("klippy:ready", self.handle_ready)
@@ -27,24 +27,19 @@ class VirtualSD:
         self.gcode = printer.lookup_object('gcode')
         self.gcode.register_command('M21', None)
         for cmd in ['M0', 'M20', 'M21', 'M23', 'M24', 'M25', 'M26', 'M27',
-                    'M32', 'M37', 'M98']:
+                    'M32', 'M37']:
             wnr = getattr(self, 'cmd_' + cmd + '_when_not_ready', False)
             self.gcode.register_command(cmd, getattr(self, 'cmd_' + cmd), wnr)
         for cmd in ['M28', 'M29', 'M30']:
             self.gcode.register_command(cmd, self.cmd_error)
-        self.gcode.register_command('SD_SET_PATH',
-            self.cmd_SD_SET_PATH)
-        self.last_gco_sender = None
-        self.logger.debug("SD card path: %s", self.sdcard_dirname)
+        self.gcode.register_command('SD_SET_PATH', self.cmd_SD_SET_PATH)
+        self.logger.debug("path: %s", self.sdcard_dirname)
     def cmd_SD_SET_PATH(self, params):
         self.sdcard_dirname = self.gcode.get_str("TYPE", params,
             default=self.sdcard_dirname)
         self.logger.debug("SD card path: %s", self.sdcard_dirname)
     def get_current_file_name(self):
-        try:
-            return self.current_file.name
-        except AttributeError:
-            return None
+        return getattr(self.current_file, "name", None)
     def handle_ready(self):
         self.toolhead = self.printer.lookup_object('toolhead')
         #for cmd in ['M0', 'M20', 'M21', 'M23', 'M24', 'M25', 'M26', 'M27',
@@ -130,7 +125,7 @@ class VirtualSD:
     def cmd_M21(self, params):
         # Initialize SD card
         self.gcode.respond("SD card ok")
-    def cmd_M23(self, params, macro=False):
+    def cmd_M23(self, params):
         # Select SD file
         if self.work_timer is not None:
             raise self.gcode.error("SD busy")
@@ -163,18 +158,14 @@ class VirtualSD:
         self.file_position = 0
         self.file_size = fsize
         self.simulate_print = False
-        self.macro_print = macro
-        if not macro:
-            self.printer.send_event('vsd:status', 'loaded')
-            self.printer.send_event('vsd:file_loaded', fname)
+        self.printer.send_event('vsd:file_loaded', fname)
     def cmd_M24(self, params):
         # Start/resume SD print
         if self.current_file is None:
             raise self.gcode.error("SD file is not loaded")
         if self.work_timer is not None:
             raise self.gcode.error("SD busy")
-        if not self.macro_print:
-            self.printer.send_event('vsd:status', 'start')
+        self.printer.send_event('vsd:status', 'start')
         self.must_pause_work = False
         self.work_timer = self.reactor.register_timer(
             self.work_handler, self.reactor.NOW)
@@ -210,15 +201,6 @@ class VirtualSD:
         self.simulate_print = True
         self.logger.info("Simulated print starting")
         self.cmd_M24(params)
-    cmd_M98_when_not_ready = True
-    def cmd_M98(self, params):
-        # Run macro
-        orig = params['#original']
-        macro_f = shlex.split(orig[orig.find("P") + 1:])[0].strip()
-        params['#original'] = 'M23 "%s"' % macro_f
-        self.cmd_M23(params, macro=True)
-        self.logger.info("Executing macro")
-        self.cmd_M24(params)
     # Background work timer
     def work_handler(self, eventtime):
         self.gcode.simulate_print = self.simulate_print
@@ -230,7 +212,6 @@ class VirtualSD:
             self.logger.exception("virtual_sdcard seek")
             self.gcode.respond_error("Unable to seek file")
             self.work_timer = None
-            self.gcode.simulate_print = False
             return self.reactor.NEVER
         gcode_mutex = self.gcode.get_mutex()
         partial_input = ""

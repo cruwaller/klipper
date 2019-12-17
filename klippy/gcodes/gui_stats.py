@@ -156,8 +156,6 @@ class GuiStats:
                 self.status_new["job"]["lastFileName"] =  \
                     self.status_new["job"]["currentFileName"]
             self.curr_state = "I"
-        elif status == 'loaded':
-            pass
     def _sd_file_loaded(self, fname):
         handler = self.printer.lookup_object("analyse_gcode")
         file_info = handler.get_file_info(fname)

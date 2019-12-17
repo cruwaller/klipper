@@ -27,7 +27,8 @@ class TelegramModule(object):
         self.gcode = printer.lookup_object('gcode')
         self.toolhead = printer.lookup_object('toolhead')
         self.sd = printer.try_load_module(config, "virtual_sdcard")
-        printer.register_event_handler('vsd:status', self.sd_print_cb)
+        printer.register_event_handler('vsd:status', self._sd_status)
+        printer.register_event_handler('vsd:file_loaded', self._sd_file_loaded)
         printer.register_event_handler("klippy:ready", self._handle_ready)
         printer.register_event_handler("klippy:connect", self._handle_connect)
         printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
@@ -110,7 +111,7 @@ class TelegramModule(object):
         self.state = 'halt'
     gcof = None
     gcostat = "Unknown"
-    def sd_print_cb(self, status):
+    def _sd_status(self, status):
         self.gcostat = status
         if status == 'pause':
             self.gcostat = "paused"
@@ -128,9 +129,9 @@ class TelegramModule(object):
             self.__send_message("Print finished.")
             self.gcostat = "finished"
             self.__send_status()
-        elif status == 'loaded':
-            self.gcof = self.sd.get_current_file_name()
-            self.gcostat = 'initiated'
+    def _sd_file_loaded(self, filename):
+        self.gcof = filename
+        self.gcostat = 'initiated'
 
     # ============= Reporting ============
     def __send_message(self, msg, chat_id=None):

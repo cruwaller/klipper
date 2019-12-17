@@ -10,7 +10,8 @@ class PrinterExtruder:
     def __init__(self, config, extruder_num):
         self.printer = config.get_printer()
         self.name = config.get_name()
-        self.printer.register_event_handler('vsd:status', self._sd_status)
+        self.printer.register_event_handler('vsd:file_loaded',
+                                            self._sd_file_loaded)
         self.extruder_num = extruder_num
         self.logger = self.printer.get_logger(self.name)
         shared_heater = config.get('shared_heater', None)
@@ -91,10 +92,9 @@ class PrinterExtruder:
         self.raw_filament = 0.
         self.extrude_factor = config.getfloat('extrusion_factor', 1.0, minval=0.1)
         self.logger.debug("index=%d, heater=%s" % (extruder_num, self.heater.name))
-    def _sd_status(self, status):
-        if status == 'loaded':
-            # Reset filament counter
-            self.raw_filament = 0.
+    def _sd_file_loaded(self, _):
+        # Reset filament counter
+        self.raw_filament = 0.
     def update_move_time(self, flush_time):
         self.trapq_free_moves(self.trapq, flush_time)
     def _set_pressure_advance(self, pressure_advance, smooth_time):
