@@ -15,10 +15,6 @@ MAX_HEAT_TIME = 5.0
 AMBIENT_TEMP = 25.
 PID_PARAM_BASE = 255.
 
-DEBUG_TARGET = 25.
-
-class error(Exception):
-    pass
 
 class HeaterProtect:
     def __init__(self, config, heater):
@@ -184,7 +180,6 @@ class HeaterProtect:
         # self.printer.invoke_shutdown(msg + HINT_THERMAL)
 
 class Heater:
-    error = error
     def get_name(self, short=True):
         if not short and "bed" not in self.name:
             if 'extruder' not in self.name:
@@ -302,6 +297,7 @@ class Heater:
     def temperature_callback(self, read_time, temp):
         '''
         # >>>>> DEBUG DEBUG DEBUG >>>>>
+        DEBUG_TARGET = 25.
         if self.target_temp:
             if self.last_pwm_value:
                 self.temp_debug += 1.5
@@ -341,9 +337,12 @@ class Heater:
     def get_smooth_time(self):
         return self.smooth_time
     def set_temp(self, print_time, degrees, auto_tune=False):
+        if degrees == KELVIN_TO_CELCIUS:
+            degrees = 0.
         if degrees and (degrees < self.min_temp or degrees > self.max_temp):
-            raise error("Requested temperature (%.1f) out of range (%.1f:%.1f)"
-                        % (degrees, self.min_temp, self.max_temp))
+            raise self.printer.command_error(
+                "Requested temperature (%.1f) out of range (%.1f:%.1f)"
+                % (degrees, self.min_temp, self.max_temp))
         self.protect.set_runaway(auto_tune)
         with self.lock:
             self.target_temp = degrees
@@ -413,8 +412,9 @@ class ControlBangBang:
         else:
             self.heater.set_pwm(read_time, 0.)
     def check_busy(self, eventtime, smoothed_temp, target_temp):
-        return (smoothed_temp < (target_temp - self.max_delta)) or \
-               ((target_temp + self.max_delta) < smoothed_temp)
+        return smoothed_temp < target_temp-self.max_delta
+        # return ((smoothed_temp < (target_temp - self.max_delta)) or
+        #         ((target_temp + self.max_delta) < smoothed_temp))
 
 
 ######################################################################
@@ -490,6 +490,8 @@ class PrinterHeaters:
         self.heaters = {}
         self.sensors = {}
         self.gcode_id_to_sensor = {}
+        self.available_heaters = []
+        self.available_sensors = []
         self.printer.register_event_handler("gcode:request_restart",
                                             self.turn_off_all_heaters)
         # Register TURN_OFF_HEATERS command
@@ -515,6 +517,7 @@ class PrinterHeaters:
         # Create heater
         self.heaters[heater_name] = heater = Heater(config, sensor, index)
         self.register_sensor(config, heater, gcode_id)
+        self.available_heaters.append(config.get_name())
         return heater
     def lookup_heater(self, heater_name, default=sentinel):
         heater_name = self.convert_name(heater_name)
@@ -548,6 +551,7 @@ class PrinterHeaters:
             raise self.printer.config_error(
                 "G-Code sensor id %s already registered" % (gcode_id,))
         self.gcode_id_to_sensor[gcode_id] = psensor
+        self.available_sensors.append(config.get_name())
     def turn_off_all_heaters(self, print_time):
         for heater in self.heaters.values():
             heater.set_temp(print_time, 0.)
@@ -555,6 +559,10 @@ class PrinterHeaters:
     def cmd_TURN_OFF_HEATERS(self, params):
         print_time = self.printer.lookup_object('toolhead').get_last_move_time()
         self.turn_off_all_heaters(print_time)
+    def get_status(self, eventtime):
+        return {'available_heaters': self.available_heaters,
+                'available_sensors': self.available_sensors}
+
     def get_heaters(self):
         return self.heaters
     @staticmethod

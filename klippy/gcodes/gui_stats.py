@@ -689,15 +689,16 @@ class GuiStats:
         tools = []
         extruders = []
         if heatbed is not None:
-            heatbed.dwc_index = len(self.status_new_heaters)
-            self.status_new_heaters.append(heatbed)
-            temp, target = heatbed.get_temp(0)
+            heater = heatbed.heater
+            heater.dwc_index = len(self.status_new_heaters)
+            self.status_new_heaters.append(heater)
+            temp, target = heater.get_temp(0)
             beds.append({"active": [10], "standby": [0], "heaters": [0]})
             heaters.append({
                 "current": round(temp, 1),
-                "name":    heatbed.get_name(short=False),
+                "name":    heater.get_name(short=False),
                 "state":   HEATER_STATES[(target > 0.0)],
-                "max":     heatbed.max_temp})
+                "max":     heater.max_temp})
 
         for index, extr in enumerate(self.extruders):
             heater = extr.get_heater()
@@ -902,7 +903,7 @@ class GuiStats:
 
         heatbed = self.printer.lookup_object('heater_bed', None)
         if heatbed:
-            temp, target = heatbed.get_temp(0)
+            temp, target = heatbed.heater.get_temp(0)
             stats["heat"]["beds"][0]["active"] = [target]
 
         curr_extruder = self.toolhead.get_extruder()
