@@ -1,6 +1,6 @@
 # Code to implement asynchronous logging from a background thread
 #
-# Copyright (C) 2016,2017  Kevin O'Connor <kevin@koconnor.net>
+# Copyright (C) 2016-2019  Kevin O'Connor <kevin@koconnor.net>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging, logging.handlers, threading, Queue, time
@@ -56,14 +56,25 @@ class QueueListener(logging.handlers.TimedRotatingFileHandler):
         self.emit(logging.makeLogRecord(
             {'msg': "\n".join(lines), 'level': self.loglevel}))
 
+MainQueueHandler = None
+
 def setup_bg_logging(filename, debuglevel):
+    global MainQueueHandler
     ql = QueueListener(filename, debuglevel)
-    qh = QueueHandler(ql.bg_queue)
+    MainQueueHandler = QueueHandler(ql.bg_queue)
     root = logging.getLogger()
-    root.addHandler(qh)
+    root.addHandler(MainQueueHandler)
     root.setLevel(debuglevel)
     # Set formatter only once if not set
     if len(root.handlers) == 0 or \
        root.handlers[0].formatter is None:
-        qh.setFormatter(logging.Formatter(fmt=LOGFORMAT))
+        MainQueueHandler.setFormatter(logging.Formatter(fmt=LOGFORMAT))
     return ql
+
+def clear_bg_logging():
+    global MainQueueHandler
+    if MainQueueHandler is not None:
+        root = logging.getLogger()
+        root.removeHandler(MainQueueHandler)
+        root.setLevel(logging.WARNING)
+        MainQueueHandler = None
