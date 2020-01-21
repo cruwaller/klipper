@@ -245,13 +245,9 @@ class PrinterRail:
         name_test = self.name[:1].upper()
         if 'Z' in name_test:
             self.homing_position[0] = config.getfloat(
-                'homing_pos_x', default=None,
-                minval=0.,
-                maxval=200.)
+                'homing_pos_x', default=None)
             self.homing_position[1] = config.getfloat(
-                'homing_pos_y', default=None,
-                minval=0.,
-                maxval=200.)
+                'homing_pos_y', default=None)
             # TODO: Add support for Z raise before homing!
             self.homing_position[2] = config.getfloat(
                 'homing_z_raise', default=None,
