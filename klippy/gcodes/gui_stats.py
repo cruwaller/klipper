@@ -875,6 +875,7 @@ class GuiStats:
             "tools": [{"active": None} for _ in self.extruders],
             "fans": [{"value": 0} for _ in fans],
             "state": self.status_new["state"],
+            "network": {},
         }
 
     def get_status_new(self, full=False):
